@@ -29,6 +29,17 @@ def _side(m: MatchModel, team: str | None) -> str | None:
     return None
 
 
+def _notable(e: dict) -> bool:
+    """Leave routine fouls and speculative shots out of recaps."""
+    if e["type"] == "foul":
+        return bool(e["derived"].get("penalty_awarded"))
+    if e["type"] == "shot":
+        return e["shot"]["outcome"] in ("goal", "saved", "post") or (e["derived"].get("xg") or 0) >= 0.15
+    if e["type"] == "var":
+        return e["var"]["phase"] in ("check", "decision")
+    return True
+
+
 def describe_event(m: MatchModel, e: dict) -> str:
     who = m.player_name(e.get("player_id"))
     tn = m.team_name(e.get("team"))
@@ -80,10 +91,13 @@ class MatchTools:
         """Notable events between two match minutes. `types` is an optional comma list,
         e.g. "shot,card". Returns at most 25 events, newest last."""
         m = self.m
-        wanted = {t.strip() for t in types.split(",") if t.strip()} or SHOWN_TYPES
+        explicit = {t.strip() for t in types.split(",") if t.strip()}
+        wanted = explicit or SHOWN_TYPES
         out = []
         for e in m.events:
             if e["type"] not in wanted:
+                continue
+            if not explicit and not _notable(e):
                 continue
             minute = derive.minute_of(e["clock"])
             if from_minute <= minute <= to_minute:
@@ -141,8 +155,12 @@ class MatchTools:
                 "passes": len(passes),
                 "passes_completed": sum(1 for e in passes if e["pass"]["outcome"] == "complete"),
                 "key_passes": sum(1 for e in passes if e["derived"].get("key_pass")),
-                "shots": [describe_event(m, e) for e in shots],
-                "other": [f"{e['clock']} {describe_event(m, e)}" for e in evs if e["type"] not in ("pass", "shot")],
+                "shots": len(shots),
+                "goals": sum(1 for e in shots if e["shot"]["outcome"] == "goal"),
+                "shots_on_target": sum(1 for e in shots if e["shot"]["outcome"] in ("goal", "saved")),
+                "xg": round(sum(e["derived"].get("xg") or 0 for e in shots), 2),
+                "other": [f"{e['clock']} {describe_event(m, e)}" for e in evs
+                          if e["type"] not in ("pass", "shot") and _notable(e)],
                 "evidence": [e["id"] for e in shots] + [e["id"] for e in evs if e["type"] not in ("pass", "shot")],
             })
         return {"players": res, "evidence": [i for r in res for i in r["evidence"]]}

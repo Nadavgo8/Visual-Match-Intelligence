@@ -71,6 +71,7 @@ class AttentionEngine:
     momentum_zone: str = "even"
     half_start_t: float = 0.0
     n_cue: int = 0
+    n_in: int = 0  # feed and whistle records received
 
     # ---------- helpers ----------
     def _cue_id(self) -> str:
@@ -96,6 +97,7 @@ class AttentionEngine:
         rec = self.model.ingest(rec)
         if rec.get("stream"):
             return []
+        self.n_in += 1
         if rec["type"] == "whistle":
             return self._on_whistle(rec)
         out = self._resolve_whistles(rec)
@@ -267,7 +269,7 @@ class AttentionEngine:
                     txt = "VAR: PENALTY given. The decision is overturned."
                 else:
                     txt = f"VAR: {v['incident']} — the decision stands."
-                out.append(self._feed(ev, TIER_BIG, "var", txt, txt + f" (review {v['review_id']})", team=None))
+                out.append(self._feed(ev, TIER_BIG, "var", txt, txt, team=None))
                 if v["outcome"] == "overturned":
                     self._schedule(ev["t"] + 6, "var_decision", ev, TIER_BIG)
         elif etype == "foul":
