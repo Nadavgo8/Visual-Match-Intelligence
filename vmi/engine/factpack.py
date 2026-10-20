@@ -56,14 +56,14 @@ def _deep_context(m: MatchModel, team: str | None) -> list[dict]:
                   "home_share_pct": round(mom.home_index * 100),
                   "away_share_pct": 100 - round(mom.home_index * 100),
                   "possession_home_pct": round(mom.possession_home * 100),
-                  "key_passes": mom.key_passes, "shots": mom.shots})
+                  "key_passes": mom.key_passes, "shots": mom.shots, "window_minutes": 7})
     if team:
         since = max(0.0, m.t - 15 * 60)
         z = m.attack_zones(team, since)
         if sum(z.values()) >= 3:
             top = max(z, key=z.get)
             facts.append({"id": "stat:zones", "type": "attack_zones_last_15_min", "team": m.team_name(team),
-                          "counts": z, "total": sum(z.values()), "most_used": top})
+                          "counts": z, "total": sum(z.values()), "most_used": top, "window_minutes": 15})
     return facts
 
 

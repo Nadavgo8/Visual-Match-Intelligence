@@ -11,12 +11,9 @@ from __future__ import annotations
 
 import json
 import re
-import time
-from pathlib import Path
 
 from .tools import POSITIONS
 
-PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "explainer.md"
 VERB = {"trip": "tripped", "push": "pushed", "holding": "held", "kick": "kicked"}
 CROWD_CAUSAL = re.compile(r"\b(because|due to|in protest|angry|anger|furious|outrage|boo\w*|jeer\w*|whistl\w* at|"
                           r"celebrat\w*|delight\w*|frustrat\w*)\b", re.I)
@@ -293,7 +290,6 @@ def validate(sentences: list[dict], pack: dict, roster_names: set[str]) -> list[
     ids = {f["id"] for f in pack["facts"]} | {f["id"] for f in pack.get("deep_context", [])} | {"state"}
     nums: set[str] = set()
     _pack_numbers(pack, nums)
-    nums |= {"11", "7", "15", "5"}  # constants the explainer may cite (penalty spot, momentum and zone windows)
     strings: list[str] = []
     _pack_strings(pack, strings)
     blob = " ".join(strings)
@@ -317,43 +313,32 @@ def validate(sentences: list[dict], pack: dict, roster_names: set[str]) -> list[
 
 
 # ---------------------------------------------------------------- writer
+async def agent_draft(agent, pack: dict, depth: str, fav: str | None) -> tuple[list[dict], str]:
+    """Ask the Foundry Explainer agent for a draft. The validator decides if it is used."""
+    style = "B_friend" if depth == "basic" else "C_analyst"
+    if pack.get("peak"):
+        style += "+A_touch"
+    slim = dict(pack)
+    if depth == "basic":
+        slim.pop("deep_context", None)
+    msg = json.dumps({"style": style, "favourite_team": pack["teams"].get(fav) if fav else None,
+                      "fact_pack": slim}, ensure_ascii=False)
+    resp = await agent.run(msg)
+    text = resp.text.strip()
+    data = json.loads(text[text.find("{"): text.rfind("}") + 1])
+    return data["sentences"], getattr(agent, "model_name", "foundry")
+
+
 class Explainer:
+    """Runs the stoppage-analysis workflow (writer -> validator -> fallback)."""
+
     def __init__(self, llm=None, roster_names: set[str] | None = None):
         self.llm = llm  # an agent_framework Agent, or None for templates only
         self.roster = roster_names or set()
-        self.instructions = PROMPT_PATH.read_text() if PROMPT_PATH.exists() else ""
 
     async def write(self, pack: dict, depth: str = "basic", fav: str | None = None) -> dict:
-        t0 = time.perf_counter()
-        meta = {"moment": pack["moment"], "depth": depth}
-        if self.llm is not None:
-            try:
-                sents, model = await self._llm(pack, depth, fav)
-                problems = validate(sents, pack, self.roster)
-                if not problems:
-                    return self._result(sents, "agent", model, t0, [], meta)
-                meta["rejected"] = problems
-            except Exception as e:  # network, quota, content filter: fall back, never block the fan
-                meta["rejected"] = [f"agent error: {type(e).__name__}"]
-        sents = template(pack, depth, fav)
-        return self._result(sents, "template", None, t0, validate(sents, pack, self.roster), meta)
+        from .workflow import AnalysisJob, build_analysis_workflow
 
-    async def _llm(self, pack: dict, depth: str, fav: str | None) -> tuple[list[dict], str]:
-        style = "B_friend" if depth == "basic" else "C_analyst"
-        if pack.get("peak"):
-            style += "+A_touch"
-        slim = dict(pack)
-        if depth == "basic":
-            slim.pop("deep_context", None)
-        msg = json.dumps({"style": style, "favourite_team": pack["teams"].get(fav) if fav else None,
-                          "fact_pack": slim}, ensure_ascii=False)
-        resp = await self.llm.run(msg)
-        text = resp.text.strip()
-        text = text[text.find("{"): text.rfind("}") + 1]
-        data = json.loads(text)
-        return data["sentences"], getattr(self.llm, "model_name", "foundry")
-
-    @staticmethod
-    def _result(sents, source, model, t0, problems, meta) -> dict:
-        return {"text": " ".join(s["s"] for s in sents), "sentences": sents, "source": source, "model": model,
-                "latency_ms": round((time.perf_counter() - t0) * 1000), "validation": problems or "passed", **meta}
+        wf = build_analysis_workflow(self.llm, self.roster)
+        result = await wf.run(AnalysisJob(pack, depth, fav))
+        return result.get_outputs()[-1]

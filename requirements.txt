@@ -1,0 +1,7 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+agent-framework>=1.22
+agent-framework-foundry>=1.15
+azure-identity>=1.19
+azure-monitor-opentelemetry>=1.6
+mcp>=1.20

@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,11 +35,34 @@ TICK_HZ = 10
 SPEEDS = [1, 2, 4, 8, 16, 32]
 DEFAULT_PROFILE = {"depth": "basic", "team": None, "amount": "balanced"}
 
-app = FastAPI(title="Visual Match Intelligence", version="0.1.0")
+def _telemetry():
+    """Application Insights via OpenTelemetry when a connection string is set (Azure)."""
+    if not os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+        return
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor
+
+        configure_azure_monitor(logger_name="vmi")
+    except ImportError:
+        log.warning("azure-monitor-opentelemetry not installed; telemetry off")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    _telemetry()
+    if os.getenv("VMI_WARM_DEMO", "1") == "1":
+        asyncio.create_task(warm_demo())
+    yield
+
+
+app = FastAPI(title="Visual Match Intelligence", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 _client, _model_name = foundry_client()
 _match_cache: dict[int, Match] = {}
+# explainer results shared by all rooms: (seed, moment, t, depth, team) -> result.
+# Replays are deterministic, so the demo match is written once and then served instantly.
+_text_cache: dict[tuple, dict] = {}
 
 
 def get_match(seed: int) -> Match:
@@ -204,6 +228,9 @@ class Room:
 
     def request_text(self, a: dict, profile: dict, notify: bool = True):
         key = (a["cue_id"], profile["depth"], profile.get("team"))
+        shared = (self.seed, a["moment"], a["t"], key[1], key[2])
+        if key not in self.texts and shared in _text_cache:
+            self.texts[key] = _text_cache[shared]
         if key in self.texts:
             if notify:
                 asyncio.create_task(self.push_analysis(a, key))
@@ -215,6 +242,7 @@ class Room:
     async def _generate(self, a: dict, key: tuple):
         res = await self.explainer.write(a["factpack"], key[1], key[2])
         self.texts[key] = res
+        _text_cache[(self.seed, a["moment"], a["t"], key[1], key[2])] = res
         self.pending.pop(key, None)
         await self.push_analysis(a, key)
 
@@ -239,6 +267,20 @@ class Room:
 
 
 rooms: dict[str, Room] = {}
+
+
+async def warm_demo(seed: int = DEMO_SEED):
+    """Write every analysis of the demo match ahead of time, for all profiles."""
+    match = get_match(seed)
+    room = Room("_warm", seed)
+    analyses = [o for o in Replay(match).advance(match.duration) if o["kind"] == "analysis"]
+    for a in analyses:
+        for depth in ("basic", "deep"):
+            for team in (None, "home", "away"):
+                key = (seed, a["moment"], a["t"], depth, team)
+                if key not in _text_cache:
+                    _text_cache[key] = await room.explainer.write(a["factpack"], depth, team)
+    log.info("warmed %d analysis texts for seed %d", len(_text_cache), seed)
 
 
 @app.get("/")

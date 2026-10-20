@@ -11,8 +11,8 @@ The 2D pitch replay with a score bug, plus three overlay elements and nothing el
 
 | Element | What it shows | Rules |
 |---|---|---|
-| **Whistle banners** | One banner per whistle, by type: Foul, Offside, Penalty, Stoppage (injury, VAR, other), Kick-off, Half-time, Full-time | Every banner is independent. Each type has its **own fixed slot**, so banners never merge or replace each other. Icon plus a 1–2 word English label. Shown for 3 s (4 s for Penalty, Half-time and Full-time). Restart whistles get no banner, except kick-offs. |
-| **Crowd surge banner** | "Crowd erupts" when the crowd level jumps sharply | Triggered by a rise of at least 0.25 on the 0–1 crowd level within 3 s. It says only that the crowd got louder, never why. |
+| **Whistle banners** | One banner per whistle, by type: Foul, Offside, Penalty, Stoppage (injury, VAR, other), Kick-off, Half-time, Full-time | Every banner is independent and never merged. Foul, Offside, Penalty and Stoppage each have their own fixed slot in the left column. Kick-off, Half-time and Full-time share one slot at the top centre, since they can never happen together. Icon plus a 1–2 word English label. Shown for 3 s (4 s for Penalty, Half-time and Full-time). Restart whistles get no banner, except kick-offs. The whistle is heard (detected) before the feed says why: if the feed hasn't explained it within 2 s, a generic *Whistle* banner shows in the Stoppage slot and moves to its type's slot the moment the reason arrives. |
+| **Crowd surge banner** | "Crowd erupts" when the crowd level jumps sharply | Triggered by a rise of at least 0.22 on the 0–1 crowd level within 3 s, reaching at least 0.55, at most once every 12 s. It says only that the crowd got louder, never why. |
 | **Atmosphere indicator** | One overall level for the whole stadium (no home/away split) | **Level** (5 steps) drives the meter height, brightness and saturation, so it reads in greyscale. **Mood** (Calm, Cheering, Tension, Eruption) sets the hue, a text label and a wave shape, so colour is never the only signal (WCAG 1.4.1). Nothing flashes faster than once per second (WCAG 2.3.1). Colours follow `research/icons-and-atmosphere-colors.md`. |
 | **Momentum bar** | Who is on top in the last 7 minutes | See §3. A thin bar under the score bug. |
 
@@ -40,7 +40,15 @@ Deterministic code, no AI. For every event it decides **routing, timing and dept
 | `analysis` | A stoppage analysis card, released only while the ball is out of play and the stoppage is long enough to read it (VAR ≥ 20 s, sub, injury, goal celebration, half-time). |
 | `none` | Nothing. Passes, carries, clearances and restarts are visible on the pitch or don't matter. |
 
-Per-user rules (examples): with **Just the big moments**, the feed keeps goals, cards, VAR decisions and half/full-time, and analysis runs only at half-time, VAR and goals. With **Everything**, big chances and momentum swings also go to the feed, and subs and injuries also get analysis. Depth (basic or deep) picks the commentary style.
+Every feed item and analysis has a tier, and the user's "how much" answer sets the highest tier they see:
+
+| Tier | Feed | Analysis | Shown for |
+|---|---|---|---|
+| 1, big | goals, penalties, VAR decisions, red cards, kick-off, half/full-time | goals, VAR checks and decisions, half/full-time | everyone |
+| 2, balanced | yellow cards, VAR checks, subs, added time, big chances (xG ≥ 0.3) | substitutions | Balanced and Everything |
+| 3, everything | saves and shots off the post, injuries, momentum swings | injuries | Everything |
+
+Depth (basic or deep) picks the commentary style. Vibration on the phone is not built yet: what it buzzes on is still an open decision.
 
 ## 3. Momentum (proposed weights)
 
@@ -70,7 +78,7 @@ Why these weights: possession is the most frequent signal but the weakest sign o
 
 ## 5. Agents
 
-Built with Microsoft Agent Framework on Microsoft Foundry. When no Foundry endpoint is configured, the same interfaces run on deterministic local implementations, so everything works offline.
+Built with Microsoft Agent Framework on Microsoft Foundry. When no Foundry endpoint is configured, the same interfaces run on deterministic local implementations, so everything works offline. The stoppage analysis runs as an Agent Framework **Workflow** (writer → validator → template fallback), and the read-only engine tools are also served as an **MCP server** (`python -m vmi.mcp_server`) so any MCP client can query a match. The demo match's analysis texts are written once at startup and cached for every profile.
 
 | Agent | Job | Tools |
 |---|---|---|
@@ -101,4 +109,4 @@ The analysis has to be good **because the engine works it out**, not because we 
 
 ## 7. Stack (defaults chosen for speed)
 
-Python 3.12+ with FastAPI for the generator, engine, agents and API. One web frontend with no build step: `/tv` and `/app` views, with live push over WebSocket. Agents on Microsoft Foundry through Agent Framework. Hosting on Azure Container Apps with Application Insights (OpenTelemetry), scaling to zero. Everything runs locally with `uvicorn` and no Azure account.
+Python 3.12+ with FastAPI for the generator, engine, agents and API. One web frontend with no build step: `/tv` and `/app` views, with live push over WebSocket. Agents on Microsoft Foundry through Agent Framework. Hosting on Azure Container Apps with Application Insights (OpenTelemetry). During judging the app keeps one replica (no cold start); the model must be one that is not retiring before Nov 10 (e.g. GPT-5 mini). Everything runs locally with `uvicorn` and no Azure account.
