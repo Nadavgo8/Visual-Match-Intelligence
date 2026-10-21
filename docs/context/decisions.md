@@ -1,0 +1,88 @@
+# Decisions log (Oct 8 – Oct 21, 2026)
+
+Everything Nadav decided while planning this project on claude.ai, in order. The original conversation was mostly in Hebrew; this is an English record of it. Where this file and an older doc disagree, this file wins. Where this file and Nadav disagree, Nadav wins.
+
+`docs/context/plan/interview-notes.md` is a stale stub from a first attempt at the interview. The real interview ran in the project chat and is recorded below.
+
+## How the idea evolved (Oct 8–13)
+
+- Oct 8: Nadav shared the official rules. Goal (Oct 10): **a polished portfolio project that is also a valid entry.**
+- Oct 10: Explored a fan Q&A agent, then accessibility. Chose **accessibility for deaf and hard-of-hearing fans**, focused on what the fan misses because it is *sound*: the referee's whistle and the crowd. Plus a **Q&A chat with deeper analysis**. The chat lives on the **phone as a second screen** while the match is on TV.
+- Oct 13: Nadav wrote the vision (Hebrew, summarised): don't replace captions or sign language; give a way to experience nearly the whole match with minimum split attention. Four capability areas (atmosphere, match events, tactical insight, smart commentary). The screen stays clean most of the time. The **Attention Engine** decides what is meaningful, when to show it, how, where (screen / vibration / app) and when to show nothing. This is the main differentiator. Open questions then: visual language, depth of information, proof of value.
+- Oct 13: Footage rule means **all input is synthetic structured JSON**, no video. The "broadcast" is a 2D pitch replay rendered from synthetic tracking. Event format: `docs/context/plan/synthetic-event-data.md`.
+- Oct 18: Reviewed Microsoft's Reactor session (Brian Benz sample app, `aka.ms/football-results-dashboard`). Patterns borrowed: deterministic numbers with the LLM only for wording and tool choice; evidence IDs on every claim ("receipts"); OpenTelemetry traces; ACA over AKS; managed identity; big prompts kept in `prompts/`. Notes: `docs/context/research/reactor-aks-aca-session.md`; slide: `reactor-architecture-slide.png`.
+- Oct 18: Asked whether all Microsoft tools are required (no, at least one Microsoft AI service plus Azure hosting; depth over breadth) and whether the project is theirs (IP stays with the team; Microsoft and PL get a non-exclusive licence). See `docs/context/plan/hackathon-reference.md`.
+
+## The interview (Oct 20, four rounds, in the project chat)
+
+### Round 1: the problem and the user
+1. **User:** everyone with hearing difficulty. It is a hearing-accessibility solution. Never ask about hearing level.
+2. **First-hand evidence:** none; research instead → `docs/context/research/deaf-fans-research.md`.
+3. **What fans miss most:** all of it (atmosphere, whistles and refereeing, commentary). Tactical context somewhat lower priority but still missing.
+4. **If only one capability ships:** tactical context is the least important.
+5. **Where:** a broadcast on a TV or any screen (including a phone), plus a **companion chat app on the phone**. Not in the stadium.
+6. **Concrete "left out" moment:** research it (forums, groups, studies).
+7. **Screen rules:** banners (whistles etc.) pop up when needed, **independent of each other**, each in its own fixed position. Deep commentary and tactics **only in the app**. Crowd atmosphere and momentum meters **on the screen**.
+8. **Vibration:** only if simple.
+9. **Personalisation:** knowledge, favourite team, amount of information. Two depth levels: **basic and deep**.
+10. **User testing before the deadline:** no. So never claim user findings.
+
+### Round 2: the solution on screen and in the app
+1. Split-screen demo idea OK, but **the video is later, not now.**
+2. **Banners:** whistles by type, and **crowd noise level only** (loudness; we cannot tell whose noise or why).
+3. **Banner form:** icons; research how others do it → `docs/context/research/icons-and-atmosphere-colors.md`.
+4. Show every banner that is needed. Boos are just crowd noise (no classification of noise).
+5. **Atmosphere:** one overall indicator for the match, **no home/away split**. Colours researched (tense / pressure / joy / cheering).
+6. **Momentum:** rolling **last 7 minutes**, from **possession, key passes and shots**.
+7. **App:** **no notifications.** Event feed, analysis during stoppages, and answering the viewer's questions.
+8. **Settings:** onboarding questionnaire on first app open (not every match), editable in settings anytime.
+9. **Commentary style:** asked for an example (given in round 3).
+10. **No card banner.** No merging: offside is offside, foul is foul.
+
+Research finding raised: **no evidence that deaf fans want a momentum bar.** Keep it as a fan feature; never pitch it as an accessibility need.
+
+### Round 3: content, agents, app
+1. **Commentary style:** B (a friend sitting next to you explaining) for basic depth, C (analyst) for deep, A (emotional broadcaster) only at peaks like goals and penalties.
+2. **Attention Engine role:** yes, it decides **timing and depth** (what goes to the feed, when analysis comes, at what level), plus routing. Not merging banners.
+3. Goals, VAR, cards and subs go to the **feed**, not the screen.
+4. **Analysis** at half-time, VAR checks, injuries, subs and after goals; **2–3 sentences**.
+5. **Onboarding questions:** our call. Never ask about hearing level.
+6. **Chat must answer everything:** rules, what happened at a minute, stats, tactics. Decline off-topic.
+7. **Language: English for everything** in the product.
+8. **Demo match:** a **seeded generator**, with a fixed demo seed (now **12**).
+9. **Momentum weights:** asked for an example. Proposed 40/30/30 with a worked example (`docs/spec.md` §3). **Awaiting Nadav's OK.**
+10. **Start building as fast as possible.**
+
+Commentary grounding (Nadav pushed back twice, and this is now a hard rule):
+- Code builds a **fact pack** (every fact has an event ID) → LLM words it → **validator** checks every number and name is in the pack → **template fallback** if rejected.
+- **Never claim why the crowd reacted.** Say "the referee didn't blow, and **immediately** the crowd erupted", not "**so** the crowd erupted".
+- **Data realism rule (Oct 20):** Nadav wants top-quality analysis that is credible against a *real* feed, not easy because we planted the answers. The generator emits **only what real sources emit** (official event feed with x/y, optical tracking, a noisy crowd level, match state). The **engine derives everything interpretive**: in-box from coordinates, "not called" from a foul with no whistle followed by a VAR review, xG from shot location, pressure and momentum from positions and events, crowd surge timing from the level series. Add realistic imperfections: feed delays, missing qualifiers, noisy crowd. Spec §6 is the source of truth.
+
+### Round 4: team, access, submission
+1. Both registered (Oct 20).
+2. **Name:** "Visual Match Intelligence", for now.
+3. **Work split:** doesn't matter to them.
+4. **Azure:** no subscription; will use a free account. Keep cost near zero (scale to zero, cheap model, local-first). See Azure caveat below.
+5. **GitHub repo and licence:** will open and decide later, with Claude's advice.
+6. **Fully fictional teams and players.** No Premier League names or marks.
+7. Demo sound: both ways (synthetic sound with and without our layer). Video is later.
+8. **Vibration: Android only** (Web Vibration API), silently skipped elsewhere. *What* it vibrates on is still open.
+9. **Category:** Multi-Agent (Foundry also relevant; "really it's both").
+10. **Video: later. Do not raise it.**
+
+## After the interview (Oct 20)
+
+- **Full brief** written: `docs/context/plan/project-brief.md` (Hebrew, v1.0). §16 lists technical additions; all were applied by the build: GPT-5 mini (not a model retiring before Nov 10), min-replicas 1 during judging, demo analysis cache, Explainer as an Agent Framework Workflow, engine tools as an MCP server, visible Attention Engine trace, generator realism tests, and the two spec/code mismatches resolved (crowd surge threshold now 0.22 in both; Kick-off/Half-time/Full-time share one top-centre slot).
+- **Azure caveat:** Free Trial subscriptions reportedly get **0 TPM** model quota. Upgrade to **Pay-As-You-Go** (keeps the $200 / 30-day credit) and check Foundry quota first. Community sources, not verified on the official quota page.
+- **v1 built** (Oct 20): runs end to end locally, 32 tests pass, demo seed 12. Foundry and Azure wired but never run live.
+
+## Still open (as of Oct 21)
+
+| # | Decision | Owner | Recommendation |
+|---|---|---|---|
+| 1 | What the phone vibrates on | Nadav | short buzz per whistle banner; own patterns for Penalty and Full-time; long buzz on crowd surge; off switch |
+| 2 | Momentum weights 40/30/30 | Nadav | approve |
+| 3 | Licence | Nadav, with advice | MIT, or a non-commercial licence to keep a business option. Not legal advice. MS/PL get a non-exclusive licence regardless |
+| 4 | Repo name, team name, who submits | Nadav | |
+| 5 | Final product name | Nadav | |
+| 6 | Which model | depends on quota | GPT-5 mini if available |
