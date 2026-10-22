@@ -96,6 +96,8 @@ Note that the Grand Prize text names **accessibility** explicitly, which suits o
 
 **Must:** at least **one Microsoft AI service** (for example Microsoft Foundry or Agent Framework) **plus Azure hosting** for the live link. This is how we read Stage 1's *"required technologies"*. The rules never require every tool, and judges reward depth over breadth (§6.2 asks *"how effectively"*, not how many). Our stack is **not decided yet**.
 
+**Oct 22 update:** the team set a zero-extra-cost rule, so Azure hosting is no longer assumed. Task D2-00 decides the model, the hosting and how judges reach the demo (`docs/implementation/VMI-FINAL-PLAN.md` §7). §4.8 accepts a website, a working demo or a test build.
+
 **Hero technologies named in the judging criteria (§6.2):**
 
 | Tool | What it is | Where it would fit |

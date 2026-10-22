@@ -1,6 +1,6 @@
-# Decisions log (Oct 8 – Oct 21, 2026)
+# Decisions log (Oct 8 – Oct 22, 2026)
 
-Everything Nadav decided while planning this project on claude.ai, in order. The original conversation was mostly in Hebrew; this is an English record of it. Where this file and an older doc disagree, this file wins. Where this file and Nadav disagree, Nadav wins.
+Everything Nadav decided while planning this project, in order. The original conversation was mostly in Hebrew; this is an English record of it. Later entries override earlier ones. Where this file and an older doc disagree, this file wins. Where this file and Nadav disagree, Nadav wins.
 
 `docs/context/plan/interview-notes.md` is a stale stub from a first attempt at the interview. The real interview ran in the project chat and is recorded below.
 
@@ -76,13 +76,37 @@ Commentary grounding (Nadav pushed back twice, and this is now a hard rule):
 - **Azure caveat:** Free Trial subscriptions reportedly get **0 TPM** model quota. Upgrade to **Pay-As-You-Go** (keeps the $200 / 30-day credit) and check Foundry quota first. Community sources, not verified on the official quota page.
 - **v1 built** (Oct 20): runs end to end locally, 32 tests pass, demo seed 12. Foundry and Azure wired but never run live.
 
-## Still open (as of Oct 21)
+- **Repo published** (Oct 21): github.com/Nadavgo8/Visual-Match-Intelligence, **MIT licence** (GitHub's starter licence, kept).
 
-| # | Decision | Owner | Recommendation |
+## Product update (Oct 21) and final work plan (Oct 22)
+
+Sources: the six-page product doc [`product-doc-2026-10-21.pdf`](product-doc-2026-10-21.pdf) and the work plan [`../implementation/VMI-FINAL-PLAN.md`](../implementation/VMI-FINAL-PLAN.md), both in Hebrew. They override the Oct 20 decisions above where they differ. Behaviour details: `docs/spec.md` v2. Nadav confirmed on Oct 22 that the plan's scope (including 3D) and timeline stand.
+
+What changed:
+- **Match screen.** Two identical **atmosphere edge bars** (turquoise to amber, fill height) replace the single atmosphere meter and its mood colours. The **crowd-surge banner is removed**; the bars carry surges. Whistle banners become **round event markers** in one fixed top area, **one at a time** (was: one fixed slot per type, several at once). Still no card, goal, VAR or sub overlays, and now no VAR marker of any kind. Momentum stays under the score bug. The Attention Engine trace moves to a presenter area, off the viewer's screen.
+- **Atmosphere = 0.8 × crowd + 0.2 × detected attack** (was: crowd loudness only). Attack tiers 0 / 0.3 / 0.65 / 1 by zone. It is a design rule to try, not xG. Missing crowd data is never read as quiet, and crowd-only mode is labelled.
+- **Momentum weights 40/30/30 approved** (product doc p.5).
+- **3D match** with Three.js and an npm build step, replacing the 2D pitch. Original procedural assets only.
+- **Tracking at 20 per second.** The product doc named 10 per second as a starting point; the Oct 22 plan raised it.
+- **App.** Adds **"What did I miss?"**. Onboarding can be skipped. Facts and interpretation are visibly separate. One commentator voice sits over a router, data tools, a meaning analyst, a rules expert and a writer. Answer timeout drops to 20 s (was about 45 s). The phone is optional: the match screen stands on its own.
+- **Zero extra cost is a hard rule.** No payment method, no trial that turns into billing, no paid overage. This replaces the Oct 20 plan to upgrade Azure to Pay-As-You-Go.
+- **Model and hosting are deliberately left open.** Task D2-00, the first task of Developer 2, decides them with a test set and pass criteria. Azure and Foundry are used only with a verified zero-charge path; otherwise a free host or a test build (rules §4.8).
+- **Sync and honesty:** run IDs, snapshots on reconnect, no future data to the agents or the app, and answers labelled as live, cached or template.
+- **Work split:** Developer 1 owns the generator, engine, 3D and overlay; Developer 2 owns the model decision, real-time sync, app, agents, CI and hosting (plan §3). This replaces "work split doesn't matter". Which person is which developer isn't recorded here.
+- **Git workflow:** branch → tests → commit → push → PR → partner review → squash merge (plan §9). Data contract changes need both developers.
+- **Video:** now in the plan (§12). Developer 1 leads capture; Developer 2 leads the script and the agents explanation.
+- **Vibration:** in neither document. Parked; don't build it.
+
+Calls made while writing spec v2 (Claude, Oct 22; Developer 1 can revisit them in D1-02):
+- The plan asks for "explicit possession state" in tracking. To keep the data realism rule, tracking emits what optical feeds such as TRACAB emit: ball-owning team, ball alive or dead, ball height and speeds. The engine derives which player holds the ball from positions. The event feed arrives 0.5–3 s late, so it couldn't meet the 500 ms freshness rule for the attack component anyway.
+- A whistle that stops play for VAR shows the generic whistle marker, never a VAR label.
+
+## Still open (as of Oct 22)
+
+| # | Decision | Owner | Note |
 |---|---|---|---|
-| 1 | What the phone vibrates on | Nadav | short buzz per whistle banner; own patterns for Penalty and Full-time; long buzz on crowd surge; off switch |
-| 2 | Momentum weights 40/30/30 | Nadav | approve |
-| 3 | Licence | Nadav, with advice | MIT, or a non-commercial licence to keep a business option. Not legal advice. MS/PL get a non-exclusive licence regardless |
-| 4 | Repo name, team name, who submits | Nadav | |
-| 5 | Final product name | Nadav | |
-| 6 | Which model | depends on quota | GPT-5 mini if available |
+| 1 | Model, runtime and judge access | Developer 2 (D2-00), then both | Zero cost; candidates and pass criteria in plan §7. Worth checking: Azure for Students (advertised as no card, $100 credit) if either of you is eligible. Not verified |
+| 2 | Which person is Developer 1 and Developer 2 | team | |
+| 3 | Team name, who submits | Nadav | |
+| 4 | Final product name | Nadav | |
+| 5 | Vibration | Nadav | parked; not in the current plan |

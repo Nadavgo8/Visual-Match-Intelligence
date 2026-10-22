@@ -4,45 +4,47 @@ Context for Claude Code. This project was planned and built on claude.ai (Oct 8�
 
 ## Working with Nadav
 
-- Nadav owns the project. Team of 2; both registered. Who does what doesn't matter to them.
-- **Reply in the language of the message** (Hebrew or English). The product itself (UI, prompts, agent output, README) is **English only**.
+- Nadav owns the project. Team of 2; both registered. Work is split between **Developer 1** and **Developer 2** (plan §3); both use AI coding tools (Claude Code, Codex).
+- **Reply in the language of the message** (Hebrew or English). Developer guidance docs may be in Hebrew. The product itself (code, file names, UI, prompts, agent output, README, submission materials) is **English only**.
 - They want **maximum speed**. Act, then report. Ask only for decisions that change the goal or can't be undone.
-- **Do not bring up the demo video** until Nadav does. They have said "video later" many times.
+- **Zero extra cost is a hard rule.** No purchases, no payment method, no trial that turns into billing, no paid overage, no paid fallback on an error or an exhausted quota. If nothing works at zero cost, report a blocker.
+- The demo video is planned in plan §12. Don't raise it outside that.
 - Be honest: don't invent findings, quotes or user research. There was no user testing.
-- No git remote yet. **Don't push anywhere** without Nadav. When they create an empty GitHub repo: `git remote add origin <url> && git push -u origin main`.
+- **Git:** `origin` = github.com/Nadavgo8/Visual-Match-Intelligence (MIT). Workflow per plan §9: branch → tests → commit → push the branch → PR → partner review → squash merge. Never commit straight to `main`, never force-push. One AI tool per working folder; use a separate worktree for parallel work.
 
 ## The hackathon
 
 Microsoft × Premier League **"Inside the Game"** (github.com/microsoft/insidethegamehackathon).
 
-- **Submission closes Wed Oct 28, 08:59 Israel time** (Tue Oct 27, 11:59 pm PT). Aim for Tuesday night. Israel moves to winter time on Oct 25, so the gap to PT is 9 h from then.
-- **Live link must keep working until Nov 10 PT** (Wed Nov 11, 09:59 Israel).
-- **Deliverables:** public GitHub repo with a licence, a demo video under 2 minutes, a pitch, and a live test link for judges.
-- **Must use** at least one Microsoft AI service (Foundry / Agent Framework) and **Azure hosting**. Depth over breadth.
+- **Submission closes Wed Oct 28, 08:59 Israel time** (Tue Oct 27, 11:59 pm PT). Aim for Tuesday night. Israel moves to winter time on Oct 25, so the gap to PT is 9 h from then. Stop adding features at least 24 h before submission.
+- **The demo must stay free for judges until Nov 10 PT** (Wed Nov 11, 09:59 Israel).
+- **Deliverables:** public GitHub repo with a licence (done: MIT), a demo video under 2 minutes, a pitch, and a working test link or build for judges.
+- **Must use** at least one Microsoft AI service (Foundry / Agent Framework). Our Oct 18 reading also required Azure hosting; under the zero-cost rule, model and hosting are decided in task D2-00 (rules §4.8 accept a website, a working demo or a test build). Depth over breadth.
 - **Judging:** 20% each for technical implementation, agentic design, real-world impact, UX/video, category fit. Ties go to technical implementation. Category: **Multi-Agent** (Foundry also relevant).
 - **Data:** synthetic, football-realistic only. No real match data or footage.
 - **No Premier League marks:** fully fictional teams, players, crests, music.
-- **IP:** stays with the team; Microsoft and PL get a non-exclusive licence. Licence choice is still open.
+- **IP:** stays with the team; Microsoft and PL get a non-exclusive licence.
 - Full rules and resources: `docs/context/plan/hackathon-reference.md` (one-stop reference, Israel times) and `hackathon-brief.md`.
 
 ## The product: Visual Match Intelligence
 
-Football's sound, made visible, for anyone with hearing difficulty. A hearing fan gets the whistle, the crowd and the commentator through sound; we turn those into calm visual signals on the TV plus a companion app on the phone. It does not replace captions or sign language. **Never ask about hearing level.**
+Football's sound, made visible, for anyone with hearing difficulty. A hearing fan gets the whistle, the crowd and the commentator through sound; we turn those into calm visual signals on the match screen, plus an optional companion app on the phone. It does not replace captions or sign language. **Never ask about hearing level.**
 
-Final decisions (Oct 20 interview; full record in `docs/context/decisions.md`):
+Current decisions (Oct 21 product doc and Oct 22 plan; history in `docs/context/decisions.md`, behaviour in `docs/spec.md` v2):
 
-- **TV view shows only:** whistle banners by type (Foul, Offside, Penalty, Stoppage, Kick-off, Half-time, Full-time), each independent, never merged, in a fixed slot; a crowd-surge banner (loudness only); **one** overall atmosphere indicator (no home/away); a momentum bar (rolling 7 min of possession, key passes, shots). **No card banner.** Goals, VAR, cards, subs go to the app.
-- **Companion app:** **no notifications.** Event feed; 2–3 sentence stoppage analysis with receipts; Ask chat on the match, rules, stats and tactics (decline off-topic). One-time onboarding (football knowledge → depth, team supported, how much info), editable anytime. Two depths: basic and deep.
+- **Match screen (3D) shows only:** two identical **atmosphere edge bars** (turquoise to amber, fill height; atmosphere = 0.8 × crowd + 0.2 × detected attack); **round event markers** (generic whistle, Foul, Offside, Penalty, Kick-off, Half-time, Full-time) in one fixed top area, one at a time; a **momentum bar** under the score bug (7 min, 40/30/30, approved). **No** crowd-surge banner, no card, goal, VAR or sub overlays, no trace on the viewer's screen (it moves to a presenter area).
+- **Companion app (optional):** **no notifications.** Feed that separates facts from interpretation; 2–3 sentence stoppage analysis with receipts; **"What did I miss?"**; Ask with one commentator voice (router, data tools, meaning analyst, rules expert, writer). Skippable onboarding (football knowledge → depth, team supported, how much info), editable anytime. Two depths: basic and deep.
 - **Commentary style:** B "friend next to you" for basic, C "analyst" for deep, A "emotional broadcaster" only at peaks.
-- **Grounded by design:** code builds a fact pack (event IDs) → LLM words it → validator checks every number/name → template fallback. **Never claim why the crowd reacted** ("immediately the crowd erupted", not "so the crowd erupted").
-- **Attention Engine** (the differentiator) = deterministic routing + timing + depth, with a `why` for every decision, shown as a live trace.
-- **Data realism rule:** the generator emits only what real feeds emit (event feed with x/y, whistle detections without reason, noisy crowd level, tracking, match state). The **engine derives** everything interpretive (in-box, xG, "not called", key passes, whistle reason, momentum, surges). Realistic imperfections included. Don't break this when adding features. Details: `docs/spec.md` §6.
-- **Vibration:** Android only (Web Vibration API), skipped silently elsewhere. **What it vibrates on is undecided; don't build it until Nadav answers.**
-- Pitch wording: momentum bar is a fan feature, **not** an accessibility need (no evidence for that). See the do/don't list in `docs/context/plan/project-brief.md` §19.
+- **Grounded by design:** code builds a fact pack (event IDs) → LLM words it → validator checks every number/name → template fallback. Every answer is labelled live, cached or template; never present a template as AI. **Never claim why the crowd reacted** ("immediately the crowd erupted", not "so the crowd erupted").
+- **Attention Engine** (the differentiator) = deterministic routing + timing + depth, with a `why` for every decision, shown as a live trace in the presenter area.
+- **Data realism rule:** the generator emits only what real feeds emit (event feed with x/y, whistle detections without reason, noisy crowd level, TRACAB-style tracking, match state). The **engine derives** everything interpretive (in-box, xG, "not called", key passes, whistle reason, ball holder, attack tier, atmosphere, momentum, surges). Realistic imperfections included. Don't break this when adding features. Details: `docs/spec.md` §7.
+- **No foreknowledge:** agents and the app only ever see delivered data; each seed change or seek gets a new `run_id`, and stale answers are dropped.
+- **Vibration:** parked (not in the current plan). Don't build it.
+- Pitch wording: the momentum bar is a fan feature, **not** an accessibility need (no evidence for that). Don't claim reduced split attention as proven. See the do/don't list in `docs/context/plan/project-brief.md` §19.
 
 ## Code
 
-Python 3.12+, FastAPI + WebSocket rooms, vanilla JS (no build step), Microsoft Agent Framework on Foundry (keyless, Entra ID), Azure Container Apps + Application Insights.
+Built (v1): Python 3.12+, FastAPI + WebSocket rooms, vanilla JS with no build step, Microsoft Agent Framework with Foundry wiring (keyless, Entra ID) and offline fallbacks, and an Azure Container Apps + Application Insights script. Planned: Three.js with an npm build for the 3D match screen (no React, no CDN at demo time); a provider-neutral model layer, since **the model and runtime stay open until D2-00**.
 
 ```bash
 pip install -r requirements-dev.txt
@@ -53,35 +55,33 @@ python -m vmi.mcp_server               # engine tools over MCP
 
 - Runs fully offline: without `FOUNDRY_PROJECT_ENDPOINT` + `FOUNDRY_MODEL` (or with `VMI_OFFLINE=1`), every agent falls back to a deterministic local implementation with the same tools and receipts.
 - Env: `VMI_DEMO_SEED` (default **12**: 2–1, early goal, VAR-overturned penalty, routine VAR goal check, header winner), `VMI_WARM_DEMO` (pre-writes demo analysis cache), `APPLICATIONINSIGHTS_CONNECTION_STRING`.
-- Layout: `vmi/generator/` seeded match + tracking · `vmi/engine/` derivations, match model, momentum, Attention Engine, fact packs, replay clock · `vmi/agents/` Explainer workflow, Router / Match analyst / Rules expert, read-only tools · `vmi/api/server.py` · `web/` TV + companion · `prompts/` agent instructions · `infra/deploy.sh` ACA + App Insights + managed identity · `tests/`.
-- **Build spec (source of truth for behaviour): `docs/spec.md`.** README has the architecture diagram.
+- Layout: `vmi/generator/` seeded match + tracking · `vmi/engine/` derivations, match model (momentum weights in `model.py`), Attention Engine, fact packs, replay clock · `vmi/agents/` Explainer workflow, Router / Match analyst / Rules expert, read-only tools · `vmi/api/server.py` · `web/` TV + companion · `prompts/` agent instructions · `infra/deploy.sh` ACA + App Insights + managed identity · `tests/`.
+- **Build spec (source of truth for behaviour): `docs/spec.md` v2.** It describes the target; the code still implements v1. README has the architecture diagram.
 
-## Status (Oct 21)
+## Status (Oct 22)
 
-Done: v1 end to end locally (generator, engine, Attention Engine + trace, TV view, companion app, Explainer workflow with validator and fallback, Ask agents, MCP server, demo cache, realism tests, Dockerfile, deploy script).
+Built (v1): generator, engine, Attention Engine + trace, 2D TV view, companion app, Explainer workflow with validator and fallback, Ask agents, MCP server, demo cache, realism tests, Dockerfile, deploy script. Repo published with an MIT licence.
 
-Pending:
-1. **Live Foundry + Azure never run.** Free Trial reportedly gives 0 model quota → upgrade to Pay-As-You-Go (keeps the credit), check Foundry quota, deploy a model not retiring before Nov 10 (GPT-5 mini). Set a budget alert. Keep min-replicas 1 during judging (cold start 15–25 s). Then run `infra/deploy.sh`.
-2. **Momentum weights 40/30/30** awaiting Nadav's OK (`docs/spec.md` §3).
-3. **Vibration trigger decision** (see above).
-4. **GitHub repo + licence** not created; repo name, team name, submitter, final product name open.
-5. Later, when Nadav raises it: video, pitch. Optional: Foundry groundedness evaluation.
+Next: the work plan, `docs/implementation/VMI-FINAL-PLAN.md`. Developer 1 starts with D1-01 (generator core); Developer 2 starts with **D2-00 (model, runtime and judge access, at zero cost)** and builds no permanent model connection before it is decided. The 12-file doc package the plan lists in §2 hasn't been created yet.
 
-Milestones, cut order if behind, risks and the submission checklist: `docs/context/plan/project-brief.md` §17–21.
+Open: see `docs/context/decisions.md`, "Still open".
 
-## Context docs (`docs/context/`)
+## Docs
 
 | File | What |
 |---|---|
-| `decisions.md` | Every decision, the 4-round interview, open items. **Start here for "why".** |
-| `plan/project-brief.md` | Master brief (Hebrew): problem, users, market, solution, engine, agents, Azure, judging, risks, timeline, pitch rules, checklist |
-| `plan/hackathon-reference.md` | Rules, dates, deliverables, judging, tools, video summaries |
-| `plan/hackathon-brief.md` | Short rules summary |
-| `plan/synthetic-event-data.md` | Original event format and realism check (§7). Spec §6 supersedes where they differ |
-| `plan/dataset-samples.md`, `plan/team-split-and-structure.md` | Early drafts (Oct 9), mostly superseded |
-| `plan/interview-notes.md` | Stale stub; the real interview is in `decisions.md` |
-| `research/deaf-fans-research.md` | What deaf/HoH fans miss, evidence levels, what exists |
-| `research/icons-and-atmosphere-colors.md` | Icon and atmosphere colour research (WCAG) |
-| `research/commentary-from-data.md` | How data-to-text commentary is done credibly |
-| `research/reactor-aks-aca-session.md` + `reactor-architecture-slide.png` | Microsoft's official sample app and the patterns we borrowed |
-| `research/inside-the-game-repo-analysis.md` | Rival entry (bikilath/inside-the-game). No licence: ideas only, never code |
+| `docs/implementation/VMI-FINAL-PLAN.md` | Work plan (Hebrew, Oct 22): goals, zero-cost rule, split, contracts, generator, tasks D1-01…05 and D2-00…06, gates, git, AI prompts, tests, demo. **Start here for "what next".** |
+| `docs/context/product-doc-2026-10-21.pdf` | Six-page product doc (Hebrew) with design illustrations: edge bars, markers, app, engine, research basis |
+| `docs/spec.md` | Build spec v2: behaviour, formulas, data realism, sync, targets |
+| `docs/context/decisions.md` | Every decision, the 4-round interview, the Oct 21–22 changes, open items. **Start here for "why".** |
+| `docs/context/plan/project-brief.md` | Master brief (Hebrew, Oct 20): problem, users, market, research, pitch rules, checklist. Screen design, Azure budget, timeline and split are superseded |
+| `docs/context/plan/hackathon-reference.md` | Rules, dates, deliverables, judging, tools, video summaries |
+| `docs/context/plan/hackathon-brief.md` | Short rules summary |
+| `docs/context/plan/synthetic-event-data.md` | Original event format and realism check (§7). Spec §7 supersedes where they differ |
+| `docs/context/plan/dataset-samples.md`, `plan/team-split-and-structure.md` | Early drafts (Oct 9), superseded |
+| `docs/context/plan/interview-notes.md` | Stale stub; the real interview is in `decisions.md` |
+| `docs/context/research/deaf-fans-research.md` | What deaf/HoH fans miss, evidence levels, what exists |
+| `docs/context/research/icons-and-atmosphere-colors.md` | Icon and atmosphere colour research (WCAG). Its mood palette is superseded by the turquoise-to-amber bars |
+| `docs/context/research/commentary-from-data.md` | How data-to-text commentary is done credibly |
+| `docs/context/research/reactor-aks-aca-session.md` + `reactor-architecture-slide.png` | Microsoft's official sample app and the patterns we borrowed |
+| `docs/context/research/inside-the-game-repo-analysis.md` | Rival entry (bikilath/inside-the-game). No licence: ideas only, never code |

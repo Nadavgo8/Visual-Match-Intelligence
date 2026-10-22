@@ -73,4 +73,4 @@ flowchart LR
 
 ## Status
 
-Working locally end to end on the demo seed (12). Foundry and Azure deployment are wired but not yet run against a live subscription. Phone vibration is pending a design decision.
+v1 works locally end to end on the demo seed (12). In progress ([build spec v2](docs/spec.md)): a 3D match screen, atmosphere edge bars and round event markers in place of the banners above, a "What did I miss?" summary in the app, and a zero-cost choice of model and hosting. Foundry and Azure deployment are wired but have not run against a live subscription.
