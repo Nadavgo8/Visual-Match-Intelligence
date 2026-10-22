@@ -10,7 +10,10 @@ Context for Claude Code. This project was planned and built on claude.ai (Oct 8�
 - **Zero extra cost is a hard rule.** No purchases, no payment method, no trial that turns into billing, no paid overage, no paid fallback on an error or an exhausted quota. If nothing works at zero cost, report a blocker.
 - The demo video is planned in plan §12. Don't raise it outside that.
 - Be honest: don't invent findings, quotes or user research. There was no user testing.
-- **Git:** `origin` = github.com/Nadavgo8/Visual-Match-Intelligence (MIT). Workflow per plan §9: branch → tests → commit → push the branch → PR → partner review → squash merge. Never commit straight to `main`, never force-push. One AI tool per working folder; use a separate worktree for parallel work.
+- **Git:** `origin` = github.com/Nadavgo8/Visual-Match-Intelligence (MIT). Workflow per plan §9: branch → tests → commit → push the branch → PR → technical review → automatic squash merge after passing gates. Never commit straight to `main`, never force-push. One AI tool per working folder; use a separate worktree for parallel work.
+- **Mandatory quality process:** Read `docs/implementation/12-QUALITY-AND-GIT-GATES.md` before each task. Every branch runs the existing test suite and receives code review; behavior changes require meaningful unit tests and review between dependent work steps. Before merge, resolve P0/P1/P2 findings, rerun after fixes/synchronization and record a technical PASS on the tested SHA. Automatically squash merge after the gates pass without routine human approval, as explicitly authorized by the user; never bypass server rules or invent human approval. Verify the merged `main` before marking DONE. Stage transitions require a technical accumulated-change review and tests on the same integrated SHA. Record actual evidence and a regression/process improvement after findings. AI review is not human approval; NOT_RUN is not PASS.
+- **Current plan:** `docs/implementation/VMI-FINAL-PLAN-F.md` is the active plan. Its explicit decisions supersede stale summaries below: the demo stays 2D, xG is a delayed linked generator event, and model/runtime selection remains open until D2-00. Documentation work alone does not authorize implementing the whole plan.
+- **Task delivery:** Keep implementation, meaningful tests, fixes and review together per task. A separate tests-only PR requires independently useful scope. Start new tasks from updated `main` and wait for dependent merges. Diagnose failures before escalating product decisions; explain changes, rationale, validation and limits in commit bodies. The latest clarification authorizes automatic review and merge inside the active session after the quality gates pass; see `docs/implementation/HANDOFF.md`.
 
 ## The hackathon
 
@@ -62,7 +65,7 @@ python -m vmi.mcp_server               # engine tools over MCP
 
 Built (v1): generator, engine, Attention Engine + trace, 2D TV view, companion app, Explainer workflow with validator and fallback, Ask agents, MCP server, demo cache, realism tests, Dockerfile, deploy script. Repo published with an MIT licence.
 
-Next: the work plan, `docs/implementation/VMI-FINAL-PLAN.md`. Developer 1 starts with D1-01 (generator core); Developer 2 starts with **D2-00 (model, runtime and judge access, at zero cost)** and builds no permanent model connection before it is decided. The 12-file doc package the plan lists in §2 hasn't been created yet.
+Next: the work plan, `docs/implementation/VMI-FINAL-PLAN-F.md`. Developer 1 starts with D1-01 (generator core); Developer 2 starts with **D2-00 (model, runtime and judge access, at zero cost)** and builds no permanent model connection before it is decided. Most of the doc package listed in plan §2 has not been created yet; the mandatory quality/Git process is available in `docs/implementation/12-QUALITY-AND-GIT-GATES.md`. CI, coverage gates and branch protections must be implemented and verified in D2-01; the document alone does not enable them.
 
 Open: see `docs/context/decisions.md`, "Still open".
 
@@ -70,7 +73,8 @@ Open: see `docs/context/decisions.md`, "Still open".
 
 | File | What |
 |---|---|
-| `docs/implementation/VMI-FINAL-PLAN.md` | Work plan (Hebrew, Oct 22): goals, zero-cost rule, split, contracts, generator, tasks D1-01…05 and D2-00…06, gates, git, AI prompts, tests, demo. **Start here for "what next".** |
+| `docs/implementation/VMI-FINAL-PLAN-F.md` | Work plan (Hebrew, Oct 22): goals, zero-cost rule, split, contracts, generator, tasks D1-01…05 and D2-00…06, gates, git, AI prompts, tests, demo. **Start here for "what next".** |
+| `docs/implementation/12-QUALITY-AND-GIT-GATES.md` | Mandatory review and unit-test gates per branch and stage; two-developer Git workflow, CI setup requirements, evidence templates and improvement log. Read before executing a task. |
 | `docs/context/product-doc-2026-10-21.pdf` | Six-page product doc (Hebrew) with design illustrations: edge bars, markers, app, engine, research basis |
 | `docs/spec.md` | Build spec v2: behaviour, formulas, data realism, sync, targets |
 | `docs/context/decisions.md` | Every decision, the 4-round interview, the Oct 21–22 changes, open items. **Start here for "why".** |
