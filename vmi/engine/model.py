@@ -61,6 +61,7 @@ class MatchModel:
     crowd: deque = field(default_factory=lambda: deque(maxlen=600))  # (t, level)
     on_pitch: dict = field(default_factory=dict)
     finished: bool = False
+    role_overrides: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         self.players = {p["id"]: p for side in self.meta["teams"].values() for p in side["players"]}
@@ -77,7 +78,7 @@ class MatchModel:
 
     def player_role(self, pid: str | None) -> str | None:
         p = self.players.get(pid or "")
-        return p["position"] if p else None
+        return self.role_overrides.get(pid, p["position"]) if p else None
 
     # ---------- ingest ----------
     def ingest(self, rec: dict) -> dict:
@@ -109,6 +110,8 @@ class MatchModel:
         if etype == "substitution":
             side, sub = ev["team"], ev["substitution"]
             if sub["off_id"] in self.on_pitch[side]:
+                if self.player_role(sub["off_id"]) == "GK":
+                    self.role_overrides[sub["on_id"]] = "GK"
                 self.on_pitch[side][self.on_pitch[side].index(sub["off_id"])] = sub["on_id"]
         if etype == "card" and ev["card"]["colour"] != "yellow":
             side = ev["team"]

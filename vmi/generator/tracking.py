@@ -30,13 +30,23 @@ class Tracker:
             elif e["type"] == "period_start" and e["period_start"]["period_no"] == 2:
                 self.period2_t = e["t"]
         self.base = {}
+        self.keeper_changes = []
+        keepers = {pid for pid, p in self.players.items() if p["position"] == "GK"}
         for side in ("home", "away"):
             for p in teams[side]["players"]:
                 self.base[p["id"]] = (p["base_x"], p["base_y"])
         # subs inherit the position of the player they replace
-        for _, side, off, on in self.changes:
+        for ct, side, off, on in self.changes:
             if on:
                 self.base[on] = self.base[off]
+                if off in keepers:
+                    keepers.add(on)
+                    self.keeper_changes.append((ct, on))
+
+    def role_at(self, pid: str, t: float) -> str:
+        if any(ct <= t and on == pid for ct, on in self.keeper_changes):
+            return "GK"
+        return self.players[pid]["position"]
 
     def lineup(self, side: str, t: float) -> list[str]:
         ids = [p["id"] for p in self.m.meta["teams"][side]["players"] if p["starter"]]
@@ -77,7 +87,7 @@ class Tracker:
             for pid in self.lineup(side, t):
                 p = self.players[pid]
                 ox, oy = self.base[pid]
-                if p["position"] == "GK":
+                if self.role_at(pid, t) == "GK":
                     ax, ay = ox + max(0, (bax - 30) * 0.05), oy + (bay - 34) * 0.12
                 else:
                     ax = ox + (bax - 52.5) * 0.45
