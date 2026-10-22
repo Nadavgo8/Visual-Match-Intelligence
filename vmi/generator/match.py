@@ -65,6 +65,8 @@ class _Sim:
         self.seed = seed
         self.match_id = match_id
         self.teams: dict[str, Team] = make_teams()
+        self.initial_roles = {p.id: p.position for team in self.teams.values()
+                              for p in [*team.players, *team.bench]}
         self.on_pitch: dict[str, list[Player]] = {s: list(t.players) for s, t in self.teams.items()}
         self.bench: dict[str, list[Player]] = {s: list(t.bench) for s, t in self.teams.items()}
         self.events: list[dict] = []
@@ -226,8 +228,8 @@ class _Sim:
         crowd = self.build_crowd()
         teams_meta = {
             s: {"name": tm.name, "short": tm.short, "colour": tm.colour,
-                "players": [vars(p) | {"starter": True} for p in tm.players]
-                + [vars(p) | {"starter": False} for p in tm.bench]}
+                "players": [vars(p) | {"starter": True, "position": self.initial_roles[p.id]} for p in tm.players]
+                + [vars(p) | {"starter": False, "position": self.initial_roles[p.id]} for p in tm.bench]}
             for s, tm in self.teams.items()
         }
         meta = {
@@ -267,6 +269,8 @@ class _Sim:
             return
         cands = [p for p in self.on_pitch[side] if p.position != "GK" and p not in self.subbed_on]
         if off is None:
+            if not cands:
+                return
             # tired attackers and midfielders come off first
             cands.sort(key=lambda p: -p.base_x + self.rng.uniform(0, 30))
             off = cands[0]
@@ -275,6 +279,10 @@ class _Sim:
         on = self.bench[side].pop(0)
         self.subbed_on.append(on)
         on.base_x, on.base_y = off.base_x, off.base_y
+        # Injury substitutions can replace the keeper with a bench outfielder.
+        # Preserve the occupied role, as we already preserve its coordinates.
+        if off.position == "GK":
+            on.position = "GK"
         idx = self.on_pitch[side].index(off)
         self.on_pitch[side][idx] = on
         self.subs_done[side] += 1
