@@ -175,7 +175,7 @@ class AttentionEngine:
         elif etype == "offside":
             reason = "offside"
         elif etype == "var" and ev["var"]["phase"] == "check":
-            reason, detail = "stoppage", "VAR check"
+            reason = "stoppage"  # VAR itself goes to the app only; the screen just shows play stopped
         elif etype == "injury_stoppage":
             reason, detail = "stoppage", "Injury"
         elif etype == "set_piece" and ev["set_piece"]["kind"] in ("kick_off", "penalty"):

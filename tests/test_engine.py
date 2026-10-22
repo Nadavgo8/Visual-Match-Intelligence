@@ -41,6 +41,12 @@ def test_overturned_penalty_is_detected_from_the_feed(demo):
     assert chk["referee_did_not_give"] and ch["inside_box"]
 
 
+def test_var_stays_off_the_screen(demo):
+    _, outs = demo
+    banners = [o for o in outs if o["kind"] == "banner"]
+    assert not any("VAR" in f"{o['label']} {o['detail'] or ''}" for o in banners)
+
+
 def test_most_whistles_are_explained(demo):
     _, outs = demo
     banners = [o for o in outs if o["kind"] == "banner"]
