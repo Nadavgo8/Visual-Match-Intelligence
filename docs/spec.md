@@ -23,7 +23,7 @@ Never on the match screen: cards, goals, VAR, subs, a crowd-surge banner (remove
 
 **Display settings:** an optional menu on the match screen with bar intensity, marker size and reduce motion. No mandatory calibration screen and no colour picker.
 
-### Presenter area [D2-02]
+### Presenter area [D1-05, D2-02]
 The trace of Attention Engine decisions, playback control (pause, seek, seed, demo chapters) and technical information move here, off the viewer's screen. Only the host controls playback; the companion app never changes the match. Demo chapters are picked here, and nothing in this area is sent to the app or to the agents (§8).
 
 ### Companion app (`/app`, optional) [D2-03]
