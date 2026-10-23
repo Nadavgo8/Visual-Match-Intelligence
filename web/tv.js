@@ -1,18 +1,17 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { atmospherePresentation } from "./atmosphere.mjs";
-import { FrameTimeline } from "./match-motion.mjs";
+import { edgePresentation } from "./overlay-state.mjs";
+import { MatchScreen } from "./match-screen.mjs";
 import { MatchRenderer } from "./match-renderer.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
 const canvas = $("pitch");
-const timeline = new FrameTimeline();
+const screen = new MatchScreen();
 const renderer = new MatchRenderer(canvas);
 let state = null, teams = null;
 const audio = new SyntheticAudio();
-const live = new Map(); // cue_id -> {el, timer}
 
 $("room-code").textContent = room;
 $("app-link").href = `/app?room=${encodeURIComponent(room)}`;
@@ -22,15 +21,15 @@ const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
   if (m.type === "state") onState(m);
-  else if (m.type === "frame") timeline.push(m, performance.now());
+  else if (m.type === "frame" && screen.frame(m, performance.now())) renderMarker();
   else if (m.type === "banner") onBanner(m);
   else if (m.type === "meters") onMeters(m);
   else if (m.type === "trace") onTrace(m);
 };
-ws.onclose = () => { timeline.freeze(performance.now()); $("agents").textContent = "disconnected, reload to reconnect"; };
+ws.onclose = () => { screen.freeze(performance.now()); $("agents").textContent = "disconnected, reload to reconnect"; };
 
 function onState(s) {
-  timeline.sync(s, performance.now());
+  if (screen.sync(s, performance.now())) clearMarkerElement();
   state = s;
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
@@ -64,46 +63,44 @@ function onMeters(m) {
   if (!scrubbing) $("scrub").value = Math.floor(m.t);
   const share = m.momentum.home_index;
   $("mom-fill").style.width = `${(share * 100).toFixed(1)}%`;
-  const v = m.momentum.value;
-  $("mom-label").textContent = Math.abs(v) < 0.3 ? "Momentum: even"
-    : `Momentum: ${v > 0 ? teams.home.short : teams.away.short} on top`;
-  const a = m.atmosphere;
-  const el = $("atmo");
-  const view = atmospherePresentation(a);
-  el.className = "atmo";
-  el.style.setProperty("--mood", view.color);
-  el.style.setProperty("--lvl", String(view.value ?? 0.5));
-  el.querySelectorAll(".atmo-meter i").forEach((i) => i.classList.toggle("on", Number(i.dataset.l) <= a.level5));
+  $("mom-label").textContent = "Momentum";
+  $("mom-fill").parentElement.setAttribute("aria-label", `Seven-minute momentum: home ${Math.round(share * 100)} percent`);
+  const a = m.atmosphere, view = edgePresentation(a), el = $("atmosphere-edges");
+  el.style.setProperty("--edge-color", view.color);
+  el.style.setProperty("--edge-fill", `${view.height}%`);
+  el.style.setProperty("--edge-brightness", String(view.brightness));
+  el.dataset.available = String(view.available);
+  el.setAttribute("aria-label", `${view.label}; both sides show the same atmosphere`);
+  el.title = view.label;
+  $("atmo-label").title = a.why;
   $("atmo-label").textContent = view.label;
-  $("atmo-path").setAttribute("d", "M2 8H38");
-  el.title = `${view.label}: ${a.why}`;
   audio.crowd(a.crowd ?? 0);
 }
 
 function onBanner(b) {
-  const slot = document.querySelector(`[data-slot="${b.slot}"]`);
-  if (!slot) return;
-  const prev = live.get(b.cue_id);
-  if (prev) { clearTimeout(prev.timer); prev.el.remove(); }
-  const el = document.createElement("div");
-  el.className = `banner ${b.banner}`;
-  el.innerHTML = `${bannerIcon(b.banner)}<span>${b.label}</span>${b.detail ? `<span class="detail">${b.detail}</span>` : ""}`;
-  el.title = b.why;
-  slot.replaceChildren(el);
-  if (!b.update && b.banner !== "crowd") audio.whistle(b.banner);
-  const secs = Math.max(2.5, (b.t_end - b.t_start)) / Math.max(1, Math.sqrt(state?.speed || 1));
-  const timer = setTimeout(() => {
-    el.classList.add("out");
-    setTimeout(() => el.remove(), 300);
-    live.delete(b.cue_id);
-  }, secs * 1000);
-  live.set(b.cue_id, { el, timer });
+  if (!screen.accept(b)) return;
+  if (!b.update) audio.whistle(b.banner);
+  renderMarker();
 }
+function renderMarker() {
+  const cue = screen.marker(), el = $("event-marker");
+  el.hidden = !cue;
+  if (!cue) return;
+  if (el.dataset.cue === cue.cue_id && el.dataset.kind === cue.banner) return;
+  el.dataset.cue = cue.cue_id; el.dataset.kind = cue.banner;
+  $("event-icon").innerHTML = bannerIcon(cue.banner);
+  $("event-label").textContent = cue.label;
+}
+function clearMarkerElement() {
+  $("event-marker").hidden = true;
+  $("event-marker").removeAttribute("data-cue");
+}
+function jump(command) { screen.beginJump(); clearMarkerElement(); send(command); }
 
 // Football rendering and accessibility overlays have independent lifecycles.
 let fpsStart = 0, fpsCount = 0, drawMs = 0;
 function render(now) {
-  const frame = timeline.sample(now);
+  const frame = screen.sample(now);
   const drawStart = performance.now();
   renderer.draw(frame, teams);
   drawMs += performance.now() - drawStart;
@@ -116,7 +113,6 @@ function render(now) {
   requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
-function jump(command) { timeline.beginJump(); send(command); }
 
 // ---------- controls ----------
 let scrubbing = false;
@@ -141,3 +137,13 @@ function onTrace(m) {
   }
   while (ol.children.length > 40) ol.lastChild.remove();
 }
+
+// Optional settings; defaults work without a calibration step or storage access.
+$("reduce-motion").checked = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function displaySettings() {
+  $("stage").style.setProperty("--signal-intensity", $("signal-intensity").value);
+  $("stage").style.setProperty("--symbol-size", $("symbol-size").value);
+  $("stage").classList.toggle("reduce-motion", $("reduce-motion").checked);
+}
+for (const id of ["signal-intensity", "symbol-size", "reduce-motion"]) $(id).addEventListener("input", displaySettings);
+displaySettings();

@@ -15,10 +15,16 @@ const BADGES = {
   full_time: `<text x="19.5" y="22" font-size="7.5" font-weight="800" text-anchor="middle" fill="currentColor" font-family="Inter,system-ui,sans-serif">FT</text>`,
 };
 
-const CROWD = `<path d="M4 12v0M8 8v8M12 5v14M16 8v8M20 11v2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`;
-
 export function bannerIcon(type) {
-  if (type === "crowd") return `<svg viewBox="0 0 24 24" aria-hidden="true">${CROWD}</svg>`;
+  const glyphs = {
+    offside: `<path d="M7 23V3m0 1h14l-3 5 3 5H7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 5h5v4H8zm5 4h5v4h-5" fill="currentColor"/>`,
+    penalty: `<path d="M3 21V7h19v14M7 21V11h11v10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12.5" cy="18" r="2" fill="currentColor"/>`,
+    drinks_break: `<path d="M7 7h12l-2 16H9L7 7zm1 5h10M15 2l-2 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
+    kick_off: `<circle cx="12.5" cy="12.5" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.5 8l4 3-1.5 5h-5L8.5 11z" fill="currentColor"/>`,
+    half_time: `<text x="12.5" y="17" font-size="11" font-weight="800" text-anchor="middle" fill="currentColor" font-family="system-ui,sans-serif">HT</text>`,
+    full_time: `<text x="12.5" y="17" font-size="11" font-weight="800" text-anchor="middle" fill="currentColor" font-family="system-ui,sans-serif">FT</text>`,
+  };
+  if (Object.hasOwn(glyphs, type)) return `<svg viewBox="0 0 25 25" aria-hidden="true">${glyphs[type]}</svg>`;
   return `<svg viewBox="0 0 25 25" aria-hidden="true">${WHISTLE}${BADGES[type] ?? ""}</svg>`;
 }
 

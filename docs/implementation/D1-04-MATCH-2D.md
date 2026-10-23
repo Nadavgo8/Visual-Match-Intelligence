@@ -37,3 +37,21 @@ python -m pytest tests -q -ra --strict-markers --strict-config -p no:cacheprovid
 Live FPS appears only among presenter controls. Actual viewport measurements and
 visual scenarios belong in the PR evidence; a unit test is not an FPS claim. The
 full stage-4 load/soak/performance gate remains separate.
+
+## Integration with the approved accessibility layout
+
+D1-05 was implemented independently from verified main and merged as PR #8.
+D1-04 now integrates that main rather than rebuilding its layout. `MatchScreen`
+composes the source frame buffer and one-marker state so seek, match/run changes
+and remote jumps clear both layers together. Six integration cases protect that
+boundary, including invalid frames that must not advance symbol time and paused
+markers that must expire after a football stoppage resumes clock advancement.
+The source renderer retains its metric projection, kits and height; the reviewed
+edge rails, compact score bug, circular symbols and closed presenter tools remain.
+
+After integration, 184 Python tests passed in 64.39s and 28 Node tests passed before
+the integration commit. The browser showed the combined design with no JS errors.
+The foreground FPS requirement is still **NOT VERIFIED**: this session observes
+1 FPS with approximately 0.4–1.3 ms per draw. Neither a fast draw duration nor green
+unit tests count as a 30 FPS measurement. PR #7 remains Draft; final-SHA evidence
+will be recorded there, and it must not merge until this requirement is verified.
