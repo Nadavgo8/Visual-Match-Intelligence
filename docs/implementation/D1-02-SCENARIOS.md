@@ -1,6 +1,6 @@
 # D1-02 — Reproducible scenarios and 20 Hz tracking
 
-Generator version: `2.1.0`. Wire schema: `2.0`. These are short synthetic test segments, separate from the seeded full-match mode. Segment setup is explicit test preparation, not a claim of calibrated football motion.
+D1-02 introduced generator version `2.1.0`; consult `meta.json` for the current generator version. Wire schema: `2.0`. These are short synthetic test segments, separate from the seeded full-match mode. Segment setup is explicit test preparation, not a claim of calibrated football motion.
 
 After installing the project's existing Python development requirements, run offline from the repository root:
 

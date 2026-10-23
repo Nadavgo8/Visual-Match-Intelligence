@@ -1,6 +1,6 @@
 """Optical-tracking style frames (x/y of 22 players and the ball), rendered from the
 generator's ball keyframes. Frames are computed on demand instead of stored, since
-10 per second for a whole match is ~60k frames.
+20 per second for a whole match is ~120k frames.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ class Tracker:
         p2 = self.period2_t is not None and t >= self.period2_t
         return (side == "home") != p2
 
-    def frame(self, t: float) -> dict:
+    def _ball(self, t: float):
         i = bisect.bisect_right(self.kt, t) - 1
         if i < 0:
             a = b = self.kf[0]
@@ -90,6 +90,23 @@ class Tracker:
         by = a.y + (b.y - a.y) * alpha
         bz = a.z + (b.z - a.z) * alpha + 4 * a.flight_height * alpha * (1 - alpha)
         holder = a.holder if a.holder == b.holder or alpha == 0 else None
+        return a, b, alpha, bx, by, bz, holder
+
+    def observation(self, t: float) -> dict:
+        """Same delivered ball/holder sample without drawing the other 21 players."""
+        a, b, alpha, bx, by, bz, holder = self._ball(t)
+        players = []
+        if holder:
+            p = self.players[holder]
+            if holder in self.lineup(p["team"], t):
+                players.append({"id": holder, "team": p["team"], "n": p["number"],
+                                "role": self.role_at(holder, t), "x": round(bx, 2), "y": round(by, 2)})
+            else:
+                holder = None
+        return self._record(t, a, bx, by, bz, holder, players)
+
+    def frame(self, t: float) -> dict:
+        a, b, alpha, bx, by, bz, holder = self._ball(t)
         in_play = a.in_play
         players = []
         for side in ("home", "away"):
@@ -122,13 +139,20 @@ class Tracker:
                     w = 1 - alpha
                     x, y = x + (a.x - x) * w, y + (a.y - y) * w
                 players.append({"id": pid, "team": side, "n": p["number"],
+                                "role": self.role_at(pid, t),
                                 "x": round(min(max(x, 0), PITCH_X), 2), "y": round(min(max(y, 0), PITCH_Y), 2)})
+        return self._record(t, a, bx, by, bz, holder, players)
+
+    def _record(self, t, a, bx, by, bz, holder, players):
+        in_play = a.in_play
         return {"stream": "tracking", "match_id": self.m.meta["match_id"], "source": "tracking", "t": round(t, 2),
+                "period": 2 if self.period2_t is not None and t >= self.period2_t else 1,
                 "schema_version": "2.0", "ball": [round(bx, 2), round(by, 2)],
                 "ball_height": round(bz, 3), "ball_in_play": in_play,
                 "possession": {"id": a.possession_id if holder and in_play else None,
                                "holder_id": holder if in_play else None,
                                "team": self.players[holder]["team"] if holder and in_play else None,
+                               "sample_t": round(t, 2),
                                "status": "controlled" if holder and in_play else "loose" if in_play else "stopped"},
                 "quality": {"status": "measured", "confidence": 1.0, "sample_t": round(t, 2)},
                 "players": players}

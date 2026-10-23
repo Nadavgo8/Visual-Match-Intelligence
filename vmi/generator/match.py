@@ -17,7 +17,7 @@ BOX_X = PITCH_X - 16.5
 BOX_Y = (13.84, 54.16)
 HT_GAP = 60.0  # half-time compressed to 60 s on the timeline
 SCHEMA_VERSION = "2.0"
-GENERATOR_VERSION = "2.1.0"
+GENERATOR_VERSION = "2.2.0"
 
 
 def _other(side: str) -> str:
@@ -763,6 +763,7 @@ class _Sim:
         self.whistle(1, "short")
         # Preserve the simulation RNG order while reporting execution at the kick.
         action["t"] = round(self.t, 2)
+        action["clock"] = self.clock_str()
         action["delivered_t"] = round(action["delivered_t"] + 1, 2)
         self.restart(action)
         action["possession_id"] = self.play.possession_id

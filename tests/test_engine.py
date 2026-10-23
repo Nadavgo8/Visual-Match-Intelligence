@@ -85,7 +85,10 @@ def test_profile_filter():
     assert visible_to({"kind": "banner"}, "big")
 
 
-def test_atmosphere_moods_are_known(demo):
+def test_atmosphere_reports_components_and_availability_without_emotion(demo):
     _, outs = demo
-    moods = {o["atmosphere"]["mood"] for o in outs if o["kind"] == "meters"}
-    assert moods <= {"calm", "cheering", "tension", "eruption"} and "eruption" in moods
+    meters = [o["atmosphere"] for o in outs if o["kind"] == "meters"]
+    assert meters and all("mood" not in a for a in meters)
+    assert all(a["mode"] == "combined" for a in meters)
+    assert all(0 <= a["level"] <= 1 for a in meters if a["available"])
+    assert all(a["level"] is None for a in meters if not a["available"])

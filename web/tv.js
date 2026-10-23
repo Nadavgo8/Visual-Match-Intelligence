@@ -1,5 +1,6 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
+import { atmospherePresentation } from "./atmosphere.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -10,13 +11,6 @@ const W = canvas.width, H = canvas.height;
 const PX = 105, PY = 68, M = 60; // pitch metres, margin px
 const sx = (x) => M + (x / PX) * (W - 2 * M);
 const sy = (y) => H - M - (y / PY) * (H - 2 * M); // y up, like the data
-const MOOD = { calm: "Calm", cheering: "Cheering", tension: "Tension", eruption: "Eruption" };
-const WAVES = {
-  calm: "M2 8H38",
-  cheering: "M2 8q4.5-6 9 0t9 0t9 0t9 0",
-  tension: "M2 8h8l3-5l4 10l4-10l4 10l3-5h8",
-  eruption: "M2 14L8 4L14 12L20 2L26 12L32 4L38 14",
-};
 
 let state = null, frame = null, teams = null;
 const audio = new SyntheticAudio();
@@ -76,18 +70,15 @@ function onMeters(m) {
     : `Momentum: ${v > 0 ? teams.home.short : teams.away.short} on top`;
   const a = m.atmosphere;
   const el = $("atmo");
-  const prevMood = el.dataset.mood;
-  el.className = `atmo ${a.mood}`;
-  el.dataset.mood = a.mood;
-  el.style.setProperty("--mood", `var(--${a.mood})`);
-  el.style.setProperty("--lvl", ((a.level5 - 1) / 4).toFixed(2));
+  const view = atmospherePresentation(a);
+  el.className = "atmo";
+  el.style.setProperty("--mood", view.color);
+  el.style.setProperty("--lvl", String(view.value ?? 0.5));
   el.querySelectorAll(".atmo-meter i").forEach((i) => i.classList.toggle("on", Number(i.dataset.l) <= a.level5));
-  $("atmo-label").textContent = MOOD[a.mood];
-  $("atmo-path").setAttribute("d", WAVES[a.mood]);
-  el.title = `${MOOD[a.mood]}: ${a.why} (level ${a.level5}/5)`;
-  if (prevMood === "eruption" && a.mood === "eruption") el.style.animation = "none";
-  else el.style.animation = "";
-  audio.crowd(a.level);
+  $("atmo-label").textContent = view.label;
+  $("atmo-path").setAttribute("d", "M2 8H38");
+  el.title = `${view.label}: ${a.why}`;
+  audio.crowd(a.crowd ?? 0);
 }
 
 function onBanner(b) {

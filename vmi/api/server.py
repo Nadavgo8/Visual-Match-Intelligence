@@ -112,7 +112,7 @@ class Room:
         if seed is not None:
             self.seed = seed
         self.match = get_match(self.seed)
-        self.replay = Replay(self.match)
+        self.replay = Replay(self.match, atmosphere_mode=os.getenv("VMI_ATMOSPHERE_MODE", "combined"))
         self.tracker = Tracker(self.match)
         roster = {p["name"] for t in self.match.meta["teams"].values() for p in t["players"]}
         self.explainer = Explainer(explainer_agent(_client, _model_name) if _client else None, roster)

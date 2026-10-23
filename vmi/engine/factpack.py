@@ -56,7 +56,7 @@ def _deep_context(m: MatchModel, team: str | None) -> list[dict]:
     facts.append({"id": "stat:momentum", "type": "momentum_last_7_min",
                   "home_share_pct": round(mom.home_index * 100),
                   "away_share_pct": 100 - round(mom.home_index * 100),
-                  "possession_home_pct": round(mom.possession_home * 100),
+                  "possession_home_pct": round(mom.possession_home * 100) if mom.possession_available else None,
                   "key_passes": mom.key_passes, "shots": mom.shots, "window_minutes": 7})
     if team:
         since = max(0.0, m.t - 15 * 60)

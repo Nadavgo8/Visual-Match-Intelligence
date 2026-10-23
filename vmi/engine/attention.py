@@ -16,10 +16,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from copy import deepcopy
+import math
 
 from . import derive
 from .factpack import build_factpack
 from .model import MatchModel
+from .atmosphere import Atmosphere, FRESH_S, CROWD_FRESH_S
 
 # Banner types and their fixed slots on the TV view.
 BANNERS = {
@@ -74,6 +76,8 @@ class AttentionEngine:
     n_cue: int = 0
     n_in: int = 0  # feed and whistle records received
     shot_feeds: dict = field(default_factory=dict)
+    atmosphere: Atmosphere = field(default_factory=Atmosphere)
+    last_atmosphere: dict | None = None
 
     # ---------- helpers ----------
     def _cue_id(self) -> str:
@@ -95,9 +99,20 @@ class AttentionEngine:
 
     # ---------- main entry points ----------
     def ingest(self, rec: dict, now: float) -> list[dict]:
+        stamps = (now, rec.get("t"), rec.get("delivered_t", rec.get("t")))
+        if any(not isinstance(t, (int, float)) or isinstance(t, bool) or not math.isfinite(t) or t < 0 for t in stamps):
+            raise ValueError("invalid delivery clock")
+        if stamps[1] > now + 1e-9 or stamps[2] > now + 1e-9:
+            raise ValueError("record has not been delivered at this snapshot")
         self.now = now
+        score_before = dict(self.model.score)
         self.model.ingest(rec)
+        self.model.t = now
         if rec.get("stream"):
+            if rec["stream"] in {"tracking", "crowd"}:
+                a = self.atmosphere.evaluate(now, self.model.tracking, self.model.ball_in_play, self.model.crowd)
+                if a != self.last_atmosphere:
+                    return [self._meters(now, a)]
             return []
         out = []
         for ev in self.model.changes:
@@ -107,6 +122,10 @@ class AttentionEngine:
             else:
                 out += self._resolve_whistles(ev)
                 out += self._route(ev)
+        if self.model.changes:
+            a = self.atmosphere.evaluate(now, self.model.tracking, self.model.ball_in_play, self.model.crowd)
+            if a != self.last_atmosphere or self.model.score != score_before:
+                out.append(self._meters(now, a))
         return out
 
     def tick(self, now: float) -> list[dict]:
@@ -125,11 +144,22 @@ class AttentionEngine:
         # crowd surge
         jump = self.model.crowd_jump(3)
         level = self.model.crowd_level()
-        if jump >= SURGE_JUMP and level >= SURGE_MIN_LEVEL and now - self.last_surge > SURGE_COOLDOWN:
+        if level is not None and jump >= SURGE_JUMP and level >= SURGE_MIN_LEVEL and now - self.last_surge > SURGE_COOLDOWN:
             self.last_surge = now
             out.append(self._banner("crowd", now, f"crowd level rose {jump:+.2f} in 3 s to {level:.2f}",
                                     [f"crowd@{int(now)}"]))
-        # stoppage analysis that is due
+        out += self.release_analysis(now)
+        out.append(self._meters(now))
+        out += self._momentum_swing()
+        return out
+
+    def next_analysis_due(self) -> float:
+        due = min((sa.due for sa in self.scheduled), default=float("inf"))
+        return max(self.now, due)
+
+    def release_analysis(self, now: float) -> list[dict]:
+        self.now = self.model.t = now
+        out = []
         for sa in list(self.scheduled):
             if sa.due > now:
                 continue
@@ -141,9 +171,23 @@ class AttentionEngine:
             out.append({"kind": "analysis", "cue_id": self._cue_id(), "t": round(now, 2),
                         "clock": self.model.clock, "moment": sa.kind, "tier": sa.tier,
                         "factpack": build_factpack(self.model, sa.kind, sa.trigger)})
-        out.append(self._meters(now))
-        out += self._momentum_swing()
         return out
+
+    def next_meter_expiry(self) -> float:
+        deadlines = []
+        frame = self.model.tracking
+        if self.atmosphere.attack and frame:
+            stamps = (frame["t"], frame["quality"]["sample_t"], frame["possession"]["sample_t"])
+            deadlines.append(min(stamps) + FRESH_S + 0.000001)
+        if self.last_atmosphere and self.last_atmosphere["crowd_available"] and self.model.crowd:
+            deadlines.append(self.model.crowd[-1][0] + CROWD_FRESH_S + 0.000001)
+        return max(self.now, min(deadlines)) if deadlines else float("inf")
+
+    def poll_meters(self, now: float) -> list[dict]:
+        """Expire missing inputs even when no new packet arrives; do not sample possession twice."""
+        self.now = self.model.t = now
+        a = self.atmosphere.evaluate(now, self.model.tracking, self.model.ball_in_play, self.model.crowd)
+        return [self._meters(now, a)] if a != self.last_atmosphere else []
 
     def _expect(self, what: str, for_s: float):
         self.expect, self.expect_until = what, self.now + for_s
@@ -339,28 +383,14 @@ class AttentionEngine:
         self.scheduled.append(ScheduledAnalysis(due, kind, trigger, tier, needs_dead_ball))
 
     # ---------- meters ----------
-    def _meters(self, now: float) -> dict:
+    def _meters(self, now: float, atmosphere: dict | None = None) -> dict:
         m = self.model
-        level = m.crowd_level()
-        level5 = 1 + sum(level >= x for x in (0.3, 0.42, 0.55, 0.7))
-        minute = derive.minute_of(m.clock)
-        diff = abs(m.score["home"] - m.score["away"])
-        if now - self.last_goal_t < 25 or (now - self.last_surge < 6 and level >= 0.7):
-            mood, why = "eruption", "goal or sudden surge in the last seconds"
-        elif self.var_open is not None:
-            mood, why = "tension", "VAR check in progress"
-        elif self.penalty_pending:
-            mood, why = "tension", "penalty about to be taken"
-        elif m.period == 2 and minute >= 75 and diff <= 1 and level >= 0.42:
-            mood, why = "tension", "late in a close game"
-        elif level >= 0.5:
-            mood, why = "cheering", "sustained high crowd level"
-        else:
-            mood, why = "calm", "low crowd level, nothing happening"
+        a = atmosphere if atmosphere is not None else self.atmosphere.evaluate(now, m.tracking, m.ball_in_play, m.crowd)
+        self.last_atmosphere = dict(a)
         mom = m.momentum()
         return {"kind": "meters", "t": round(now, 2), "clock": m.clock, "period": m.period,
                 "score": dict(m.score), "ball_in_play": m.ball_in_play,
-                "atmosphere": {"level": round(level, 3), "level5": level5, "mood": mood, "why": why},
+                "atmosphere": a,
                 "momentum": mom.as_dict()}
 
     def _momentum_swing(self) -> list[dict]:
@@ -383,8 +413,9 @@ class AttentionEngine:
         tn = self.model.team_name(zone)
         pseudo = {"id": f"momentum@{int(self.now)}", "t": self.now, "clock": self.model.clock, "team": zone}
         poss = mom.possession_home if zone == "home" else 1 - mom.possession_home
+        possession_text = f"{round(poss * 100)}% possession" if mom.possession_available else "possession unavailable"
         return [self._feed(pseudo, TIER_ALL, "momentum", f"{tn} are on top right now.",
-                           f"Momentum {tn}: {round(poss * 100)}% possession, "
+                           f"Momentum {tn}: {possession_text}, "
                            f"{mom.key_passes[zone]} key passes and {mom.shots[zone]} shots in the last 7 min.")]
 
 

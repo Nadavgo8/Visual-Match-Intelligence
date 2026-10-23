@@ -11,7 +11,7 @@ body { max-width: 560px; margin: 0 auto; min-height: 100dvh; display: flex; flex
 .score { font-weight: 600; } .score b { font-size: 1.2em; padding: 0 4px; }
 .meta { grid-column: 1; color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 6px; }
 .icon-btn { grid-row: 1 / 3; grid-column: 2; background: none; border: 0; color: var(--text); font-size: 22px; padding: 4px 8px; cursor: pointer; }
-.chip { padding: 1px 8px; border-radius: 10px; background: var(--calm); color: #fff; font-weight: 600; font-size: 12px; }
+.chip { padding: 1px 8px; border-radius: 10px; background: #83939b; color: #071b20; font-weight: 600; font-size: 12px; transition: background-color 0.4s ease, color 0.4s ease; }
 .chip.eruption, .chip.tension { color: #111; }
 .mom { display: inline-block; width: 64px; height: 6px; border-radius: 4px; background: var(--away); overflow: hidden; }
 .mom i { display: block; height: 100%; width: 50%; background: var(--home); transition: width 0.8s; }
