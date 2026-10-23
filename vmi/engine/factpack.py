@@ -91,11 +91,10 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
         if d.get("xg_id"):
             facts.append({"id": d["xg_id"], "type": "shot_xg", "shot_id": trigger["id"],
                           "xg": d["xg"], "method_version": d["xg_method"]})
-        for rid in trigger.get("related", []):
-            p = m.by_id.get(rid)
-            if p and p["type"] == "pass":
-                facts.append({"id": p["id"], "type": "assist", "by": _player(m, p["player_id"]),
-                              "cross": p["pass"].get("cross"), "through_ball": p["pass"].get("through_ball")})
+        p = m.by_id.get(d.get("preparing_pass_id"))
+        if p and d.get("assisted_by"):
+            facts.append({"id": p["id"], "type": "assist", "by": _player(m, p["player_id"]),
+                          "cross": p["pass"].get("cross"), "through_ball": p["pass"].get("through_ball")})
         c = _crowd_fact(m, trigger)
         if c:
             facts.append(c)

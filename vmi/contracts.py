@@ -4,6 +4,7 @@ import math
 
 VERSION = "2.0"
 LINK_PARENTS = {"shot_result": {"shot_id": "shot"}, "shot_xg": {"shot_id": "shot"},
+                "goal_cancelled": {"shot_id": "shot", "result_id": "shot_result", "decision_id": "referee_decision"},
                 "referee_decision": {"trigger_event_id": None, "stoppage_id": "play_stopped"},
                 "restart_awarded": {"decision_id": "referee_decision", "stoppage_id": "play_stopped"},
                 "restart_taken": {"restart_id": "restart_awarded", "stoppage_id": "play_stopped"}}
@@ -36,11 +37,19 @@ def validate_record(rec: dict, match_id: str) -> None:
     kind = rec.get("type")
     if not isinstance(kind, str) or not kind:
         raise ValueError("event type is required")
-    if kind in {"pass", "shot", "foul", "set_piece", "whistle", "substitution", "card", "var",
+    if kind in {"pass", "shot", "foul", "handball", "dribble", "carry", "set_piece", "whistle", "substitution", "card", "var",
                 "offside", "injury_stoppage", "period_start", "period_end", "added_time"}:
         # Some qualifier-free events intentionally have no nested payload.
         if kind not in {"offside", "injury_stoppage"} and not isinstance(rec.get(kind), dict):
             raise ValueError(f"{kind} payload is required")
+    if kind == "dribble" and rec["dribble"].get("outcome") not in {"complete", "failed", "interrupted", "unresolved"}:
+        raise ValueError("unknown dribble outcome")
+    if kind == "dribble" and (not isinstance(rec["dribble"].get("defender_id"), str)
+                              or not rec["dribble"]["defender_id"]
+                              or rec["dribble"]["defender_id"] == rec.get("player_id")):
+        raise ValueError("dribble requires a distinct identified defender")
+    if kind == "handball" and rec["handball"].get("offence") is not True:
+        raise ValueError("handball record requires a reported offence")
     for key in LINK_PARENTS.get(kind, {}):
         if not isinstance(rec.get(key), str) or not rec[key] or rec[key] == rec["id"]:
             raise ValueError(f"invalid {key}")

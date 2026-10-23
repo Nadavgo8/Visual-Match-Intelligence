@@ -15,7 +15,7 @@ from . import rules
 POSITIONS = {"GK": "goalkeeper", "RB": "right-back", "CB": "centre-back", "LB": "left-back",
              "CM": "central midfielder", "DM": "defensive midfielder", "RW": "right winger",
              "ST": "striker", "LW": "left winger"}
-SHOWN_TYPES = {"shot", "card", "substitution", "var", "foul", "offside", "injury_stoppage", "period_end",
+SHOWN_TYPES = {"shot", "card", "substitution", "var", "foul", "handball", "offside", "injury_stoppage", "period_end",
                "period_start", "added_time"}
 
 
@@ -63,6 +63,8 @@ def describe_event(m: MatchModel, e: dict) -> str:
         return f"foul by {who} ({tn}) on {m.player_name(e['foul'].get('victim_id'))}{extra}"
     if t == "offside":
         return f"{who} ({tn}) caught offside"
+    if t == "handball":
+        return f"handball offence by {who} ({tn})"
     if t == "injury_stoppage":
         return f"{who} ({tn}) down injured, play stopped"
     if t == "period_end":
@@ -147,7 +149,7 @@ class MatchTools:
         for p in hits[:2]:
             evs = [e for e in m.events if e.get("player_id") == p["id"] and e["type"] in SHOWN_TYPES | {"pass"}]
             passes = [e for e in evs if e["type"] == "pass"]
-            shots = [e for e in evs if e["type"] == "shot"]
+            shots = [e for e in evs if e["type"] == "shot" and e["shot"].get("outcome") != "disallowed"]
             res.append({
                 "id": p["id"], "name": p["name"], "number": p["number"], "team": m.team_name(p["team"]),
                 "position": POSITIONS.get(m.player_role(p["id"]), m.player_role(p["id"])),
