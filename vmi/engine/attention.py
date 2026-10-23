@@ -2,8 +2,8 @@
 
 It reads the delivered streams in order and emits outputs, each with a `why`:
 
-- `banner`   a whistle or crowd-surge banner for the TV view (fixed slot per type)
-- `meters`   once per second: atmosphere (level + mood) and momentum
+- `banner`   one event marker for the TV view (shared fixed slot)
+- `meters`   once per second: atmosphere/availability and momentum
 - `feed`     a companion-feed item, tagged with a tier the user's profile filters on
 - `analysis` a stoppage-analysis request (fact pack included), released only
              while the ball is out of play
@@ -23,22 +23,20 @@ from .factpack import build_factpack
 from .model import MatchModel
 from .atmosphere import Atmosphere, FRESH_S, CROWD_FRESH_S
 
-# Banner types and their fixed slots on the TV view.
+# Approved event markers share one screen location; crowd is represented by bars.
 BANNERS = {
-    "foul": {"label": "Foul", "slot": "whistle-1", "secs": 3.0},
-    "offside": {"label": "Offside", "slot": "whistle-2", "secs": 3.0},
-    "penalty": {"label": "Penalty", "slot": "whistle-3", "secs": 4.0},
-    "stoppage": {"label": "Stoppage", "slot": "whistle-4", "secs": 3.0},
-    "whistle": {"label": "Whistle", "slot": "whistle-4", "secs": 3.0},
-    "kick_off": {"label": "Kick-off", "slot": "period", "secs": 3.0},
-    "half_time": {"label": "Half-time", "slot": "period", "secs": 4.0},
-    "full_time": {"label": "Full-time", "slot": "period", "secs": 4.0},
-    "crowd": {"label": "Crowd erupts", "slot": "crowd", "secs": 3.0},
+    "foul": {"label": "Foul", "slot": "event", "secs": 3.0},
+    "offside": {"label": "Offside", "slot": "event", "secs": 3.0},
+    "penalty": {"label": "Penalty", "slot": "event", "secs": 4.0},
+    "stoppage": {"label": "Stoppage", "slot": "event", "secs": 3.0},
+    "whistle": {"label": "Whistle", "slot": "event", "secs": 3.0},
+    "kick_off": {"label": "Kick-off", "slot": "event", "secs": 3.0},
+    "half_time": {"label": "Half-time", "slot": "event", "secs": 4.0},
+    "full_time": {"label": "Full-time", "slot": "event", "secs": 4.0},
+    "drinks_break": {"label": "Drinks break", "slot": "event", "secs": 3.0},
 }
 
 WHISTLE_WAIT_S = 2.0  # wait this long for the feed to explain a whistle, then show it generic
-WHISTLE_MATCH_S = 4.0
-SURGE_JUMP, SURGE_MIN_LEVEL, SURGE_COOLDOWN = 0.22, 0.55, 12.0
 TIER_BIG, TIER_BALANCED, TIER_ALL = 1, 2, 3
 AMOUNT_MAX_TIER = {"big": TIER_BIG, "balanced": TIER_BALANCED, "everything": TIER_ALL}
 
@@ -46,7 +44,9 @@ AMOUNT_MAX_TIER = {"big": TIER_BIG, "balanced": TIER_BALANCED, "everything": TIE
 @dataclass
 class PendingWhistle:
     rec: dict
-    shown: str | None = None  # cue id once a banner went out
+    detected_t: float = 0.0
+    shown_t: float | None = None
+    shown: str | None = None  # cue id once a marker went out
     resolved: str | None = None
 
 
@@ -67,7 +67,6 @@ class AttentionEngine:
     scheduled: list[ScheduledAnalysis] = field(default_factory=list)
     expect: str | None = "kick_off"  # what the next whistle most likely is, from context
     expect_until: float = 600.0
-    last_surge: float = -1e9
     last_goal_t: float = -1e9
     var_open: dict | None = None
     penalty_pending: bool = False
@@ -133,24 +132,26 @@ class AttentionEngine:
         self.now = now
         self.model.tick(now)
         out: list[dict] = []
-        # whistles the feed has not explained yet: show them generic
-        for pw in self.pending:
-            if not pw.shown and not pw.resolved and now - pw.rec["t"] >= WHISTLE_WAIT_S:
-                b = self._banner("whistle", pw.rec["t"] + WHISTLE_WAIT_S, "whistle detected; feed has not said why yet",
-                                 [pw.rec["id"]])
-                pw.shown = b["cue_id"]
-                out.append(b)
-        self.pending = [p for p in self.pending if now - p.rec["t"] < WHISTLE_MATCH_S + 2]
-        # crowd surge
-        jump = self.model.crowd_jump(3)
-        level = self.model.crowd_level()
-        if level is not None and jump >= SURGE_JUMP and level >= SURGE_MIN_LEVEL and now - self.last_surge > SURGE_COOLDOWN:
-            self.last_surge = now
-            out.append(self._banner("crowd", now, f"crowd level rose {jump:+.2f} in 3 s to {level:.2f}",
-                                    [f"crowd@{int(now)}"]))
+        out += self.poll_whistles(now)
         out += self.release_analysis(now)
         out.append(self._meters(now))
         out += self._momentum_swing()
+        return out
+
+    def next_whistle_due(self) -> float:
+        return min((p.detected_t + WHISTLE_WAIT_S for p in self.pending
+                    if not p.shown and not p.resolved), default=float("inf"))
+
+    def poll_whistles(self, now: float) -> list[dict]:
+        self.now = now
+        out = []
+        for pw in self.pending:
+            if not pw.shown and not pw.resolved and now + 1e-9 >= pw.detected_t + WHISTLE_WAIT_S:
+                start = pw.detected_t + WHISTLE_WAIT_S
+                cue = self._banner("whistle", start, "whistle detected; feed has not said why yet", [pw.rec["id"]])
+                pw.shown, pw.shown_t = cue["cue_id"], start
+                out.append(cue)
+        self.pending = [p for p in self.pending if now - p.detected_t < 120][-64:]
         return out
 
     def next_analysis_due(self) -> float:
@@ -198,10 +199,11 @@ class AttentionEngine:
         clock_s = derive.clock_seconds(w["clock"])
         # audio patterns alone are enough for the end of a half
         if q["blasts"] == 3:
-            return [self._banner("full_time", w["t"], "three long blasts", [w["id"]])]
+            return [self._banner("full_time", self.now, "three long blasts", [w["id"]])]
         if q["blasts"] == 2 and q["length"] == "long" and 2700 <= clock_s < 5400 and w["period"] == 1:
-            return [self._banner("half_time", w["t"], "two long blasts at the end of the first half", [w["id"]])]
-        self.pending.append(PendingWhistle(w))
+            return [self._banner("half_time", self.now, "two long blasts at the end of the first half", [w["id"]])]
+        self.pending.append(PendingWhistle(w, detected_t=self.now))
+        self.pending = self.pending[-64:]
         # A linked reason can itself have been delivered before the audio detection.
         for ev in self.model.events:
             if ev.get("whistle_id") == w["id"] or ev.get("trigger_event_id") == w["id"]:
@@ -250,9 +252,10 @@ class AttentionEngine:
             why = f"whistle explained by feed event {ev['type']}"
             if reason == "penalty":
                 why += " (explicit linked referee decision)"
-            banner = self._banner(reason, pw.rec["t"], why, [pw.rec["id"], ev["id"]], update_of=pw.shown,
+            start = pw.shown_t if pw.shown_t is not None else self.now
+            banner = self._banner(reason, start, why, [pw.rec["id"], ev["id"]], update_of=pw.shown,
                                   detail=detail)
-            pw.shown = banner["cue_id"]
+            pw.shown, pw.shown_t = banner["cue_id"], start
             return [banner]
         return []
 
@@ -263,7 +266,9 @@ class AttentionEngine:
         tn = m.team_name(team)
         who = m.player_name(ev.get("player_id"))
         out: list[dict] = []
-        if etype == "period_start":
+        if etype == "drinks_break":
+            out.append(self._banner("drinks_break", self.now, "delivered drinks break; restart remains pending", [ev["id"]]))
+        elif etype == "period_start":
             self._expect("kick_off", 180)
             n = ev["period_start"]["period_no"]
             self.half_start_t = ev["t"]
