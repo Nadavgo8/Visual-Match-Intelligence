@@ -7,6 +7,7 @@ functions at the bottom (see vmi/agents/tools.py).
 from __future__ import annotations
 
 from collections import deque, OrderedDict
+from bisect import bisect_left, insort
 from copy import deepcopy
 from dataclasses import dataclass, field
 
@@ -16,7 +17,8 @@ from ..generator.export import initial_metadata
 
 MOMENTUM_WINDOW_S = 7 * 60
 W_POSSESSION, W_KEY_PASS, W_SHOT = 0.4, 0.3, 0.3
-ON_BALL = {"pass", "shot", "set_piece", "ball_recovery", "interception", "save"}
+ON_BALL = {"pass", "shot", "set_piece", "ball_recovery", "interception", "save", "carry"}
+CONTROL_TYPES = ON_BALL | {"tackle"}
 
 
 @dataclass
@@ -75,6 +77,9 @@ class MatchModel:
     xg_by_shot: dict = field(default_factory=dict)
     last_clock_t: float = -1
     last_restart_t: float = -1
+    shots_by_id: dict = field(default_factory=dict)
+    prepared_passes: set = field(default_factory=set)
+    control_times: dict = field(default_factory=lambda: {"home": [], "away": []})
 
     def __post_init__(self):
         if self.meta.get("schema_version") != VERSION:
@@ -161,6 +166,14 @@ class MatchModel:
             parent = self.by_id[ev["restart_id"]]
             if parent["stoppage_id"] != ev["stoppage_id"] or parent["team"] != ev["team"]:
                 raise ValueError("restart belongs to a different stoppage/team")
+        if ev["type"] == "goal_cancelled":
+            result = self.by_id[ev["result_id"]]
+            shot = self.by_id[ev["shot_id"]]
+            if (result["shot_id"] != shot["id"] or result["outcome"] != "goal" or shot["team"] != ev["team"]
+                    or shot["player_id"] != ev.get("player_id")):
+                raise ValueError("cancellation must reference this shot's goal result")
+            if ev["t"] < result["t"] or ev["t"] < self.by_id[ev["decision_id"]]["t"]:
+                raise ValueError("cancellation precedes its result or decision")
         return False
 
     def _clock(self, rec: dict):
@@ -199,6 +212,18 @@ class MatchModel:
                     return
                 self.xg_by_shot[shot["id"]] = ev["id"]
                 shot["derived"].update(xg=ev["xg"], xg_id=ev["id"], xg_method=ev["method_version"])
+        if etype == "goal_cancelled":
+            shot = self.by_id[ev["shot_id"]]
+            decision = self.by_id[ev["decision_id"]]
+            if (shot["shot"].get("outcome") != "goal"
+                    or self.decision_by_stop.get(decision["stoppage_id"]) != decision["id"]):
+                self.changes.pop()
+                return
+            self.score[shot["team"]] -= 1
+            shot["shot"]["outcome"] = "disallowed"
+            shot["derived"]["result_id"] = ev["id"]
+        if etype == "ball_loose":
+            self.owner = None
         if etype == "play_stopped":
             # An old stop arriving after its restart must not stop the new play.
             if ev["t"] >= self.last_restart_t:
@@ -213,7 +238,7 @@ class MatchModel:
                     old_trigger["derived"]["penalty_awarded"] = False
                 self.decision_by_stop[ev["stoppage_id"]] = ev["id"]
                 trigger = self.by_id[ev["trigger_event_id"]]
-                if trigger["type"] == "foul":
+                if trigger["type"] in {"foul", "handball"}:
                     trigger["derived"]["penalty_awarded"] = ev["decision"] == "penalty"
                     trigger["derived"]["decision_id"] = ev["id"]
                 if ev["stoppage_id"] == self.active_stoppage_id:
@@ -238,11 +263,12 @@ class MatchModel:
                 self.active_stoppage_id = None
                 self.pending_restart_id = None
                 self.owner = ev["team"]
-        if etype == "pass":
-            for shot in self.events:
-                if shot["type"] == "shot" and ev["id"] in shot.get("related", []) and ev["team"] == shot["team"]:
-                    ev["derived"]["key_pass"] = True
-                    shot["derived"]["assisted_by"] = ev["player_id"]
+        if etype == "shot":
+            self.shots_by_id[ev["id"]] = ev
+        if etype in CONTROL_TYPES and ev.get("team") in self.control_times:
+            insort(self.control_times[ev["team"]], ev["t"])
+        if etype in CONTROL_TYPES | {"shot_result", "goal_cancelled"}:
+            self._refresh_preparations()
         if etype == "substitution":
             side, sub = ev["team"], ev["substitution"]
             if sub["off_id"] in self.on_pitch[side]:
@@ -265,11 +291,6 @@ class MatchModel:
             d["xg"] = None
             d["in_box"] = derive.in_opponent_box(team, period, loc)
             d["zone"] = derive.zone(team, period, loc)
-            for rid in ev.get("related", []):
-                p = self.by_id.get(rid)
-                if p and p["type"] == "pass" and p["team"] == team:
-                    p["derived"]["key_pass"] = True
-                    d["assisted_by"] = p["player_id"]
         elif etype == "foul":
             d["in_box"] = derive.in_own_box(team, period, loc)
             d["penalty_awarded"] = False  # only a linked referee decision can award it
@@ -287,6 +308,32 @@ class MatchModel:
                 # the referee let play go on; VAR is looking at a possible foul
                 d["referee_did_not_give"] = True
         return d
+
+    def _refresh_preparations(self):
+        """A key pass and a confirmed assist are different, delivery-dependent facts."""
+        for pid in self.prepared_passes:
+            self.by_id[pid]["derived"]["key_pass"] = False
+        self.prepared_passes.clear()
+        for shot in self.shots_by_id.values():
+            d = shot["derived"]
+            d.pop("preparing_pass_id", None)
+            d.pop("assisted_by", None)
+            p = self.by_id.get(shot.get("preparing_pass_id"))
+            if not p or p["type"] != "pass" or shot["shot"].get("penalty") or shot["shot"].get("outcome") == "disallowed":
+                continue
+            if p["pass"].get("outcome") != "complete" or p["pass"].get("recipient_id") != shot["player_id"]:
+                continue
+            if p["team"] != shot["team"] or not p.get("possession_id") or p["possession_id"] != shot.get("possession_id"):
+                continue
+            controls = self.control_times["away" if shot["team"] == "home" else "home"]
+            index = bisect_left(controls, p["t"])
+            if p["t"] > shot["t"] or (index < len(controls) and controls[index] <= shot["t"]):
+                continue
+            p["derived"]["key_pass"] = True
+            self.prepared_passes.add(p["id"])
+            d["preparing_pass_id"] = p["id"]
+            if shot["shot"].get("outcome") == "goal":
+                d["assisted_by"] = p["player_id"]
 
     def tick(self, t: float):
         """Called once per second of match time."""
@@ -312,7 +359,7 @@ class MatchModel:
             if e["t"] < t0:
                 continue
             if e["type"] == "shot":
-                sh[e["team"]] += 1
+                sh[e["team"]] += e["shot"].get("outcome") != "disallowed"
             elif e["type"] == "pass" and e["derived"].get("key_pass"):
                 kp[e["team"]] += 1
         idx, val = momentum_from_counts(ph, kp["home"], kp["away"], sh["home"], sh["away"])
@@ -345,7 +392,7 @@ class MatchModel:
         out = {}
         for side in ("home", "away"):
             evs = [e for e in self.events if e.get("team") == side and (since_t is None or e["t"] >= since_t)]
-            shots = [e for e in evs if e["type"] == "shot"]
+            shots = [e for e in evs if e["type"] == "shot" and e["shot"].get("outcome") != "disallowed"]
             passes = [e for e in evs if e["type"] == "pass"]
             out[side] = {
                 "goals": sum(1 for s in shots if s["shot"].get("outcome") == "goal"),

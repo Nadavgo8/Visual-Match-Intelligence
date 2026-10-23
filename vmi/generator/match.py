@@ -17,6 +17,7 @@ BOX_X = PITCH_X - 16.5
 BOX_Y = (13.84, 54.16)
 HT_GAP = 60.0  # half-time compressed to 60 s on the timeline
 SCHEMA_VERSION = "2.0"
+GENERATOR_VERSION = "2.1.0"
 
 
 def _other(side: str) -> str:
@@ -106,7 +107,8 @@ class _Sim:
         self.play.possession_team = None
         if self.keyframes:
             k = self.keyframes[-1]
-            self.keyframes.append(Keyframe(round(self.t, 2), k.x, k.y, None, False))
+            self.keyframes.append(Keyframe(round(self.t, 2), k.x, k.y, None, False,
+                                           player_positions=dict(k.player_positions)))
 
     def decide(self, trigger: dict, kind: str, team: str, *, supersedes: str | None = None):
         self.stop(trigger)
@@ -303,6 +305,10 @@ class _Sim:
             if period == 1:
                 self.t += HT_GAP
         self.t += 5
+        return self.export_match()
+
+    def export_match(self) -> Match:
+        """Export either a full match or a short deterministic scenario."""
         crowd = self.build_crowd()
         teams_meta = {
             s: {"name": tm.name, "short": tm.short, "colour": tm.colour,
@@ -312,6 +318,7 @@ class _Sim:
         }
         meta = {
             "schema_version": SCHEMA_VERSION, "match_id": self.match_id, "seed": self.seed,
+            "generator_version": GENERATOR_VERSION,
             "synthetic": True, "pitch": [PITCH_X, PITCH_Y], "teams": teams_meta,
             "end_t": round(self.t, 2), "final_score": dict(self.score),
             "home_attacks_right_in_period": {"1": True, "2": False},
@@ -599,6 +606,8 @@ class _Sim:
         self.key(side, ax, ay, shooter)
         self.keyframes[-1].flight_height = 0.8 if header else 1.5
         s = self.emit("shot", side, shooter, ax, ay, related=related, **q)
+        if last_pass:
+            s["preparing_pass_id"] = last_pass["id"]
         s["play_context"] = "penalty" if penalty else self.play.play_context
         self.events.append(delayed_xg(self.seed, s, ax, ay, header, self.xg_delay))
         self.t += 0.6

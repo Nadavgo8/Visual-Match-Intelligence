@@ -175,6 +175,8 @@ class AttentionEngine:
             reason = "foul"
         elif etype == "foul" and not ev["foul"].get("advantage"):
             reason = "foul"
+        elif etype == "handball":
+            reason = "foul"
         elif etype == "offside":
             reason = "offside"
         elif etype == "var" and ev["var"]["phase"] == "check":
@@ -224,9 +226,11 @@ class AttentionEngine:
             out.append(self._feed(ev, TIER_BIG, "whistle", "Kick-off!" if n == 1 else "Second half under way.",
                                   "Kick-off." if n == 1 else "Second half under way; ends have switched.",
                                   team=None))
-        elif etype in {"shot", "shot_result", "shot_xg"}:
+        elif etype in {"shot", "shot_result", "shot_xg", "goal_cancelled"}:
             shot = ev if etype == "shot" else m.by_id[ev["shot_id"]]
             out.append(self._shot_feed(shot))
+            if etype == "goal_cancelled":
+                self.scheduled = [sa for sa in self.scheduled if not (sa.kind == "goal" and sa.trigger["id"] == shot["id"])]
             if etype == "shot_result" and ev["outcome"] == "goal":
                 self.last_goal_t = ev["t"]
                 self._expect("kick_off", 180)

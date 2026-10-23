@@ -31,7 +31,7 @@ from ..generator.tracking import Tracker
 log = logging.getLogger("vmi")
 WEB = Path(__file__).resolve().parents[2] / "web"
 DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "12"))
-TICK_HZ = 10
+TICK_HZ = 20
 SPEEDS = [1, 2, 4, 8, 16, 32]
 DEFAULT_PROFILE = {"depth": "basic", "team": None, "amount": "balanced"}
 

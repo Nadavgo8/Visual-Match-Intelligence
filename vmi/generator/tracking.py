@@ -48,6 +48,16 @@ class Tracker:
             return "GK"
         return self.players[pid]["position"]
 
+    def frames(self, start: float = 0, end: float | None = None, hz: int = 20):
+        """Stream a bounded time range by index; never allocate a match of frames."""
+        end = self.m.duration if end is None else end
+        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start <= end <= self.m.duration):
+            raise ValueError("tracking range must be finite and inside the match")
+        if not isinstance(hz, int) or isinstance(hz, bool) or not 1 <= hz <= 100:
+            raise ValueError("tracking frequency must be an integer from 1 to 100")
+        for index in range(math.floor((end - start) * hz + 1e-8) + 1):
+            yield self.frame(start + index / hz)
+
     def lineup(self, side: str, t: float) -> list[str]:
         ids = [p["id"] for p in self.m.meta["teams"][side]["players"] if p["starter"]]
         for ct, s, off, on in self.changes:
@@ -99,6 +109,9 @@ class Tracker:
                     ax += 1.2 * math.sin(t / 3.1 + seed)
                     ay += 1.2 * math.cos(t / 2.7 + seed * 0.7)
                 x, y = (ax, ay) if right else (PITCH_X - ax, PITCH_Y - ay)
+                pa = a.player_positions.get(pid, (x, y))
+                pb = b.player_positions.get(pid, (x, y))
+                x, y = pa[0] + (pb[0] - pa[0]) * alpha, pa[1] + (pb[1] - pa[1]) * alpha
                 # the player on the ball moves to it
                 if holder == pid:
                     x, y = bx, by
