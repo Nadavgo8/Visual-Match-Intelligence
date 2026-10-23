@@ -176,6 +176,8 @@ class MatchTools:
         peaks = []
         for i in range(2, len(series) - 2):
             t, lv = series[i]
+            if lv is None or any(level is None for _, level in series[i - 2:i + 3]):
+                continue
             if lv >= max(x[1] for x in series[i - 2:i + 3]) and lv > 0.55:
                 peaks.append((lv, t))
         peaks.sort(reverse=True)
@@ -184,7 +186,8 @@ class MatchTools:
             before = next((e for e in reversed(m.events) if t - 8 <= e["t"] <= t and e["type"] in SHOWN_TYPES | {"tackle"}), None)
             out.append({"t": t, "level": lv, "just_after": describe_event(m, before) if before else None,
                         "event_id": before["id"] if before else None})
-        return {"peaks": out, "note": "the crowd sensor measures loudness only (last 10 min kept)",
+        return {"peaks": out, "available": m.crowd_level() is not None,
+                "note": "the crowd sensor measures loudness only (last 10 min kept); missing intervals are not silence",
                 "evidence": [p["event_id"] for p in out if p["event_id"]]}
 
     def get_rule(self, topic: str) -> dict:

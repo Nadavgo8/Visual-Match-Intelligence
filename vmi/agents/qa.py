@@ -178,6 +178,8 @@ class Assistant:
             return self._out(text, s["evidence"], "match_analyst", ["get_score_and_clock"])
         if re.search(r"\b(crowd|loud|noise|atmosphere|fans)\b", ql):
             r = t.get_crowd_peaks()
+            if not r["available"] and not r["peaks"]:
+                return self._out("Crowd data is unavailable; I cannot tell how loud the stadium is.", [], "match_analyst", ["get_crowd_peaks"])
             if not r["peaks"]:
                 return self._out("The crowd hasn't hit a big peak in the last ten minutes.", [], "match_analyst",
                                  ["get_crowd_peaks"])
@@ -190,8 +192,10 @@ class Assistant:
             mo = t.get_momentum()
             share = round(mo["home_index"] * 100)
             lead = mo["home_team"] if share >= 55 else mo["away_team"] if share <= 45 else None
+            possession = (f"{round(mo['possession_home'] * 100)}% possession for {mo['home_team']}"
+                          if mo["possession_available"] else "possession data unavailable")
             text = (f"Over the last 7 minutes {'it has been even' if not lead else lead + ' have been on top'}: "
-                    f"{round(mo['possession_home'] * 100)}% possession for {mo['home_team']}, key passes "
+                    f"{possession}, key passes "
                     f"{mo['key_passes']['home']}–{mo['key_passes']['away']}, shots {mo['shots']['home']}–{mo['shots']['away']}.")
             ev, calls = list(mo["evidence"]), ["get_momentum"]
             if deep or re.search(r"\b(tactic\w*|pattern|flank|wing|attack\w*)\b", ql):

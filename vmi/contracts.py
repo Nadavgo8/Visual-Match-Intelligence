@@ -29,6 +29,11 @@ def validate_record(rec: dict, match_id: str) -> None:
             raise ValueError("invalid crowd level")
         if stream == "match_state" and not isinstance(rec.get("ball_in_play"), bool):
             raise ValueError("invalid play state")
+        quality = rec.get("quality", {})
+        if not isinstance(quality, dict):
+            raise ValueError("invalid measurement quality")
+        if "confidence" in quality and (not _number(quality["confidence"]) or not 0 <= quality["confidence"] <= 1):
+            raise ValueError("invalid measurement confidence")
         return
     if not isinstance(rec.get("id"), str) or not rec["id"]:
         raise ValueError("event id is required")

@@ -6,10 +6,14 @@ import heapq
 from collections.abc import Iterator
 
 from ..generator.match import Match
+from ..generator.tracking import Tracker
 from .attention import AttentionEngine
+from .atmosphere import Atmosphere
 from .model import MatchModel
 
 STATE_LATENCY = 0.4
+TRACKING_LATENCY = 0.05
+TRACKING_HZ = 20
 
 
 def delivery_stream(match: Match) -> list[tuple[float, int, dict]]:
@@ -29,14 +33,16 @@ def delivery_stream(match: Match) -> list[tuple[float, int, dict]]:
 class Replay:
     """Steps a match forward in match time and returns the engine's outputs."""
 
-    def __init__(self, match: Match):
+    def __init__(self, match: Match, atmosphere_mode: str = "combined"):
         self.match = match
         self.stream = delivery_stream(match)
         self.i = 0
         self.model = MatchModel(match.meta)
-        self.engine = AttentionEngine(self.model)
+        self.engine = AttentionEngine(self.model, atmosphere=Atmosphere(mode=atmosphere_mode))
         self.now = 0.0
         self.next_tick = 0.0
+        self.tracker = Tracker(match)
+        self.tracking_index = 0
 
     @property
     def done(self) -> bool:
@@ -47,9 +53,20 @@ class Replay:
         to_t = min(to_t, self.match.duration)
         while True:
             next_rec = self.stream[self.i][0] if self.i < len(self.stream) else float("inf")
-            if next_rec > to_t and self.next_tick > to_t:
+            sample_t = self.tracking_index / TRACKING_HZ
+            next_tracking = sample_t + TRACKING_LATENCY if sample_t <= self.match.duration else float("inf")
+            expiry = self.engine.next_meter_expiry()
+            analysis_due = self.engine.next_analysis_due()
+            if min(next_rec, next_tracking, self.next_tick, expiry, analysis_due) > to_t:
                 break
-            if next_rec <= self.next_tick:
+            if expiry < min(next_rec, next_tracking, self.next_tick, analysis_due):
+                out += self.engine.poll_meters(expiry)
+            elif analysis_due < min(next_rec, next_tracking, self.next_tick):
+                out += self.engine.release_analysis(analysis_due)
+            elif next_tracking <= min(next_rec, self.next_tick):
+                self.tracking_index += 1
+                out += self.engine.ingest(self.tracker.observation(sample_t), next_tracking)
+            elif next_rec <= self.next_tick:
                 at, _, rec = self.stream[self.i]
                 self.i += 1
                 out += self.engine.ingest(rec, at)

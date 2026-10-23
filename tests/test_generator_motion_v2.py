@@ -64,3 +64,13 @@ def test_all_restarts_link_to_stop_award_and_execution(match):
     for ev in match.events:
         if ev["type"] == "shot":
             assert ev["play_context"] in {"open_play", "corner", "penalty", "free_kick", "kick_off", "throw_in", "goal_kick"}
+
+
+def test_penalty_execution_and_its_whistle_have_same_clock():
+    from vmi.generator.match import _Sim
+    sim=_Sim(12,"penalty-clock")
+    sim.t=120
+    sim.penalty("home")
+    action=next(e for e in sim.events if e["type"]=="set_piece" and e["set_piece"]["kind"]=="penalty")
+    whistle=next(e for e in sim.events if e["type"]=="whistle" and e["t"]==action["t"])
+    assert action["clock"]==whistle["clock"]=="2:01"

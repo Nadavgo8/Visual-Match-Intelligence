@@ -47,7 +47,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .atmo-meter i { display: block; height: 0.55em; border-radius: 0.2em; background: #2a3340; transition: background 0.6s, filter 0.6s; }
 .atmo-meter i.on { background: var(--mood); filter: saturate(calc(0.35 + var(--lvl) * 0.65)) brightness(calc(0.5 + var(--lvl) * 0.5)); }
 .atmo-wave { width: 100%; height: 1.1em; margin-top: 0.35em; color: var(--mood); }
-.atmo-label { font-weight: 800; font-size: 0.78em; margin-top: 0.15em; color: var(--mood); }
+.atmo-label { font-weight: 800; font-size: 0.78em; margin-top: 0.15em; color: var(--mood); transition: color 0.4s ease; }
 .atmo.tension .atmo-meter { animation: pulse 1.6s ease-in-out infinite; } /* < 1 Hz, WCAG 2.3.1 safe */
 .atmo.eruption { animation: burst 1.2s ease-out 1; }
 @keyframes pulse { 50% { opacity: 0.72; } }

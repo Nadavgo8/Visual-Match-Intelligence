@@ -1,10 +1,10 @@
 import { FEED_ICONS } from "./icons.js";
+import { atmospherePresentation } from "./atmosphere.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const MOOD = { calm: "Calm", cheering: "Cheering", tension: "Tension", eruption: "Eruption" };
 const MOMENT = { goal: "After the goal", var_check: "While VAR checks", var_decision: "VAR decision",
   half_time: "Half-time", full_time: "Full-time", substitution: "Substitution", injury: "Injury stoppage" };
 const KEY = "vmi.profile.v1";
@@ -47,9 +47,11 @@ function onMeters(m) {
   $("score").textContent = `${m.score.home}–${m.score.away}`;
   $("clock").textContent = m.clock;
   const chip = $("atmo-chip");
-  chip.textContent = `${MOOD[m.atmosphere.mood]} ${m.atmosphere.level5}/5`;
-  chip.className = `chip ${m.atmosphere.mood}`;
-  chip.style.background = `var(--${m.atmosphere.mood})`;
+  const a = atmospherePresentation(m.atmosphere);
+  chip.textContent = a.label;
+  chip.className = "chip";
+  chip.style.background = a.color;
+  chip.style.color = "#071b20";
   chip.title = m.atmosphere.why;
   $("mom").style.width = `${(m.momentum.home_index * 100).toFixed(0)}%`;
 }

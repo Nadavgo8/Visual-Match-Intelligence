@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from . import derive
 from ..contracts import VERSION, LINK_PARENTS, validate_record
 from ..generator.export import initial_metadata
+from .atmosphere import controlled_owner, crowd_component
 
 MOMENTUM_WINDOW_S = 7 * 60
 W_POSSESSION, W_KEY_PASS, W_SHOT = 0.4, 0.3, 0.3
@@ -29,6 +30,7 @@ class Momentum:
     key_passes: dict
     shots: dict
     window_s: int
+    possession_available: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -36,6 +38,7 @@ class Momentum:
             "possession_home": round(self.possession_home, 3),
             "key_passes": self.key_passes, "shots": self.shots, "window_s": self.window_s,
             "weights": {"possession": W_POSSESSION, "key_passes": W_KEY_PASS, "shots": W_SHOT},
+            "possession_available": self.possession_available,
         }
 
 
@@ -80,6 +83,7 @@ class MatchModel:
     shots_by_id: dict = field(default_factory=dict)
     prepared_passes: set = field(default_factory=set)
     control_times: dict = field(default_factory=lambda: {"home": [], "away": []})
+    tracking: dict | None = None
 
     def __post_init__(self):
         if self.meta.get("schema_version") != VERSION:
@@ -108,7 +112,14 @@ class MatchModel:
         validate_record(rec, self.meta["match_id"])
         stream = rec.get("stream")
         if stream == "crowd":
-            self.crowd.append((rec["t"], rec["crowd_level"]))
+            if not self.crowd or rec["t"] >= self.crowd[-1][0]:
+                q = rec.get("quality", {})
+                level = rec["crowd_level"] if q.get("status") == "measured" and q.get("confidence", 0) >= 0.8 else None
+                self.crowd.append((rec["t"], level))
+            return rec
+        if stream == "tracking":
+            if self.tracking is None or rec["t"] > self.tracking["t"]:
+                self.tracking = deepcopy(rec)
             return rec
         if stream == "match_state":
             # Only explicit stop / restart events govern the delivered play state.
@@ -189,6 +200,12 @@ class MatchModel:
         self.changes.append(ev)
         self._clock(ev)
         etype = ev["type"]
+        if self.tracking and ev["t"] >= self.tracking["t"]:
+            p = self.tracking.get("possession", {})
+            if etype == "ball_loose" or (etype in {"tackle", "interception", "ball_recovery", "save"}
+                    and (ev.get("team") != p.get("team")
+                         or (ev.get("possession_id") and ev["possession_id"] != p.get("id")))):
+                self.tracking = None
         if etype in ON_BALL and ev.get("team"):
             self.owner = ev["team"]
         if etype == "tackle" and ev.get("team"):
@@ -342,9 +359,11 @@ class MatchModel:
             if t - ev["delivered_t"] > 120:
                 self.link_errors.append({"id": eid, "reason": "source not delivered within 120s"})
                 del self.pending_links[eid]
-        if self.ball_in_play and self.owner:
-            self.possession_samples.append((t, self.owner))
-            self.possession_total[self.owner] += 1
+        owner = controlled_owner(self.tracking, t) if self.ball_in_play else None
+        if owner:
+            side = owner[0]["team"]
+            self.possession_samples.append((t, side))
+            self.possession_total[side] += 1
         while self.possession_samples and self.possession_samples[0][0] < t - MOMENTUM_WINDOW_S:
             self.possession_samples.popleft()
 
@@ -363,26 +382,25 @@ class MatchModel:
             elif e["type"] == "pass" and e["derived"].get("key_pass"):
                 kp[e["team"]] += 1
         idx, val = momentum_from_counts(ph, kp["home"], kp["away"], sh["home"], sh["away"])
-        return Momentum(idx, val, ph, kp, sh, MOMENTUM_WINDOW_S)
+        return Momentum(idx, val, ph, kp, sh, MOMENTUM_WINDOW_S, bool(poss))
 
-    def crowd_level(self) -> float:
-        if not self.crowd:
-            return 0.0
-        recent = [lv for t, lv in list(self.crowd)[-3:]]
-        return sum(recent) / len(recent)
+    def crowd_level(self) -> float | None:
+        return crowd_component(self.crowd, self.t)
 
     def crowd_jump(self, seconds: int = 3) -> float:
         """Rise of the (lightly smoothed) crowd level over the last few seconds."""
         if len(self.crowd) < seconds + 2:
             return 0.0
         vals = [lv for _, lv in self.crowd]
+        if any(v is None for v in vals[-(seconds + 2):]):
+            return 0.0
         now = (vals[-1] + vals[-2]) / 2
         return now - min(vals[-(seconds + 2):-1])
 
     def crowd_reaction_after(self, t: float, window: float = 5.0) -> dict | None:
         """How the crowd level moved right after time t (timing only, never why)."""
-        before = [lv for ct, lv in self.crowd if t - 4 <= ct <= t]
-        after = [lv for ct, lv in self.crowd if t < ct <= t + window]
+        before = [lv for ct, lv in self.crowd if t - 4 <= ct <= t and lv is not None]
+        after = [lv for ct, lv in self.crowd if t < ct <= t + window and lv is not None]
         if not before or not after:
             return None
         delta = max(after) - sum(before) / len(before)
