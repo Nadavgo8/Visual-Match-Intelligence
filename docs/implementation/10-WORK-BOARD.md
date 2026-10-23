@@ -10,7 +10,7 @@
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
 | D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏51df5a8; ‏175 בדיקות Python ו־13 Node עברו על HEAD; יעד FPS עדיין לא אומת ואין מיזוג |
 | D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
-| D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
+| D2-00 | BLOCKED (הכרעה) | `codex/d2-model-feasibility`: שכבת ספק ניטרלית, סט 30 שאלות וכלי הערכה; 208 Python ו־12 Node עברו על HEAD. ההכרעה חסומה: אין מקום בדיסק ל־Ollama, זכאות Azure for Students לא ידועה, ונדרשת ביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md), [העברת D2](HANDOFF-D2.md) |
 | D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |
 | D2-02 | WAITING_DEPENDENCY | חוזה חדרים, run_id ומספור הודעות |
 | D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
