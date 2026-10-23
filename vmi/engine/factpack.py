@@ -145,13 +145,14 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
         facts.append({"id": "stat:match", "type": "match_stats", "home": st["home"], "away": st["away"]})
         for e in m.events:
             if e["type"] == "shot" and e["shot"].get("outcome") == "goal":
-                facts.append({"id": e["id"], "type": "goal", "minute": derive.minute_of(e["clock"]),
+                facts.append({"id": e["derived"]["result_id"], "type": "goal", "minute": derive.minute_of(e["clock"]),
                               "team": m.team_name(e["team"]), "scorer": _player(m, e["player_id"]),
                               "penalty": e["shot"].get("penalty", False)})
             elif e["type"] == "card" and e["card"]["colour"] != "yellow":
                 facts.append({"id": e["id"], "type": "red_card", "minute": derive.minute_of(e["clock"]),
                               "player": _player(m, e["player_id"])})
-        best = max((e for e in m.events if e["type"] == "shot" and e["shot"].get("outcome") != "goal"),
+        best = max((e for e in m.events if e["type"] == "shot" and e["shot"].get("outcome") in
+                    {"saved", "blocked", "post", "off_target"}),
                    key=lambda e: e["derived"].get("xg") or 0, default=None)
         if best and (best["derived"].get("xg") or 0) >= 0.2:
             facts.append({"id": best["id"], "type": "best_missed_chance", "minute": derive.minute_of(best["clock"]),

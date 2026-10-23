@@ -74,6 +74,7 @@ class MatchModel:
     result_by_shot: dict = field(default_factory=dict)
     xg_by_shot: dict = field(default_factory=dict)
     last_clock_t: float = -1
+    last_restart_t: float = -1
 
     def __post_init__(self):
         if self.meta.get("schema_version") != VERSION:
@@ -200,8 +201,7 @@ class MatchModel:
                 shot["derived"].update(xg=ev["xg"], xg_id=ev["id"], xg_method=ev["method_version"])
         if etype == "play_stopped":
             # An old stop arriving after its restart must not stop the new play.
-            latest = max((e["t"] for e in self.events if e["type"] == "restart_taken"), default=-1)
-            if ev["t"] >= latest:
+            if ev["t"] >= self.last_restart_t:
                 self.active_stoppage_id = ev["id"]
                 self.ball_in_play = False
                 self.owner = None
@@ -216,7 +216,8 @@ class MatchModel:
                 if trigger["type"] == "foul":
                     trigger["derived"]["penalty_awarded"] = ev["decision"] == "penalty"
                     trigger["derived"]["decision_id"] = ev["id"]
-                self.pending_restart_id = None
+                if ev["stoppage_id"] == self.active_stoppage_id:
+                    self.pending_restart_id = None
             else:
                 self.changes.pop()
                 self.link_errors.append({"id": ev["id"], "reason": "superseded referee decision"})
@@ -233,6 +234,7 @@ class MatchModel:
                 self.link_errors.append({"id": ev["id"], "reason": "execution uses superseded decision"})
             elif ev["stoppage_id"] == self.active_stoppage_id:
                 self.ball_in_play = True
+                self.last_restart_t = max(self.last_restart_t, ev["t"])
                 self.active_stoppage_id = None
                 self.pending_restart_id = None
                 self.owner = ev["team"]

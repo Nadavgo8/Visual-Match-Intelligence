@@ -238,3 +238,30 @@ def test_invalid_analytics_rejected_without_mutation(match, patch):
     with pytest.raises(ValueError):
         m.ingest(xg(match) | patch)
     assert not m.events and not m.pending_links
+
+
+def test_xg_without_result_is_not_called_a_missed_chance_in_period_summary(match):
+    m = MatchModel(match.meta)
+    m.ingest(shot(match))
+    m.ingest(xg(match))
+    pack = build_factpack(m, "full_time", event(match, "period_end", "end", period_end={"period_no": 2}))
+    assert not any(f["type"] == "best_missed_chance" for f in pack["facts"])
+    text = template(pack, "deep")
+    assert "missed" not in str(text).lower()
+
+
+def test_rejected_execution_cannot_hide_a_later_valid_stop(match):
+    m = MatchModel(match.meta)
+    for e in (event(match, "foul", "f", foul={"advantage": False}),
+              event(match, "play_stopped", "s", trigger_event_id="f", reason="unknown"),
+              event(match, "referee_decision", "d", trigger_event_id="f", stoppage_id="s", decision="penalty"),
+              event(match, "restart_awarded", "a", decision_id="d", stoppage_id="s", restart_kind="penalty"),
+              event(match, "referee_decision", "correction", trigger_event_id="f", stoppage_id="s",
+                    decision="free_kick", supersedes_decision_id="d"),
+              event(match, "restart_awarded", "a2", decision_id="correction", stoppage_id="s", restart_kind="free_kick"),
+              event(match, "restart_taken", "valid", t=15, restart_id="a2", stoppage_id="s"),
+              event(match, "restart_taken", "invalid", t=100, restart_id="a", stoppage_id="s")):
+        m.ingest(e)
+    assert m.ball_in_play
+    m.ingest(event(match, "play_stopped", "s2", t=20, trigger_event_id="f", reason="unknown"))
+    assert not m.ball_in_play and m.active_stoppage_id == "s2"
