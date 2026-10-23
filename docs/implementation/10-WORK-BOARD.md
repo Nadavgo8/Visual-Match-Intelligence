@@ -7,8 +7,8 @@
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
-| D1-03 | IN_PROGRESS | codex/d1-atmosphere-engine מ־12adc05: נוסחת 80/20, טריות ויציבות, מעקב עצל ותצוגה משותפת; סקירה והרצות סופיות בהמשך |
-| D1-04 | WAITING_DEPENDENCY | חוזי תנועה ושעון יציבים |
+| D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; לאחר מיזוג 174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node; smoke עצירה/חידוש ותוצאה עבר |
+| D1-04 | IN_PROGRESS | codex/d1-match-2d נפתח מ־main המאומת 52ad4a5; ציור נפרד, אינטרפולציה לפי זמן מקור, גובה ואיפוס; בדיקות וסקירה סופיות בהמשך |
 | D1-05 | WAITING_DEPENDENCY | חוזי סמלים, זמן וסיבת עצירה |
 | D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
 | D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |

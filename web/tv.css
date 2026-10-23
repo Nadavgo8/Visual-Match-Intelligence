@@ -6,8 +6,8 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
-.wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
-.stage { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #1d5c2e; }
+.wrap { max-width: 1600px; margin: 0 auto; padding: 12px; }
+.stage { position: relative; width: min(100%, calc((100dvh - 170px) * 16 / 9)); min-width: 280px; margin-inline: auto; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #1d5c2e; }
 canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .overlay { position: absolute; inset: 0; pointer-events: none; font-size: clamp(10px, 1.35vw, 17px); }
 .overlay.off { display: none; }
@@ -72,3 +72,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .trace b { color: var(--text); }
 .trace ol { margin: 6px 0 0; padding-left: 18px; max-height: 9.5em; overflow: auto; }
 .trace li span { color: var(--text); }
+
+.controls { max-width: 1400px; margin-inline: auto; }
+#render-status { font-size: 12px; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .stage { width: 100%; } .synthetic { font-size: 8px; white-space: nowrap; } }

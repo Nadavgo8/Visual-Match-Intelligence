@@ -60,3 +60,14 @@ def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
     with c.websocket_connect("/ws/v2-boundary-test?role=app") as ws:
         initial = json.loads(ws.receive_text())
         assert initial["chapters"] == [] and initial["duration"] is None
+
+
+def test_tv_state_identity_matches_tracking_and_changes_with_seed():
+    room = Room("render-identity", 12)
+    initial = room.state("tv")["match_id"]
+    assert initial == room.tracker.frame(0)["match_id"]
+    assert room.state("app")["match_id"] == initial
+    room.seed = 3
+    room.reset()
+    assert room.state("tv")["match_id"] != initial
+    assert room.state("tv")["match_id"] == room.tracker.frame(0)["match_id"]

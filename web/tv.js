@@ -1,18 +1,16 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
+import { FrameTimeline } from "./match-motion.mjs";
+import { MatchRenderer } from "./match-renderer.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
 const canvas = $("pitch");
-const ctx = canvas.getContext("2d");
-const W = canvas.width, H = canvas.height;
-const PX = 105, PY = 68, M = 60; // pitch metres, margin px
-const sx = (x) => M + (x / PX) * (W - 2 * M);
-const sy = (y) => H - M - (y / PY) * (H - 2 * M); // y up, like the data
-
-let state = null, frame = null, teams = null;
+const timeline = new FrameTimeline();
+const renderer = new MatchRenderer(canvas);
+let state = null, teams = null;
 const audio = new SyntheticAudio();
 const live = new Map(); // cue_id -> {el, timer}
 
@@ -24,14 +22,15 @@ const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
   if (m.type === "state") onState(m);
-  else if (m.type === "frame") frame = m;
+  else if (m.type === "frame") timeline.push(m, performance.now());
   else if (m.type === "banner") onBanner(m);
   else if (m.type === "meters") onMeters(m);
   else if (m.type === "trace") onTrace(m);
 };
-ws.onclose = () => { $("agents").textContent = "disconnected, reload to reconnect"; };
+ws.onclose = () => { timeline.freeze(performance.now()); $("agents").textContent = "disconnected, reload to reconnect"; };
 
 function onState(s) {
+  timeline.sync(s, performance.now());
   state = s;
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
@@ -48,7 +47,7 @@ function onState(s) {
   for (const c of s.chapters) {
     const b = document.createElement("button");
     b.textContent = `${c.clock} ${c.label}`;
-    b.onclick = () => send({ cmd: "seek", t: c.t });
+    b.onclick = () => jump({ cmd: "seek", t: c.t });
     ch.appendChild(b);
   }
   scoreBug(s.score, s.clock);
@@ -101,65 +100,33 @@ function onBanner(b) {
   live.set(b.cue_id, { el, timer });
 }
 
-// ---------- pitch ----------
-function drawPitch() {
-  for (let i = 0; i < 12; i++) {
-    ctx.fillStyle = i % 2 ? "#226b35" : "#1f6431";
-    ctx.fillRect((W / 12) * i, 0, W / 12 + 1, H);
-  }
-  ctx.strokeStyle = "rgba(255,255,255,0.75)";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(sx(0), sy(PY), sx(PX) - sx(0), sy(0) - sy(PY));
-  line(52.5, 0, 52.5, PY);
-  ctx.beginPath(); ctx.arc(sx(52.5), sy(34), (9.15 / PX) * (W - 2 * M), 0, 2 * Math.PI); ctx.stroke();
-  for (const [x0, dir] of [[0, 1], [PX, -1]]) {
-    rect(x0, 13.84, x0 + dir * 16.5, 54.16);
-    rect(x0, 24.84, x0 + dir * 5.5, 43.16);
-    dot(x0 + dir * 11, 34, 3, "rgba(255,255,255,0.8)");
-    ctx.lineWidth = 5; line(x0, 30.34, x0, 37.66); ctx.lineWidth = 3;
-  }
-}
-function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(sx(x1), sy(y1)); ctx.lineTo(sx(x2), sy(y2)); ctx.stroke(); }
-function rect(x1, y1, x2, y2) { ctx.strokeRect(Math.min(sx(x1), sx(x2)), sy(Math.max(y1, y2)), Math.abs(sx(x2) - sx(x1)), Math.abs(sy(y2) - sy(y1))); }
-function dot(x, y, r, c) { ctx.beginPath(); ctx.arc(sx(x), sy(y), r, 0, 2 * Math.PI); ctx.fillStyle = c; ctx.fill(); }
-
-let shown = null;
-function render() {
-  drawPitch();
-  if (frame && teams) {
-    // ease towards the latest frame so 10 Hz updates look smooth
-    if (!shown) shown = structuredClone(frame);
-    const k = 0.35;
-    const map = new Map(shown.players.map((p) => [p.id, p]));
-    shown.players = frame.players.map((p) => {
-      const q = map.get(p.id);
-      return q ? { ...p, x: q.x + (p.x - q.x) * k, y: q.y + (p.y - q.y) * k } : p;
-    });
-    shown.ball = [shown.ball[0] + (frame.ball[0] - shown.ball[0]) * k, shown.ball[1] + (frame.ball[1] - shown.ball[1]) * k];
-    for (const p of shown.players) {
-      const home = p.team === "home";
-      dot(p.x, p.y, 15, home ? teams.home.colour : teams.away.colour);
-      ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
-      ctx.fillStyle = home ? "#fff" : "#1a1a1a";
-      ctx.font = "700 14px Inter, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(p.n, sx(p.x), sy(p.y) + 1);
-    }
-    dot(shown.ball[0] + 0.25, shown.ball[1] - 0.25, 7, "rgba(0,0,0,0.35)");
-    dot(shown.ball[0], shown.ball[1], 7, "#fff");
+// Football rendering and accessibility overlays have independent lifecycles.
+let fpsStart = 0, fpsCount = 0, drawMs = 0;
+function render(now) {
+  const frame = timeline.sample(now);
+  const drawStart = performance.now();
+  renderer.draw(frame, teams);
+  drawMs += performance.now() - drawStart;
+  if (frame) canvas.dataset.simTime = frame.t.toFixed(3);
+  fpsCount++;
+  if (now - fpsStart >= 2000) {
+    $("render-status").textContent = `${Math.round(fpsCount * 1000 / (now - fpsStart))} FPS | ${(drawMs / fpsCount).toFixed(1)} ms draw | 2D source tracking`;
+    fpsCount = 0; drawMs = 0; fpsStart = now;
   }
   requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
+function jump(command) { timeline.beginJump(); send(command); }
 
 // ---------- controls ----------
 let scrubbing = false;
 $("play").onclick = () => { audio.unlock(); send({ cmd: state?.playing ? "pause" : "play" }); };
 $("speed").onchange = (e) => send({ cmd: "speed", value: Number(e.target.value) });
 $("scrub").oninput = () => { scrubbing = true; };
-$("scrub").onchange = (e) => { scrubbing = false; send({ cmd: "seek", t: Number(e.target.value) }); };
+$("scrub").onchange = (e) => { scrubbing = false; jump({ cmd: "seek", t: Number(e.target.value) }); };
 $("overlay-on").onchange = (e) => $("overlay").classList.toggle("off", !e.target.checked);
 $("sound-on").onchange = (e) => { audio.unlock(); audio.enabled = e.target.checked; if (!e.target.checked) audio.crowd(0); };
-$("new").onclick = () => send({ cmd: "new_match", seed: Number($("seed").value) });
+$("new").onclick = () => jump({ cmd: "new_match", seed: Number($("seed").value) });
 
 // ---------- engine trace: what was shown, and what was left out and why ----------
 function onTrace(m) {
