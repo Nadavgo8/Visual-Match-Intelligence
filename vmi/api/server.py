@@ -76,7 +76,7 @@ def chapters(match: Match) -> list[dict]:
     out = []
     for e in match.events:
         label = None
-        if e["type"] == "shot" and e["shot"]["outcome"] == "goal":
+        if e["type"] == "shot_result" and e["outcome"] == "goal":
             label = "Goal"
         elif e["type"] == "var" and e["var"]["phase"] == "check":
             label = "VAR check"
@@ -133,13 +133,13 @@ class Room:
     async def to_role(self, role: str, msg: dict):
         await asyncio.gather(*(self.send(c, msg) for c in self.clients if c.role == role))
 
-    def state(self) -> dict:
+    def state(self, role: str = "app") -> dict:
         m = self.replay.model
         return {"type": "state", "room": self.name, "seed": self.seed, "t": round(self.replay.now, 2),
-                "duration": self.match.duration, "playing": self.playing, "speed": self.speed,
+                "duration": self.match.duration if role == "tv" else None, "playing": self.playing, "speed": self.speed,
                 "clock": m.clock, "period": m.period, "score": m.score,
                 "teams": {s: {k: v for k, v in tm.items() if k != "players"} for s, tm in self.match.meta["teams"].items()},
-                "chapters": chapters(self.match), "agents": "foundry" if _client else "local",
+                "chapters": chapters(self.match) if role == "tv" else [], "agents": "foundry" if _client else "local",
                 "model": _model_name}
 
     # ---------- playback ----------
@@ -162,8 +162,7 @@ class Room:
             await self.to_role("tv", {"type": "frame", **self.tracker.frame(self.replay.now)})
 
     async def broadcast_state(self):
-        st = self.state()
-        await asyncio.gather(*(self.send(c, st) for c in self.clients))
+        await asyncio.gather(*(self.send(c, self.state(c.role)) for c in self.clients))
 
     async def seek(self, t: float):
         if t < self.replay.now:
@@ -210,7 +209,11 @@ class Room:
                 await self.to_role("app", {"type": "meters", "clock": o["clock"], "score": o["score"],
                                            "atmosphere": o["atmosphere"], "momentum": o["momentum"]})
             elif k == "feed":
-                self.feed.append(o)
+                old = next((i for i, item in enumerate(self.feed) if item["cue_id"] == o["cue_id"]), None)
+                if old is None:
+                    self.feed.append(o)
+                else:
+                    self.feed[old] = o
                 if live:
                     for c in self.clients:
                         if c.role == "app" and visible_to(o, c.profile["amount"]):
@@ -224,7 +227,8 @@ class Room:
     def feed_msg(self, o: dict, profile: dict) -> dict:
         return {"type": "feed", "cue_id": o["cue_id"], "clock": o["clock"], "t": o["t"], "icon": o["icon"],
                 "team": o["team"], "mine": bool(profile.get("team") and o["team"] == profile["team"]),
-                "text": o["text"][profile["depth"]], "evidence": o["evidence"], "tier": o["tier"]}
+                "text": o["text"][profile["depth"]], "evidence": o["evidence"], "tier": o["tier"],
+                "update": o.get("update", False)}
 
     def request_text(self, a: dict, profile: dict, notify: bool = True):
         key = (a["cue_id"], profile["depth"], profile.get("team"))
@@ -325,7 +329,7 @@ async def ws(websocket: WebSocket, room_name: str, role: str = "tv", seed: int |
     c = Client(websocket, "app" if role == "app" else "tv")
     room.clients.append(c)
     room.ensure_loop()
-    await room.send(c, room.state())
+    await room.send(c, room.state(c.role))
     if room.last_meters:
         await room.route([room.last_meters])
     try:

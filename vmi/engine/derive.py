@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import math
-
 PITCH_X, PITCH_Y = 105.0, 68.0
 BOX_DEPTH, BOX_Y = 16.5, (13.84, 54.16)
-PENALTY_XG = 0.76
 
 
 def attacks_right(team: str, period: int) -> bool:
@@ -47,28 +44,6 @@ def zone(team: str, period: int, loc: list[float] | None) -> str | None:
     if ay > 46:
         return "left"
     return "centre"
-
-
-def estimate_xg(team: str, period: int, loc: list[float] | None, body_part: str | None,
-                penalty: bool = False) -> float | None:
-    """Location-only expected goals model (distance and goal-mouth angle).
-
-    The generator's true chance quality includes hidden factors, so this is an
-    estimate, as with any real xG model.
-    """
-    if penalty:
-        return PENALTY_XG
-    if not loc:
-        return None
-    ax, ay = attack_coords(team, period, loc)
-    dx = max(PITCH_X - ax, 0.5)
-    dy = abs(ay - PITCH_Y / 2)
-    dist = math.hypot(dx, dy)
-    angle = math.atan2(7.32 * dx, dx * dx + dy * dy - (7.32 / 2) ** 2)
-    if angle < 0:
-        angle += math.pi
-    z = -1.55 - 0.11 * dist + 1.4 * angle - (0.75 if body_part == "head" else 0)
-    return round(1 / (1 + math.exp(-z)), 2)
 
 
 def clock_seconds(clock: str) -> int:

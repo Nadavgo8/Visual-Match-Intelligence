@@ -93,7 +93,7 @@ RULES: dict[str, dict] = {
         "keywords": ["xg", "expected goals", "chance quality", "big chance"],
         "text": ("xG (expected goals) is the probability that a shot from that position becomes a goal, based on "
                  "distance and the angle to the goal. 0.05 is a long-range hopeful shot, 0.3+ is a big chance, and "
-                 "a penalty is about 0.76. Our xG is our own estimate from the shot location."),
+                 "a penalty is about 0.77. This demo uses delayed synthetic generator estimates, not a calibrated model."),
     },
     "momentum": {
         "keywords": ["momentum", "on top", "bar under the score", "pressure"],

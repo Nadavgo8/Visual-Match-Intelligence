@@ -15,6 +15,7 @@ No AI runs here. Agents only word what this module decided to say.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 
 from . import derive
 from .factpack import build_factpack
@@ -72,6 +73,7 @@ class AttentionEngine:
     half_start_t: float = 0.0
     n_cue: int = 0
     n_in: int = 0  # feed and whistle records received
+    shot_feeds: dict = field(default_factory=dict)
 
     # ---------- helpers ----------
     def _cue_id(self) -> str:
@@ -94,14 +96,17 @@ class AttentionEngine:
     # ---------- main entry points ----------
     def ingest(self, rec: dict, now: float) -> list[dict]:
         self.now = now
-        rec = self.model.ingest(rec)
+        self.model.ingest(rec)
         if rec.get("stream"):
             return []
-        self.n_in += 1
-        if rec["type"] == "whistle":
-            return self._on_whistle(rec)
-        out = self._resolve_whistles(rec)
-        out += self._route(rec)
+        out = []
+        for ev in self.model.changes:
+            self.n_in += 1
+            if ev["type"] == "whistle":
+                out += self._on_whistle(ev)
+            else:
+                out += self._resolve_whistles(ev)
+                out += self._route(ev)
         return out
 
     def tick(self, now: float) -> list[dict]:
@@ -152,26 +157,24 @@ class AttentionEngine:
             return [self._banner("full_time", w["t"], "three long blasts", [w["id"]])]
         if q["blasts"] == 2 and q["length"] == "long" and 2700 <= clock_s < 5400 and w["period"] == 1:
             return [self._banner("half_time", w["t"], "two long blasts at the end of the first half", [w["id"]])]
-        if self.expect and self.now > self.expect_until:
-            self.expect = None
-        if self.expect == "kick_off":
-            self.expect = None
-            return [self._banner("kick_off", w["t"], "first whistle after a goal or half start", [w["id"]])]
-        if self.expect == "penalty_kick":
-            self.expect = None
-            return [{"kind": "skip", "t": w["t"], "what": w["id"],
-                     "why": "restart whistle for the penalty kick; the pitch shows it"}]
-        if self.expect == "penalty":
-            self.expect = None
-            return [self._banner("penalty", w["t"], "whistle right after VAR overturned the decision", [w["id"]])]
         self.pending.append(PendingWhistle(w))
+        # A linked reason can itself have been delivered before the audio detection.
+        for ev in self.model.events:
+            if ev.get("whistle_id") == w["id"] or ev.get("trigger_event_id") == w["id"]:
+                resolved = self._resolve_whistles(ev)
+                if self.pending[-1].resolved:
+                    return resolved
         return []
 
     def _resolve_whistles(self, ev: dict) -> list[dict]:
         etype = ev["type"]
         reason, detail = None, None
-        if etype == "foul" and not ev["foul"].get("advantage"):
-            reason = "penalty" if ev["derived"].get("penalty_awarded") else "foul"
+        if etype == "referee_decision" and ev["decision"] == "penalty":
+            reason = "penalty"
+        elif etype == "referee_decision" and ev["decision"] == "free_kick":
+            reason = "foul"
+        elif etype == "foul" and not ev["foul"].get("advantage"):
+            reason = "foul"
         elif etype == "offside":
             reason = "offside"
         elif etype == "var" and ev["var"]["phase"] == "check":
@@ -182,9 +185,15 @@ class AttentionEngine:
             reason = ev["set_piece"]["kind"] + "_restart"
         if not reason:
             return []
+        stop = self.model.by_id.get(ev.get("stoppage_id"), {})
+        whistle_id = ev.get("whistle_id") or ev.get("trigger_event_id")
+        if etype == "referee_decision":
+            whistle_id = ev.get("whistle_id") or stop.get("trigger_event_id")
         for pw in self.pending:
-            if pw.resolved or abs(ev["t"] - pw.rec["t"]) > WHISTLE_MATCH_S:
+            if pw.rec["id"] != whistle_id:
                 continue
+            if pw.resolved == reason:
+                return []
             pw.resolved = reason
             if reason == "penalty_restart":
                 return []  # the restart whistle for a penalty kick gets no banner
@@ -194,9 +203,11 @@ class AttentionEngine:
                     self.expect = None
             why = f"whistle explained by feed event {ev['type']}"
             if reason == "penalty":
-                why += " inside the box (from coordinates)"
-            return [self._banner(reason, pw.rec["t"], why, [pw.rec["id"], ev["id"]], update_of=pw.shown,
-                                 detail=detail)]
+                why += " (explicit linked referee decision)"
+            banner = self._banner(reason, pw.rec["t"], why, [pw.rec["id"], ev["id"]], update_of=pw.shown,
+                                  detail=detail)
+            pw.shown = banner["cue_id"]
+            return [banner]
         return []
 
     # ---------- routing ----------
@@ -213,33 +224,25 @@ class AttentionEngine:
             out.append(self._feed(ev, TIER_BIG, "whistle", "Kick-off!" if n == 1 else "Second half under way.",
                                   "Kick-off." if n == 1 else "Second half under way; ends have switched.",
                                   team=None))
-        elif etype == "shot":
-            q, d = ev["shot"], ev["derived"]
-            if q["outcome"] == "goal":
+        elif etype in {"shot", "shot_result", "shot_xg"}:
+            shot = ev if etype == "shot" else m.by_id[ev["shot_id"]]
+            out.append(self._shot_feed(shot))
+            if etype == "shot_result" and ev["outcome"] == "goal":
                 self.last_goal_t = ev["t"]
                 self._expect("kick_off", 180)
                 self.penalty_pending = False
-                s = m.score
-                how = "from the penalty spot" if q.get("penalty") else (
-                    "with a header" if q.get("body_part") == "head" else "")
-                out.append(self._feed(ev, TIER_BIG, "goal",
-                                      f"GOAL! {who} scores {how} for {tn}. {s['home']}–{s['away']}.".replace("  ", " "),
-                                      f"GOAL, {tn}: {who} {how} (xG {d['xg']}). {s['home']}–{s['away']}.".replace("  ", " ")))
-                self._schedule(ev["t"] + 8, "goal", ev, TIER_BIG)
+                self._schedule(self.now + 8, "goal", shot, TIER_BIG)
+        elif etype == "referee_decision":
+            self.penalty_pending = ev["decision"] == "penalty"
+            if self.penalty_pending:
+                self._expect("penalty_kick", 180)
+                out.append(self._feed(ev, TIER_BIG, "penalty", f"Penalty awarded to {tn}!",
+                                      f"Penalty to {tn}: explicit referee decision.", team=team))
+            elif ev.get("supersedes_decision_id"):
+                text = f"Referee decision corrected: {ev['decision'].replace('_', ' ')}."
+                out.append(self._feed(ev, TIER_BIG, "whistle", text, text, team=team))
             else:
-                self.penalty_pending = False if q.get("penalty") else self.penalty_pending
-                xg = d.get("xg") or 0
-                if q.get("penalty"):
-                    out.append(self._feed(ev, TIER_BIG, "chance", f"Penalty missed by {who}!",
-                                          f"Penalty {q['outcome'].replace('_', ' ')}: {who}."))
-                elif xg >= 0.3:
-                    out.append(self._feed(ev, TIER_BALANCED, "chance", f"Big chance for {tn}: {who} — {q['outcome'].replace('_', ' ')}.",
-                                          f"Big chance ({xg} xG), {who}: {q['outcome'].replace('_', ' ')}."))
-                elif q["outcome"] in ("saved", "post") and xg >= 0.08:
-                    out.append(self._feed(ev, TIER_ALL, "chance", f"{who} tests the keeper." if q["outcome"] == "saved" else f"{who} hits the post!",
-                                          f"{who}: {q['outcome']} ({xg} xG)."))
-                else:
-                    out.append({"kind": "skip", "t": ev["t"], "what": ev["id"], "why": f"low-value shot ({xg} xG)"})
+                out.append({"kind": "skip", "t": ev["t"], "what": ev["id"], "why": "restart decision recorded"})
         elif etype == "card":
             c = ev["card"]["colour"]
             tier = TIER_BALANCED if c == "yellow" else TIER_BIG
@@ -308,6 +311,25 @@ class AttentionEngine:
         else:
             out.append({"kind": "skip", "t": ev["t"], "what": ev["id"], "why": f"{etype}: visible on the pitch"})
         return out
+
+    def _shot_feed(self, shot: dict) -> dict:
+        q, d = shot["shot"], shot["derived"]
+        outcome = q.get("outcome")
+        who = self.model.player_name(shot["player_id"])
+        text = f"Shot by {who}: {outcome.replace('_', ' ') if outcome else 'result pending'}."
+        if outcome == "goal":
+            text = f"GOAL! {who} scores for {self.model.team_name(shot['team'])}."
+        deep = text + (f" Synthetic xG {d['xg']} ({d['xg_method']})." if d.get("xg") is not None
+                       else " xG not yet available.")
+        old = self.shot_feeds.get(shot["id"])
+        feed = self._feed(shot, TIER_BIG if outcome == "goal" or q.get("penalty") else TIER_ALL,
+                          "goal" if outcome == "goal" else "chance", text, deep)
+        if old:
+            feed["cue_id"] = old["cue_id"]
+        feed.update(shot_id=shot["id"], update=bool(old), xg=d.get("xg"))
+        feed["evidence"] += [d[k] for k in ("result_id", "xg_id") if d.get(k)]
+        self.shot_feeds[shot["id"]] = deepcopy(feed)
+        return feed
 
     def _schedule(self, due: float, kind: str, trigger: dict, tier: int, needs_dead_ball: bool = True):
         self.scheduled.append(ScheduledAnalysis(due, kind, trigger, tier, needs_dead_ball))

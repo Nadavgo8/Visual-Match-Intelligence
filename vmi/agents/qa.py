@@ -166,7 +166,8 @@ class Assistant:
             if p["shots"]:
                 bits.append(f"{p['shots']} shot{'s' if p['shots'] != 1 else ''}, {p['shots_on_target']} on target, "
                             f"{p['goals']} goal{'s' if p['goals'] != 1 else ''}"
-                            + (f" (xG {p['xg']})." if deep else "."))
+                            + (f" (synthetic xG {p['xg']})." if deep and p["xg"] is not None
+                               else " (xG not yet available)." if deep else "."))
             if p["other"]:
                 bits.append("Also: " + "; ".join(p["other"][-3:]) + ".")
             return self._out(" ".join(bits), r["evidence"], "match_analyst", ["get_player"])
@@ -213,7 +214,8 @@ class Assistant:
             text += f", corners {hs['corners']}–{as_['corners']}, fouls {hs['fouls']}–{as_['fouls']}"
             text += f", yellow cards {hs['yellow_cards']}–{as_['yellow_cards']}"
             if deep or "xg" in ql:
-                text += f", xG {hs['xg']}–{as_['xg']}"
+                text += (f", synthetic xG {hs['xg']}–{as_['xg']}"
+                         if hs["xg"] is not None and as_["xg"] is not None else ", xG not yet available")
             text += f" ({h} first)."
             return self._out(text, st["evidence"], "match_analyst", ["get_team_stats"])
         # recap / what happened

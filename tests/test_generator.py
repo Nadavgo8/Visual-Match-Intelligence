@@ -34,8 +34,9 @@ def test_deterministic():
 def test_raw_feed_has_only_observable_fields(matches):
     for m in matches:
         for e in m.events:
-            assert e["source"] in ("event_feed", "audio")
-            assert not FORBIDDEN & set(_walk_keys(e)), e
+            assert e["source"] in ("event_feed", "audio", "synthetic_analytics")
+            allowed = {"xg"} if e["type"] == "shot_xg" else set()
+            assert not (FORBIDDEN - allowed) & set(_walk_keys(e)), e
             if e["type"] == "whistle":
                 assert set(e["whistle"]) == {"blasts", "length", "confidence"}
         assert all(c["source"] == "audio" and 0 <= c["crowd_level"] <= 1 for c in m.crowd)

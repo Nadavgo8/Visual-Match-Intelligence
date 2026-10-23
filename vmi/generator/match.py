@@ -1,14 +1,4 @@
-"""Seeded synthetic match generator.
-
-It simulates a match with a simple possession-chain model and emits only what
-real sources produce (see docs/spec.md §6): an event feed, whistle detections,
-a 1 Hz crowd level, match state, and ball keyframes from which tracking frames
-are rendered. Interpretive fields (xG, in-box, "not called", key passes, why a
-whistle blew) are never emitted; the engine derives them.
-
-Internally the sim keeps a private truth (true chance quality, whether the
-referee saw a foul). That truth decides outcomes but stays inside this module.
-"""
+"""Seeded match truth with separate v2 event, motion and delayed analytics exports."""
 
 from __future__ import annotations
 
@@ -17,25 +7,20 @@ import random
 from dataclasses import dataclass, field
 
 from .teams import Player, Team, make_teams
+from .analytics import chance_quality, delayed_xg
+from .export import finish_export
+from .motion import Keyframe
+from .state import PlayState
 
 PITCH_X, PITCH_Y = 105.0, 68.0
 BOX_X = PITCH_X - 16.5
 BOX_Y = (13.84, 54.16)
 HT_GAP = 60.0  # half-time compressed to 60 s on the timeline
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 
 
 def _other(side: str) -> str:
     return "away" if side == "home" else "home"
-
-
-@dataclass
-class Keyframe:
-    t: float
-    x: float  # pitch coordinates
-    y: float
-    holder: str | None
-    in_play: bool
 
 
 @dataclass
@@ -60,7 +45,7 @@ class Match:
 
 
 class _Sim:
-    def __init__(self, seed: int, match_id: str):
+    def __init__(self, seed: int, match_id: str, xg_delay: tuple[float, float] = (2, 5)):
         self.rng = random.Random(seed)
         self.seed = seed
         self.match_id = match_id
@@ -91,6 +76,77 @@ class _Sim:
         self.n = 0
         self.ball_in_play = False
         self.subbed_on: list[Player] = []
+        self.play = PlayState()
+        self.xg_delay = xg_delay
+        self.aux_n = 0
+        self.stop_whistle: dict | None = None
+
+    def report(self, etype: str, *, t: float | None = None, **fields) -> dict:
+        """Extra v2 records use a separate clock/id/RNG path from match outcomes."""
+        self.aux_n += 1
+        at = self.t if t is None else t
+        rec = {"id": f"aux_{self.aux_n:05d}", "match_id": self.match_id,
+               "schema_version": SCHEMA_VERSION, "source": "event_feed", "type": etype,
+               "t": round(at, 2), "delivered_t": round(at + 0.75, 2),
+               "period": self.period, "clock": self.clock_str(at), "team": None,
+               "player_id": None, **fields}
+        self.events.append(rec)
+        return rec
+
+    def stop(self, trigger: dict, reason: str = "unknown"):
+        if self.play.stoppage_id is not None:
+            return
+        origin = self.stop_whistle or trigger
+        stopped = self.report("play_stopped", trigger_event_id=origin["id"],
+                              reason="unknown" if self.stop_whistle else reason)
+        self.play.stoppage_id = stopped["id"]
+        self.play.trigger_event_id = origin["id"]
+        self.ball_in_play = False
+        self.play.restart_id = None
+        self.play.possession_team = None
+        if self.keyframes:
+            k = self.keyframes[-1]
+            self.keyframes.append(Keyframe(round(self.t, 2), k.x, k.y, None, False))
+
+    def decide(self, trigger: dict, kind: str, team: str, *, supersedes: str | None = None):
+        self.stop(trigger)
+        decision = self.report("referee_decision", trigger_event_id=trigger["id"],
+                               stoppage_id=self.play.stoppage_id, decision=kind, team=team,
+                               whistle_id=self.stop_whistle["id"] if self.stop_whistle else None,
+                               supersedes_decision_id=supersedes)
+        self.play.decision_id = decision["id"]
+        trigger["stoppage_id"] = self.play.stoppage_id
+        trigger["trigger_event_id"] = self.play.trigger_event_id
+        if kind != "no_penalty":
+            award = self.report("restart_awarded", stoppage_id=self.play.stoppage_id,
+                                decision_id=decision["id"], restart_kind=kind, team=team)
+            self.play.restart_id = award["id"]
+        return decision
+
+    def restart(self, action: dict):
+        kind = action["set_piece"]["kind"]
+        if self.play.stoppage_id is None:
+            self.stop(action, "period_start" if kind == "kick_off" else "ball_out")
+        decision = self.play.decision_id
+        if decision is None:
+            decision = self.decide(action, kind, action["team"])["id"]
+        awarded = next((e for e in self.events if e["id"] == self.play.restart_id), None)
+        if awarded is None:
+            awarded = self.report("restart_awarded", stoppage_id=self.play.stoppage_id,
+                                  decision_id=decision, restart_kind=kind, team=action["team"])
+        action["restart_id"] = awarded["id"]
+        action["stoppage_id"] = self.play.stoppage_id
+        action["trigger_event_id"] = self.play.trigger_event_id
+        action["whistle_id"] = self.stop_whistle["id"] if self.stop_whistle else None
+        taken = self.report("restart_taken", stoppage_id=self.play.stoppage_id,
+                            restart_id=awarded["id"], decision_id=decision,
+                            action_event_id=action["id"], team=action["team"])
+        self.play.restart_id = None
+        self.play.stoppage_id = None
+        self.play.decision_id = None
+        self.stop_whistle = None
+        self.play.possession(action["team"], force=True)
+        self.play.play_context = kind
 
     # ---------- coordinates and time ----------
     def attacks_right(self, side: str) -> bool:
@@ -139,6 +195,22 @@ class _Sim:
         # feed latency: logged and delivered after the fact
         rec["delivered_t"] = round(t + self.rng.uniform(0.5, 3.0), 2)
         self.events.append(rec)
+        rec["schema_version"] = SCHEMA_VERSION
+        if etype == "set_piece" and qualifiers.get("kind") != "penalty":
+            self.restart(rec)
+        if etype == "var" and self.play.stoppage_id:
+            rec["stoppage_id"] = self.play.stoppage_id
+            rec["trigger_event_id"] = self.play.trigger_event_id
+        if etype in {"pass", "shot", "tackle", "interception", "ball_recovery", "save", "set_piece"} and team:
+            rec["possession_id"] = self.play.possession(team)
+            rec["play_context"] = self.play.play_context
+        if etype in {"offside", "period_end", "injury_stoppage"}:
+            self.stop(rec, etype)
+            rec["stoppage_id"] = self.play.stoppage_id
+            rec["trigger_event_id"] = self.play.trigger_event_id
+        if etype == "card":
+            rec["decision_id"] = self.play.decision_id
+            rec["stoppage_id"] = self.play.stoppage_id
         return rec
 
     def whistle(self, blasts: int = 1, length: str = "short", t: float | None = None) -> dict:
@@ -152,23 +224,29 @@ class _Sim:
             "delivered_t": round(t + self.rng.uniform(0.1, 0.3), 2),
         }
         self.events.append(rec)
+        rec["schema_version"] = SCHEMA_VERSION
+        self.stop_whistle = rec
         return rec
 
     def state(self, **changes):
         if "ball_in_play" in changes:
             self.ball_in_play = changes["ball_in_play"]
         self.states.append({
-            "stream": "match_state", "source": "event_feed", "t": round(self.t, 2),
+            "stream": "match_state", "match_id": self.match_id, "source": "event_feed", "t": round(self.t, 2),
             "period": self.period, "clock": self.clock_str(),
             "score": dict(self.score), "ball_in_play": self.ball_in_play,
             "cards": {s: dict(c) for s, c in self.cards.items()},
             "on_pitch": {s: len(p) for s, p in self.on_pitch.items()},
+            "active_stoppage_id": self.play.stoppage_id,
+            "pending_restart_id": self.play.restart_id if not self.ball_in_play else None,
+            "quality": {"status": "measured", "confidence": 1.0},
         })
 
     def key(self, side: str, ax: float, ay: float, holder: Player | None, in_play: bool = True):
         x, y = self.to_pitch(side, ax, ay)
         self.keyframes.append(Keyframe(round(self.t, 2), round(x, 2), round(y, 2),
-                                       holder.id if holder else None, in_play))
+                                       holder.id if holder else None, in_play,
+                                       possession_id=self.play.possession(side) if holder and in_play else None))
 
     def crowd_hit(self, amp: float, decay: float, dt: float = 0.0, hold: float = 0.0):
         self.impulses.append(_Impulse(self.t + dt, amp, decay, hold))
@@ -238,7 +316,7 @@ class _Sim:
             "end_t": round(self.t, 2), "final_score": dict(self.score),
             "home_attacks_right_in_period": {"1": True, "2": False},
         }
-        self.events.sort(key=lambda e: (e["t"], e["id"]))
+        finish_export(self.events, self.states, crowd)
         return Match(meta, self.events, crowd, self.states, self.keyframes)
 
     def kick_off(self, side: str):
@@ -253,6 +331,9 @@ class _Sim:
 
     def stoppage(self, seconds: float):
         """Ball out of play; also the moment pending substitutions are made."""
+        if self.play.stoppage_id is None:
+            trigger = self.report("ball_out")
+            self.stop(trigger, "ball_out")
         self.state(ball_in_play=False)
         self.t += seconds
         self.maybe_subs()
@@ -356,6 +437,8 @@ class _Sim:
             tx = min(max(ax + dx, 2), 99)
             ty = min(max(ay + rng.gauss(0, 13), 1), 67)
         dist = math.hypot(tx - ax, ty - ay)
+        if self.keyframes:
+            self.keyframes[-1].flight_height = 3.0 if cross else 1.5 if dist > 35 else 0.0
         p_ok = 0.93 - 0.011 * max(0, tx - ax) - (0.16 if tx > 82 else 0) + 0.12 * (strength - 0.5)
         if cross:
             p_ok = 0.32
@@ -485,14 +568,7 @@ class _Sim:
     # ---------- shots ----------
     @staticmethod
     def true_chance(ax: float, ay: float, header: bool) -> float:
-        dx = PITCH_X - ax
-        dy = abs(ay - 34)
-        dist = math.hypot(dx, dy)
-        angle = math.atan2(7.32 * dx, dx * dx + dy * dy - (7.32 / 2) ** 2)
-        if angle < 0:
-            angle += math.pi
-        z = -1.6 - 0.115 * dist + 1.45 * angle - (0.8 if header else 0)
-        return 1 / (1 + math.exp(-z))
+        return chance_quality(ax, ay, header)
 
     def shot(self, side, shooter, ax, ay, last_pass, header=False, penalty=False):
         rng = self.rng
@@ -516,15 +592,22 @@ class _Sim:
             outcome = "post"
         else:
             outcome = "off_target"
-        q = {"body_part": body, "outcome": outcome, "penalty": penalty}
+        q = {"body_part": body, "penalty": penalty}
         if rng.random() < 0.05 and not penalty:
             q.pop("body_part")
         self.t += 0.3
+        self.key(side, ax, ay, shooter)
+        self.keyframes[-1].flight_height = 0.8 if header else 1.5
         s = self.emit("shot", side, shooter, ax, ay, related=related, **q)
+        s["play_context"] = "penalty" if penalty else self.play.play_context
+        self.events.append(delayed_xg(self.seed, s, ax, ay, header, self.xg_delay))
         self.t += 0.6
+        result = self.report("shot_result", shot_id=s["id"], outcome=outcome, team=side,
+                             player_id=shooter.id)
         if outcome == "goal":
             self.key(side, 105.5, 34 + rng.uniform(-3, 3), None, in_play=False)
             self.score[side] += 1
+            self.stop(result, "goal")
             self.crowd_hit(0.6, 22, hold=6)
             self.state(ball_in_play=False)
             self.t += rng.uniform(45, 70)  # celebration
@@ -583,8 +666,9 @@ class _Sim:
             if rng.random() < 0.6:
                 self.whistle(1, "long")
                 self.crowd_hit(0.42, 12, dt=0.4)
-                self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
-                          kind=kind, advantage=False)
+                f = self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
+                              kind=kind, advantage=False)
+                self.decide(f, "penalty", side)
                 self.card_maybe(opp, fouler, base=0.35)
                 self.stoppage(rng.uniform(55, 80))
                 self.penalty(side)
@@ -598,6 +682,7 @@ class _Sim:
             return False
         self.t += 0.3
         self.whistle(1, "normal" if rng.random() < 0.8 else "long")
+        self.decide(f, "free_kick", side)
         self.state(ball_in_play=False)
         self.key(side, ax, ay, None, in_play=False)
         self.card_maybe(opp, fouler, base=0.12)
@@ -626,6 +711,8 @@ class _Sim:
         edge = 0 if cy < 34 else 68
         self.key(opp, cx, edge, None, in_play=False)
         self.whistle(2, "normal")  # stop for review
+        self.stop(tk, "review")
+        original = self.decide(tk, "no_penalty", opp)
         self.state(ball_in_play=False)
         rid = f"var_{self.n:04d}"
         self.emit("var", None, None, related=[tk["id"]], review_id=rid, phase="check",
@@ -643,8 +730,9 @@ class _Sim:
                       original_decision="no_penalty", outcome="overturned")
             self.whistle(1, "long")
             self.crowd_hit(0.5, 14, dt=0.3)
-            self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
-                      kind=kind, advantage=False, related=[tk["id"]], incident_t=round(incident_t, 2))
+            f = self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
+                          kind=kind, advantage=False, related=[tk["id"]], incident_t=round(incident_t, 2))
+            self.decide(f, "penalty", side, supersedes=original["id"])
             self.card_maybe(opp, fouler, base=0.5)
             self.stoppage(rng.uniform(40, 60))
             self.penalty(side)
@@ -660,10 +748,16 @@ class _Sim:
     def penalty(self, side):
         taker = next((p for p in self.on_pitch[side] if p.position == "ST"), self.on_pitch[side][-1])
         self.key(side, 94, 34, taker, in_play=False)
-        self.emit("set_piece", side, taker, 94, 34, kind="penalty")
+        action = self.emit("set_piece", side, taker, 94, 34, kind="penalty")
         self.murmurs.append((self.t - 6, self.t + 1, 0.25))  # the hush before the kick
         self.t += 1.0
         self.whistle(1, "short")
+        # Preserve the simulation RNG order while reporting execution at the kick.
+        action["t"] = round(self.t, 2)
+        action["delivered_t"] = round(action["delivered_t"] + 1, 2)
+        self.restart(action)
+        action["possession_id"] = self.play.possession_id
+        action["play_context"] = "penalty"
         self.state(ball_in_play=True)
         self.shot(side, taker, 94, 34, None, penalty=True)
 
@@ -716,10 +810,12 @@ class _Sim:
                 target += imp.amp if dt <= imp.hold else imp.amp * math.exp(-(dt - imp.hold) / imp.decay)
             level += (target - level) * 0.55  # crowd and mic lag
             noisy = min(max(level + rng.gauss(0, 0.025), 0.0), 1.0)
-            out.append({"stream": "crowd", "source": "audio", "t": float(sec),
+            out.append({"stream": "crowd", "match_id": self.match_id, "source": "audio", "t": float(sec),
+                        "quality": {"status": "measured", "confidence": 1.0},
                         "crowd_level": round(noisy, 3)})
         return out
 
 
-def generate_match(seed: int = 7, match_id: str | None = None) -> Match:
-    return _Sim(seed, match_id or f"syn_{seed:04d}").run()
+def generate_match(seed: int = 7, match_id: str | None = None,
+                   xg_delay: tuple[float, float] = (2, 5)) -> Match:
+    return _Sim(seed, match_id or f"syn_{seed:04d}", xg_delay).run()
