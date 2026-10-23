@@ -2,71 +2,52 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%231fa2a8%22/%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VMI · TV view</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/tv.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%2320bec4%22/%3E%3C/svg%3E">
+<title>VMI | Match view</title>
+<link rel="stylesheet" href="/static/tv.css?v=2.5">
 </head>
 <body>
 <main class="wrap">
   <div class="stage" id="stage">
     <canvas id="pitch" width="1600" height="900" aria-label="2D replay of a synthetic match"></canvas>
-
     <div class="overlay" id="overlay">
       <div class="scorebug" id="scorebug">
-        <div class="sb-row">
-          <span class="sb-team" id="sb-home">HOME</span>
-          <span class="sb-score" id="sb-score">0–0</span>
-          <span class="sb-team" id="sb-away">AWAY</span>
-          <span class="sb-clock" id="sb-clock">0:00</span>
-        </div>
-        <div class="momentum" title="Momentum, last 7 minutes" aria-label="Momentum">
-          <div class="mom-fill" id="mom-fill"></div>
-          <div class="mom-mid"></div>
-        </div>
-        <div class="mom-label" id="mom-label">Momentum: even</div>
+        <div class="sb-row"><span id="sb-home">HOME</span><span id="sb-score">0-0</span><span id="sb-away">AWAY</span><span id="sb-clock">0:00</span></div>
+        <div class="momentum-row"><span id="mom-label">Momentum</span><div class="momentum" title="Relative momentum over seven minutes" aria-label="Momentum"><div class="mom-fill" id="mom-fill"></div><div class="mom-mid"></div></div></div>
       </div>
-
-      <!-- fixed slots: each banner type always appears in the same place -->
-      <div class="slot whistle-col">
-        <div class="slot-cell" data-slot="whistle-1"></div>
-        <div class="slot-cell" data-slot="whistle-2"></div>
-        <div class="slot-cell" data-slot="whistle-3"></div>
-        <div class="slot-cell" data-slot="whistle-4"></div>
+      <div id="atmosphere-edges" role="img" aria-label="Atmosphere unavailable">
+        <div class="edge-bar left" aria-hidden="true"><i></i></div>
+        <div class="edge-bar right" aria-hidden="true"><i></i></div>
       </div>
-      <div class="slot period-slot"><div class="slot-cell" data-slot="period"></div></div>
-      <div class="slot crowd-slot"><div class="slot-cell" data-slot="crowd"></div></div>
-
-      <div class="atmo" id="atmo" aria-label="Atmosphere">
-        <div class="atmo-meter">
-          <i data-l="5"></i><i data-l="4"></i><i data-l="3"></i><i data-l="2"></i><i data-l="1"></i>
-        </div>
-        <svg class="atmo-wave" id="atmo-wave" viewBox="0 0 40 16" aria-hidden="true"><path id="atmo-path" d="M2 8H38" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-        <div class="atmo-label" id="atmo-label">Atmosphere unavailable</div>
+      <div id="event-marker" class="event-marker" role="status" aria-live="polite" hidden>
+        <div id="event-icon" class="event-circle" aria-hidden="true"></div><span id="event-label"></span>
       </div>
     </div>
-
-    <div class="synthetic">SYNTHETIC MATCH · generated data, not real footage</div>
+    <div class="synthetic">SYNTHETIC DEMO</div>
   </div>
-
-  <section class="controls" aria-label="Replay controls">
-    <button id="play" class="primary">▶ Play</button>
-    <label>Speed <select id="speed"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option><option>32</option></select>×</label>
-    <input id="scrub" type="range" min="0" max="6000" step="1" value="0" aria-label="Match time">
-    <span id="time" class="muted">0:00</span>
-    <label class="toggle"><input type="checkbox" id="overlay-on" checked> Overlay</label>
-    <label class="toggle"><input type="checkbox" id="sound-on"> Synthetic sound</label>
-    <div class="chapters" id="chapters"></div>
-    <div class="room">
-      Companion: <a id="app-link" target="_blank">open on phone</a> · room <b id="room-code"></b>
-      · match <input id="seed" type="number" min="1" max="99999" value="12"> <button id="new">Load</button>
-      · agents: <span id="agents" class="muted"></span>
-    </div>
-    <details class="trace" id="trace"><summary>Attention Engine: <span id="trace-sum">waiting</span></summary><ol id="trace-list"></ol></details>
+  <section class="view-controls" aria-label="Viewing controls">
+    <button id="play" class="primary">Play</button>
+    <label><input type="checkbox" id="overlay-on" checked> Visual signals</label>
+    <label><input type="checkbox" id="sound-on"> Synthetic sound</label>
+    <a id="app-link" target="_blank" rel="noopener">Optional companion</a>
+    <details class="display-settings"><summary>Display settings</summary><div class="settings-panel">
+      <label>Atmosphere intensity <input id="signal-intensity" aria-label="Atmosphere intensity" type="range" min="0.3" max="1" step="0.1" value="0.8"></label>
+      <label>Symbol size <select id="symbol-size" aria-label="Symbol size"><option value="0.85">Small</option><option value="1" selected>Standard</option><option value="1.2">Large</option></select></label>
+      <label><input id="reduce-motion" aria-label="Reduce motion" type="checkbox"> Reduce motion</label>
+    </div></details>
   </section>
+  <details class="presenter-tools"><summary>Presenter tools</summary>
+    <section class="controls" aria-label="Presenter replay controls">
+      <label>Speed <select id="speed"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option><option>32</option></select>x</label>
+      <input id="scrub" type="range" min="0" max="6000" step="1" value="0" aria-label="Match time"><span id="time">0:00</span>
+      <span id="atmo-label">Atmosphere unavailable</span>
+      <div class="chapters" id="chapters"></div>
+      <div class="room">Room <b id="room-code"></b> | seed <input id="seed" type="number" min="1" max="99999" value="12" aria-label="Match seed"> <button id="new">Load</button> | agents: <span id="agents"></span></div>
+      <details class="trace" id="trace"><summary>Attention Engine: <span id="trace-sum">waiting</span></summary><ol id="trace-list"></ol></details>
+    </section>
+  </details>
 </main>
-<script type="module" src="/static/tv.js"></script>
+<script type="module" src="/static/tv.js?v=2.5"></script>
 </body>
 </html>

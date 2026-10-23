@@ -57,12 +57,15 @@ class Replay:
             next_tracking = sample_t + TRACKING_LATENCY if sample_t <= self.match.duration else float("inf")
             expiry = self.engine.next_meter_expiry()
             analysis_due = self.engine.next_analysis_due()
-            if min(next_rec, next_tracking, self.next_tick, expiry, analysis_due) > to_t:
+            whistle_due = self.engine.next_whistle_due()
+            if min(next_rec, next_tracking, self.next_tick, expiry, analysis_due, whistle_due) > to_t:
                 break
-            if expiry < min(next_rec, next_tracking, self.next_tick, analysis_due):
+            if expiry < min(next_rec, next_tracking, self.next_tick, analysis_due, whistle_due):
                 out += self.engine.poll_meters(expiry)
-            elif analysis_due < min(next_rec, next_tracking, self.next_tick):
+            elif analysis_due < min(next_rec, next_tracking, self.next_tick, whistle_due):
                 out += self.engine.release_analysis(analysis_due)
+            elif whistle_due < min(next_rec, next_tracking, self.next_tick):
+                out += self.engine.poll_whistles(whistle_due)
             elif next_tracking <= min(next_rec, self.next_tick):
                 self.tracking_index += 1
                 out += self.engine.ingest(self.tracker.observation(sample_t), next_tracking)
