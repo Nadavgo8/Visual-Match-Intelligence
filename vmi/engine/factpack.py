@@ -5,6 +5,7 @@ stat) it came from, so each sentence the explainer writes can carry receipts.
 """
 
 from __future__ import annotations
+from copy import deepcopy
 
 from . import derive
 from .model import MatchModel
@@ -20,7 +21,7 @@ def _player(m: MatchModel, pid: str | None) -> dict | None:
     p = m.players.get(pid or "")
     if not p:
         return None
-    return {"id": pid, "name": p["name"], "number": p["number"], "position": p["position"],
+    return {"id": pid, "name": p["name"], "number": p["number"], "position": m.player_role(pid),
             "team": m.team_name(p["team"])}
 
 
@@ -71,6 +72,7 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
     team = trigger.get("team")
     pack: dict = {
         "moment": kind,
+        "snapshot_t": m.t,
         "peak": kind in PEAK_MOMENTS,
         "clock": m.clock, "minute": derive.minute_of(m.clock), "period": m.period,
         "minutes_left": m.minutes_left() if kind != "full_time" else 0,
@@ -82,10 +84,13 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
     facts = pack["facts"]
     if kind == "goal":
         q, d = trigger["shot"], trigger["derived"]
-        f = {"id": trigger["id"], "type": "goal", "team": m.team_name(team), "scorer": _player(m, trigger["player_id"]),
+        f = {"id": d["result_id"], "shot_id": trigger["id"], "type": "goal", "team": m.team_name(team), "scorer": _player(m, trigger["player_id"]),
              "penalty": q.get("penalty", False), "body_part": q.get("body_part"), "xg": d.get("xg"),
              "in_box": d.get("in_box")}
         facts.append(f)
+        if d.get("xg_id"):
+            facts.append({"id": d["xg_id"], "type": "shot_xg", "shot_id": trigger["id"],
+                          "xg": d["xg"], "method_version": d["xg_method"]})
         for rid in trigger.get("related", []):
             p = m.by_id.get(rid)
             if p and p["type"] == "pass":
@@ -139,19 +144,20 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
         st = m.team_stats()
         facts.append({"id": "stat:match", "type": "match_stats", "home": st["home"], "away": st["away"]})
         for e in m.events:
-            if e["type"] == "shot" and e["shot"]["outcome"] == "goal":
-                facts.append({"id": e["id"], "type": "goal", "minute": derive.minute_of(e["clock"]),
+            if e["type"] == "shot" and e["shot"].get("outcome") == "goal":
+                facts.append({"id": e["derived"]["result_id"], "type": "goal", "minute": derive.minute_of(e["clock"]),
                               "team": m.team_name(e["team"]), "scorer": _player(m, e["player_id"]),
                               "penalty": e["shot"].get("penalty", False)})
             elif e["type"] == "card" and e["card"]["colour"] != "yellow":
                 facts.append({"id": e["id"], "type": "red_card", "minute": derive.minute_of(e["clock"]),
                               "player": _player(m, e["player_id"])})
-        best = max((e for e in m.events if e["type"] == "shot" and e["shot"]["outcome"] != "goal"),
+        best = max((e for e in m.events if e["type"] == "shot" and e["shot"].get("outcome") in
+                    {"saved", "blocked", "post", "off_target"}),
                    key=lambda e: e["derived"].get("xg") or 0, default=None)
         if best and (best["derived"].get("xg") or 0) >= 0.2:
             facts.append({"id": best["id"], "type": "best_missed_chance", "minute": derive.minute_of(best["clock"]),
                           "player": _player(m, best["player_id"]), "team": m.team_name(best["team"]),
-                          "xg": best["derived"]["xg"], "outcome": best["shot"]["outcome"]})
+                          "xg": best["derived"]["xg"], "outcome": best["shot"].get("outcome")})
     elif kind == "substitution":
         sub = trigger["substitution"]
         facts.append({"id": trigger["id"], "type": "substitution", "team": m.team_name(team),
@@ -167,4 +173,4 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
                 facts.append({"id": f["id"], "type": "foul_before", "by": _player(m, f["player_id"]),
                               "kind": f["foul"]["kind"]})
     pack["deep_context"] = _deep_context(m, team if kind not in ("half_time", "full_time") else None)
-    return pack
+    return deepcopy(pack)

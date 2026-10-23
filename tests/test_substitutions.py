@@ -17,8 +17,9 @@ def test_injured_keeper_replacement_can_take_goal_kick(side):
     assert sim.keeper(side).id == replacement.id
     assert len(sim.on_pitch[side]) == 11
     assert keeper not in sim.on_pitch[side]
-    assert sim.events[-1]["player_id"] == replacement.id
-    assert sim.events[-1]["set_piece"]["kind"] == "goal_kick"
+    kick = next(e for e in sim.events if e["type"] == "set_piece" and e["set_piece"]["kind"] == "goal_kick")
+    assert kick["player_id"] == replacement.id
+    assert kick["set_piece"]["kind"] == "goal_kick"
 
 
 def test_tactical_substitution_with_no_eligible_starter_preserves_state():

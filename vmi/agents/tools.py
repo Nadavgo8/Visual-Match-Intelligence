@@ -34,7 +34,7 @@ def _notable(e: dict) -> bool:
     if e["type"] == "foul":
         return bool(e["derived"].get("penalty_awarded"))
     if e["type"] == "shot":
-        return e["shot"]["outcome"] in ("goal", "saved", "post") or (e["derived"].get("xg") or 0) >= 0.15
+        return e["shot"].get("outcome") in ("goal", "saved", "post") or (e["derived"].get("xg") or 0) >= 0.15
     if e["type"] == "var":
         return e["var"]["phase"] in ("check", "decision")
     return True
@@ -48,7 +48,7 @@ def describe_event(m: MatchModel, e: dict) -> str:
         q = e["shot"]
         xg = e["derived"].get("xg")
         kind = "penalty" if q.get("penalty") else (q.get("body_part") or "shot").replace("_", " ")
-        return f"{who} ({tn}) {kind}: {q['outcome'].replace('_', ' ')}" + (f", xG {xg}" if xg is not None else "")
+        return f"{who} ({tn}) {kind}: {q.get('outcome', 'result pending').replace('_', ' ')}" + (f", xG {xg}" if xg is not None else "")
     if t == "card":
         return f"{e['card']['colour'].replace('_', ' ')} card for {who} ({tn})"
     if t == "substitution":
@@ -110,7 +110,7 @@ class MatchTools:
         st = self.m.team_stats(since)
         return {"window": f"last {last_minutes} min" if last_minutes else "match so far",
                 self.m.team_name("home"): st["home"], self.m.team_name("away"): st["away"],
-                "note": "xG is our estimate from shot location and angle",
+                "note": "xG is delayed synthetic generator analytics; null means not yet available",
                 "evidence": ["stat:match"]}
 
     def get_momentum(self) -> dict:
@@ -150,15 +150,16 @@ class MatchTools:
             shots = [e for e in evs if e["type"] == "shot"]
             res.append({
                 "id": p["id"], "name": p["name"], "number": p["number"], "team": m.team_name(p["team"]),
-                "position": POSITIONS.get(p["position"], p["position"]),
+                "position": POSITIONS.get(m.player_role(p["id"]), m.player_role(p["id"])),
                 "on_pitch": p["id"] in m.on_pitch[p["team"]],
                 "passes": len(passes),
                 "passes_completed": sum(1 for e in passes if e["pass"]["outcome"] == "complete"),
                 "key_passes": sum(1 for e in passes if e["derived"].get("key_pass")),
                 "shots": len(shots),
-                "goals": sum(1 for e in shots if e["shot"]["outcome"] == "goal"),
-                "shots_on_target": sum(1 for e in shots if e["shot"]["outcome"] in ("goal", "saved")),
-                "xg": round(sum(e["derived"].get("xg") or 0 for e in shots), 2),
+                "goals": sum(1 for e in shots if e["shot"].get("outcome") == "goal"),
+                "shots_on_target": sum(1 for e in shots if e["shot"].get("outcome") in ("goal", "saved")),
+                "xg": (round(sum(e["derived"]["xg"] for e in shots), 2)
+                       if all(e["derived"].get("xg") is not None for e in shots) else None),
                 "other": [f"{e['clock']} {describe_event(m, e)}" for e in evs
                           if e["type"] not in ("pass", "shot") and _notable(e)],
                 "evidence": [e["id"] for e in shots] + [e["id"] for e in evs if e["type"] not in ("pass", "shot")],

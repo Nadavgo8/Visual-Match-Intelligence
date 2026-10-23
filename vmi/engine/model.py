@@ -6,10 +6,13 @@ functions at the bottom (see vmi/agents/tools.py).
 
 from __future__ import annotations
 
-from collections import deque
+from collections import deque, OrderedDict
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 from . import derive
+from ..contracts import VERSION, LINK_PARENTS, validate_record
+from ..generator.export import initial_metadata
 
 MOMENTUM_WINDOW_S = 7 * 60
 W_POSSESSION, W_KEY_PASS, W_SHOT = 0.4, 0.3, 0.3
@@ -62,8 +65,21 @@ class MatchModel:
     on_pitch: dict = field(default_factory=dict)
     finished: bool = False
     role_overrides: dict[str, str] = field(default_factory=dict)
+    pending_links: OrderedDict = field(default_factory=OrderedDict)
+    link_errors: deque = field(default_factory=lambda: deque(maxlen=128))
+    changes: list[dict] = field(default_factory=list)
+    active_stoppage_id: str | None = None
+    pending_restart_id: str | None = None
+    decision_by_stop: dict = field(default_factory=dict)
+    result_by_shot: dict = field(default_factory=dict)
+    xg_by_shot: dict = field(default_factory=dict)
+    last_clock_t: float = -1
+    last_restart_t: float = -1
 
     def __post_init__(self):
+        if self.meta.get("schema_version") != VERSION:
+            raise ValueError("MatchModel requires schema v2")
+        self.meta = initial_metadata(self.meta)
         self.players = {p["id"]: p for side in self.meta["teams"].values() for p in side["players"]}
         self.on_pitch = {s: [p["id"] for p in tm["players"] if p["starter"]]
                          for s, tm in self.meta["teams"].items()}
@@ -83,30 +99,150 @@ class MatchModel:
     # ---------- ingest ----------
     def ingest(self, rec: dict) -> dict:
         """Add a delivered record. Returns the (possibly annotated) record."""
+        self.changes = []
+        validate_record(rec, self.meta["match_id"])
         stream = rec.get("stream")
         if stream == "crowd":
             self.crowd.append((rec["t"], rec["crowd_level"]))
             return rec
         if stream == "match_state":
-            self.ball_in_play = rec["ball_in_play"]
-            self.period = rec["period"]
-            self.clock = rec["clock"]
-            self.cards = rec["cards"]
+            # Only explicit stop / restart events govern the delivered play state.
+            if rec["t"] >= self.last_clock_t:
+                self.cards = deepcopy(rec["cards"])
+            self._clock(rec)
             return rec
-        ev = dict(rec)
+        if rec["id"] in self.by_id or rec["id"] in self.pending_links:
+            return rec
+        ev = deepcopy(rec)
+        if self._missing_links(ev):
+            if len(self.pending_links) >= 256:
+                _, dropped = self.pending_links.popitem(last=False)
+                self.link_errors.append({"id": dropped["id"], "reason": "link buffer full"})
+            self.pending_links[ev["id"]] = ev
+            return ev
+        self._apply(ev)
+        # A source can release several buffered dependants, including a restart chain.
+        while True:
+            ready = []
+            for eid, e in list(self.pending_links.items()):
+                try:
+                    if not self._missing_links(e):
+                        ready.append(e)
+                except ValueError as exc:
+                    del self.pending_links[eid]
+                    self.link_errors.append({"id": eid, "reason": str(exc)})
+            if not ready:
+                break
+            for e in ready:
+                del self.pending_links[e["id"]]
+                self._apply(e)
+        return ev
+
+    def _missing_links(self, ev: dict) -> bool:
+        for key, expected in LINK_PARENTS.get(ev["type"], {}).items():
+            parent = self.by_id.get(ev[key])
+            if parent is None:
+                return True
+            if expected and parent["type"] != expected:
+                raise ValueError(f"{key} references a non-{expected} event")
+            if ev["type"] in {"shot_result", "shot_xg"}:
+                if ev.get("team") != parent.get("team") or ev.get("player_id") != parent.get("player_id"):
+                    raise ValueError("linked shot identity mismatch")
+                if ev["t"] < parent["t"]:
+                    raise ValueError("linked result precedes shot")
+        previous = ev.get("supersedes_decision_id")
+        if previous:
+            parent = self.by_id.get(previous)
+            if parent is None:
+                return True
+            if parent["type"] != "referee_decision" or parent["stoppage_id"] != ev["stoppage_id"]:
+                raise ValueError("correction must replace a decision for the same stoppage")
+        if ev["type"] == "restart_taken":
+            parent = self.by_id[ev["restart_id"]]
+            if parent["stoppage_id"] != ev["stoppage_id"] or parent["team"] != ev["team"]:
+                raise ValueError("restart belongs to a different stoppage/team")
+        return False
+
+    def _clock(self, rec: dict):
+        if rec.get("type") != "shot_xg" and rec["t"] >= self.last_clock_t:
+            self.period = rec.get("period", self.period)
+            self.clock = rec.get("clock", self.clock)
+            self.last_clock_t = rec["t"]
+
+    def _apply(self, ev: dict):
         ev["derived"] = self._derive(ev)
         self.events.append(ev)
         self.by_id[ev["id"]] = ev
-        if ev.get("period"):
-            self.period = ev["period"]
-        self.clock = ev.get("clock", self.clock)
+        self.changes.append(ev)
+        self._clock(ev)
         etype = ev["type"]
         if etype in ON_BALL and ev.get("team"):
             self.owner = ev["team"]
         if etype == "tackle" and ev.get("team"):
             self.owner = ev["team"]
-        if etype == "shot" and ev["shot"].get("outcome") == "goal":
-            self.score[ev["team"]] += 1
+        if etype in {"shot_result", "shot_xg"}:
+            shot = self.by_id[ev["shot_id"]]
+            if etype == "shot_result":
+                if shot["id"] in self.result_by_shot:
+                    self.changes.pop()
+                    self.link_errors.append({"id": ev["id"], "reason": "second result for shot"})
+                    return
+                self.result_by_shot[shot["id"]] = ev["id"]
+                shot["shot"]["outcome"] = ev["outcome"]
+                shot["derived"]["result_id"] = ev["id"]
+                if ev["outcome"] == "goal":
+                    self.score[shot["team"]] += 1
+            else:
+                if shot["id"] in self.xg_by_shot:
+                    self.changes.pop()
+                    self.link_errors.append({"id": ev["id"], "reason": "second xG for shot"})
+                    return
+                self.xg_by_shot[shot["id"]] = ev["id"]
+                shot["derived"].update(xg=ev["xg"], xg_id=ev["id"], xg_method=ev["method_version"])
+        if etype == "play_stopped":
+            # An old stop arriving after its restart must not stop the new play.
+            if ev["t"] >= self.last_restart_t:
+                self.active_stoppage_id = ev["id"]
+                self.ball_in_play = False
+                self.owner = None
+        elif etype == "referee_decision":
+            previous = self.decision_by_stop.get(ev["stoppage_id"])
+            if previous is None or ev.get("supersedes_decision_id") == previous:
+                if previous:
+                    old_trigger = self.by_id[self.by_id[previous]["trigger_event_id"]]
+                    old_trigger["derived"]["penalty_awarded"] = False
+                self.decision_by_stop[ev["stoppage_id"]] = ev["id"]
+                trigger = self.by_id[ev["trigger_event_id"]]
+                if trigger["type"] == "foul":
+                    trigger["derived"]["penalty_awarded"] = ev["decision"] == "penalty"
+                    trigger["derived"]["decision_id"] = ev["id"]
+                if ev["stoppage_id"] == self.active_stoppage_id:
+                    self.pending_restart_id = None
+            else:
+                self.changes.pop()
+                self.link_errors.append({"id": ev["id"], "reason": "superseded referee decision"})
+        elif etype == "restart_awarded":
+            if ev["decision_id"] != self.decision_by_stop.get(ev["stoppage_id"]):
+                self.changes.pop()
+                self.link_errors.append({"id": ev["id"], "reason": "restart uses superseded decision"})
+            elif ev["stoppage_id"] == self.active_stoppage_id:
+                self.pending_restart_id = ev["id"]
+        elif etype == "restart_taken":
+            award = self.by_id[ev["restart_id"]]
+            if award["decision_id"] != self.decision_by_stop.get(ev["stoppage_id"]):
+                self.changes.pop()
+                self.link_errors.append({"id": ev["id"], "reason": "execution uses superseded decision"})
+            elif ev["stoppage_id"] == self.active_stoppage_id:
+                self.ball_in_play = True
+                self.last_restart_t = max(self.last_restart_t, ev["t"])
+                self.active_stoppage_id = None
+                self.pending_restart_id = None
+                self.owner = ev["team"]
+        if etype == "pass":
+            for shot in self.events:
+                if shot["type"] == "shot" and ev["id"] in shot.get("related", []) and ev["team"] == shot["team"]:
+                    ev["derived"]["key_pass"] = True
+                    shot["derived"]["assisted_by"] = ev["player_id"]
         if etype == "substitution":
             side, sub = ev["team"], ev["substitution"]
             if sub["off_id"] in self.on_pitch[side]:
@@ -119,7 +255,6 @@ class MatchModel:
                 self.on_pitch[side].remove(ev["player_id"])
         if etype == "period_end" and ev["period_end"]["period_no"] == 2:
             self.finished = True
-        return ev
 
     def _derive(self, ev: dict) -> dict:
         d: dict = {}
@@ -127,7 +262,7 @@ class MatchModel:
         loc = ev.get("location")
         if etype == "shot":
             q = ev["shot"]
-            d["xg"] = derive.estimate_xg(team, period, loc, q.get("body_part"), q.get("penalty", False))
+            d["xg"] = None
             d["in_box"] = derive.in_opponent_box(team, period, loc)
             d["zone"] = derive.zone(team, period, loc)
             for rid in ev.get("related", []):
@@ -137,7 +272,7 @@ class MatchModel:
                     d["assisted_by"] = p["player_id"]
         elif etype == "foul":
             d["in_box"] = derive.in_own_box(team, period, loc)
-            d["penalty_awarded"] = bool(d["in_box"]) and not ev["foul"].get("advantage")
+            d["penalty_awarded"] = False  # only a linked referee decision can award it
             # A foul logged well after the incident (after a VAR review) was not given on the field.
             inc_t = ev["foul"].get("incident_t")
             d["called_on_field"] = inc_t is None or ev["t"] - inc_t < 5
@@ -156,6 +291,10 @@ class MatchModel:
     def tick(self, t: float):
         """Called once per second of match time."""
         self.t = t
+        for eid, ev in list(self.pending_links.items()):
+            if t - ev["delivered_t"] > 120:
+                self.link_errors.append({"id": eid, "reason": "source not delivered within 120s"})
+                del self.pending_links[eid]
         if self.ball_in_play and self.owner:
             self.possession_samples.append((t, self.owner))
             self.possession_total[self.owner] += 1
@@ -169,9 +308,9 @@ class MatchModel:
         ph = poss.count("home") / len(poss) if poss else 0.5
         kp = {"home": 0, "away": 0}
         sh = {"home": 0, "away": 0}
-        for e in reversed(self.events):
+        for e in self.events:
             if e["t"] < t0:
-                break
+                continue
             if e["type"] == "shot":
                 sh[e["team"]] += 1
             elif e["type"] == "pass" and e["derived"].get("key_pass"):
@@ -209,10 +348,12 @@ class MatchModel:
             shots = [e for e in evs if e["type"] == "shot"]
             passes = [e for e in evs if e["type"] == "pass"]
             out[side] = {
-                "goals": sum(1 for s in shots if s["shot"]["outcome"] == "goal"),
+                "goals": sum(1 for s in shots if s["shot"].get("outcome") == "goal"),
                 "shots": len(shots),
-                "shots_on_target": sum(1 for s in shots if s["shot"]["outcome"] in ("goal", "saved")),
-                "xg": round(sum(s["derived"].get("xg") or 0 for s in shots), 2),
+                "shots_on_target": sum(1 for s in shots if s["shot"].get("outcome") in ("goal", "saved")),
+                "xg": (round(sum(s["derived"]["xg"] for s in shots), 2)
+                       if all(s["derived"].get("xg") is not None for s in shots) else None),
+                "xg_received": sum(s["derived"].get("xg") is not None for s in shots),
                 "passes": len(passes),
                 "pass_accuracy": round(sum(1 for p in passes if p["pass"]["outcome"] == "complete")
                                        / len(passes), 2) if passes else None,

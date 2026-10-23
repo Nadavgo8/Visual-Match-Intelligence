@@ -92,7 +92,7 @@ def _t_goal(pack, depth, fav):
         s1 += f", set up by {_name(a['by'])}"
     out.append(_S(s1 + ".", g["id"], a["id"] if a else None))
     st = _deep(pack, "match_stats")
-    if st:
+    if st and st["home"]["xg"] is not None and st["away"]["xg"] is not None:
         tside = "home" if pack["teams"]["home"] == team else "away"
         oside = "away" if tside == "home" else "home"
         ts, os_ = st[tside], st[oside]
@@ -181,7 +181,7 @@ def _t_var_decision(pack, depth, fav):
     st = _deep(pack, "match_stats")
     if st:
         out.append(_S(f"Shots so far: {pack['teams']['home']} {st['home']['shots']}, {pack['teams']['away']} "
-                      f"{st['away']['shots']}; xG {st['home']['xg']} to {st['away']['xg']}.", "stat:match"))
+                      f"{st['away']['shots']}.", "stat:match"))
     return out
 
 
@@ -205,7 +205,9 @@ def _t_period(pack, depth, fav):
             out.append(_S(f"Both teams had {hs['shots']} shots; very little between them.", "stat:match"))
         return out
     poss = f", possession {round(hs['possession'] * 100)}% to {round(as_['possession'] * 100)}%" if hs.get("possession") is not None else ""
-    out.append(_S(f"xG {hs['xg']} to {as_['xg']}, shots {hs['shots']} to {as_['shots']}{poss}.", "stat:match"))
+    analytics = (f"Synthetic xG {hs['xg']} to {as_['xg']}, "
+                 if hs["xg"] is not None and as_["xg"] is not None else "xG not yet available; ")
+    out.append(_S(f"{analytics}shots {hs['shots']} to {as_['shots']}{poss}.", "stat:match"))
     if miss and len(out) < 3:
         out.append(_S(f"Best chance not taken: {_name(miss['player'])} in the {_ordinal(miss['minute'])} "
                       f"minute ({miss['xg']} xG, {miss['outcome'].replace('_', ' ')}).", miss["id"]))

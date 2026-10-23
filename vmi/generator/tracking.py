@@ -78,6 +78,9 @@ class Tracker:
             alpha = min(max((t - a.t) / span, 0.0), 1.0)
         bx = a.x + (b.x - a.x) * alpha
         by = a.y + (b.y - a.y) * alpha
+        bz = a.z + (b.z - a.z) * alpha + 4 * a.flight_height * alpha * (1 - alpha)
+        holder = a.holder if a.holder == b.holder or alpha == 0 else None
+        in_play = a.in_play
         players = []
         for side in ("home", "away"):
             right = self.attacks_right(side, t)
@@ -97,7 +100,9 @@ class Tracker:
                     ay += 1.2 * math.cos(t / 2.7 + seed * 0.7)
                 x, y = (ax, ay) if right else (PITCH_X - ax, PITCH_Y - ay)
                 # the player on the ball moves to it
-                if b.holder == pid:
+                if holder == pid:
+                    x, y = bx, by
+                elif b.holder == pid:
                     w = alpha
                     x, y = x + (b.x - x) * w, y + (b.y - y) * w
                 elif a.holder == pid:
@@ -105,5 +110,12 @@ class Tracker:
                     x, y = x + (a.x - x) * w, y + (a.y - y) * w
                 players.append({"id": pid, "team": side, "n": p["number"],
                                 "x": round(min(max(x, 0), PITCH_X), 2), "y": round(min(max(y, 0), PITCH_Y), 2)})
-        return {"stream": "tracking", "source": "tracking", "t": round(t, 2),
-                "ball": [round(bx, 2), round(by, 2)], "players": players}
+        return {"stream": "tracking", "match_id": self.m.meta["match_id"], "source": "tracking", "t": round(t, 2),
+                "schema_version": "2.0", "ball": [round(bx, 2), round(by, 2)],
+                "ball_height": round(bz, 3), "ball_in_play": in_play,
+                "possession": {"id": a.possession_id if holder and in_play else None,
+                               "holder_id": holder if in_play else None,
+                               "team": self.players[holder]["team"] if holder and in_play else None,
+                               "status": "controlled" if holder and in_play else "loose" if in_play else "stopped"},
+                "quality": {"status": "measured", "confidence": 1.0, "sample_t": round(t, 2)},
+                "players": players}

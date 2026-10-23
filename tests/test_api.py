@@ -1,12 +1,13 @@
 import json
 import os
+import asyncio
 
 os.environ["VMI_WARM_DEMO"] = "0"
 os.environ["VMI_OFFLINE"] = "1"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from vmi.api.server import app  # noqa: E402
+from vmi.api.server import app, Room, chapters  # noqa: E402
 
 
 def test_health_and_pages():
@@ -40,3 +41,22 @@ def test_room_seek_feed_and_ask():
                 break
         else:
             raise AssertionError("no answer")
+
+
+def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
+    room = Room("v2-upsert-test", 12)
+    state = room.state("app")
+    assert state["chapters"] == [] and state["duration"] is None
+    assert room.state("tv")["chapters"] == chapters(room.match)
+    outputs = room.replay.advance(1200)
+    asyncio.run(room.route(outputs, live=False))
+    ids = [o["cue_id"] for o in room.feed]
+    assert len(ids) == len(set(ids))
+    shots = [o for o in room.feed if o.get("shot_id")]
+    assert shots and any(o["xg"] is not None for o in shots)
+    for shot in shots:
+        assert sum(o.get("shot_id") == shot["shot_id"] for o in room.feed) == 1
+    c = TestClient(app)
+    with c.websocket_connect("/ws/v2-boundary-test?role=app") as ws:
+        initial = json.loads(ws.receive_text())
+        assert initial["chapters"] == [] and initial["duration"] is None
