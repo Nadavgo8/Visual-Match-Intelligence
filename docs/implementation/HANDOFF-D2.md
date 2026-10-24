@@ -4,9 +4,18 @@
 
 ## סביבה וחסמים
 
-- Python 3.12.9 ב־`.venv` של תיקיית `app` (מחוץ ל־Git); Node 24.3.0. D2-02 נבנה ב־worktree נפרד `../app-d2-02` מ־main ‏56732ff.
-- **חסם:** מעט מאוד מקום פנוי ב־C:. מונע Ollama (D2-00) והתקנות נוספות.
-- **חסם:** `gh` לא מותקן ואין הזדהות GitHub לכלי. push של ענפים עובד; פתיחת PR, מיזוג, CI והגנת `main` ממתינים ל־`gh auth login` של המשתמש.
+- Python 3.12.9 ב־`app/.venv`; Node 24.3.0. D2-02 ב־worktree `../app-d2-02`.
+- `gh` מותקן ומחובר (Nadavgo8). מקום בדיסק עדיין מעט (כ־4GB) — מספיק לעבודה, לא ל־Ollama + מודל בנוחות.
+
+## D2-01 — `codex/d2-platform-contracts`
+
+- נבנו: `requirements-lock.txt` (pip freeze של סביבה שנבדקה, `pywin32` עם marker), `pyproject.toml` (markers, coverage branch, ruff ברמת שגיאות), שיוך כל קובץ בדיקה לשכבה ב־`tests/conftest.py` (קובץ לא משויך מכשיל איסוף), `tools/coverage_gate.py` + `coverage-baseline.json`, `contracts/v2/*.schema.json` + `examples.json`, `.github/workflows/ci.yml` (ארבעה jobs, SHA נעולים, הרשאות קריאה), `.env.example`, [02-SETUP-AND-GIT](02-SETUP-AND-GIT.md), יישור `docs/spec.md` §7 לחוזה שמוזג (tracking כולל `possession.holder_id`).
+- בדיקות: 4 קבצים חדשים (שער כיסוי, CI, שכבות, סכמות). חבילה מלאה עם כיסוי: ‏249 עברו, exit 0 (משך 2:46 שעות כולל שינה של המחשב; ללא כיסוי החבילה נמשכת כ־2–4 דקות). ‏12 Node עברו; ruff נקי; `diff --check` נקי.
+- mutations: גבול `<`→`<=` בשער — 2 נכשלו; התעלמות מקובץ שהשתנה בלי נתונים — 1 נכשל.
+- השפעה על מפתח 1: כל קובץ בדיקה חדש צריך שורה ב־`LAYERS` שב־`tests/conftest.py`.
+- לא אומת: התקנה נקייה מהקובץ הנעול (אין מקום בדיסק לסביבה שנייה; ה־CI יבדוק על Linux), ריצת CI, required checks והגנת `main`.
+
+- **מוזג:** PR #13 ל־9918ede. CI ראשון ירוק (התקנה נקייה מהקובץ הנעול על Linux אומתה), כיסוי ב־CI ‏90.32%/83.71%. הגנת `main` הופעלה (ארבעה required checks, strict, enforce_admins, בלי force push/מחיקה). PR #14 עם assertion כושל: python-tests נכשל, GitHub סימן BLOCKED, לא נעשה ניסיון מיזוג; נסגר והענף נמחק.
 
 ## D2-02 — `codex/d2-realtime-session`
 

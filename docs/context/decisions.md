@@ -98,7 +98,7 @@ What changed:
 - **Vibration:** in neither document. Parked; don't build it.
 
 Calls made while writing spec v2 (Claude, Oct 22; Developer 1 can revisit them in D1-02):
-- The plan asks for "explicit possession state" in tracking. To keep the data realism rule, tracking emits what optical feeds such as TRACAB emit: ball-owning team, ball alive or dead, ball height and speeds. The engine derives which player holds the ball from positions. The event feed arrives 0.5–3 s late, so it couldn't meet the 500 ms freshness rule for the attack component anyway.
+- The plan asks for "explicit possession state" in tracking. To keep the data realism rule, tracking emits what optical feeds such as TRACAB emit: ball-owning team, ball alive or dead, ball height and speeds. The engine derives which player holds the ball from positions. The event feed arrives 0.5–3 s late, so it couldn't meet the 500 ms freshness rule for the attack component anyway. **Superseded on Oct 23 by the merged D1-01 contract** (approved by the user with Developer 1): tracking samples carry an explicit `possession` with `holder_id`; see `contracts/v2/stream.schema.json`.
 - A whistle that stops play for VAR shows the generic whistle marker, never a VAR label.
 
 ## Still open (as of Oct 22)
