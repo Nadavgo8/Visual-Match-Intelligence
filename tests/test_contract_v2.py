@@ -265,3 +265,40 @@ def test_rejected_execution_cannot_hide_a_later_valid_stop(match):
     assert m.ball_in_play
     m.ingest(event(match, "play_stopped", "s2", t=20, trigger_event_id="f", reason="unknown"))
     assert not m.ball_in_play and m.active_stoppage_id == "s2"
+
+
+def test_delayed_older_stop_cannot_replace_the_current_stoppage(match):
+    m = MatchModel(match.meta)
+    for e in (event(match, "foul", "f", foul={"advantage": False}),
+              event(match, "play_stopped", "current", t=30, trigger_event_id="f", reason="unknown"),
+              event(match, "play_stopped", "older", t=20, trigger_event_id="f", reason="unknown")):
+        m.ingest(e)
+    assert m.active_stoppage_id == "current"
+    assert not m.ball_in_play
+    for e in (event(match, "referee_decision", "d", t=31, trigger_event_id="f",
+                    stoppage_id="current", decision="free_kick"),
+              event(match, "restart_awarded", "a", t=31, decision_id="d",
+                    stoppage_id="current", restart_kind="free_kick"),
+              event(match, "restart_taken", "taken", t=35, restart_id="a", stoppage_id="current")):
+        m.ingest(e)
+    assert m.ball_in_play and m.active_stoppage_id is None
+
+
+@pytest.mark.parametrize("buffered", [False, True])
+def test_restart_cannot_precede_its_stoppage_or_award(match, buffered):
+    m = MatchModel(match.meta)
+    impossible = event(match, "restart_taken", "impossible", t=19, restart_id="a", stoppage_id="s")
+    if buffered:
+        m.ingest(impossible)
+    for e in (event(match, "foul", "f", foul={"advantage": False}),
+              event(match, "play_stopped", "s", t=20, trigger_event_id="f", reason="unknown"),
+              event(match, "referee_decision", "d", t=21, trigger_event_id="f", stoppage_id="s", decision="free_kick"),
+              event(match, "restart_awarded", "a", t=22, decision_id="d", stoppage_id="s", restart_kind="free_kick")):
+        m.ingest(e)
+    before = deepcopy(m.events)
+    if buffered:
+        assert not m.pending_links and m.link_errors[-1]["id"] == "impossible"
+    else:
+        with pytest.raises(ValueError):
+            m.ingest(impossible)
+    assert m.events == before and not m.ball_in_play

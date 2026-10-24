@@ -205,7 +205,11 @@ class AttentionEngine:
         self.pending.append(PendingWhistle(w, detected_t=self.now))
         self.pending = self.pending[-64:]
         # A linked reason can itself have been delivered before the audio detection.
-        for ev in self.model.events:
+        # Prefer the current explicit decision over its original foul/handball.
+        # Delivery can put the entire correction chain before the audio record.
+        current = set(self.model.decision_by_stop.values())
+        reasons = sorted(self.model.events, key=lambda ev: ev["id"] not in current)
+        for ev in reasons:
             if ev.get("whistle_id") == w["id"] or ev.get("trigger_event_id") == w["id"]:
                 resolved = self._resolve_whistles(ev)
                 if self.pending[-1].resolved:
@@ -214,6 +218,8 @@ class AttentionEngine:
 
     def _resolve_whistles(self, ev: dict) -> list[dict]:
         etype = ev["type"]
+        if etype == "referee_decision" and self.model.decision_by_stop.get(ev["stoppage_id"]) != ev["id"]:
+            return []
         reason, detail = None, None
         if etype == "referee_decision" and ev["decision"] == "penalty":
             reason = "penalty"

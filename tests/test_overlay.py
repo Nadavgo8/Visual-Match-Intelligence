@@ -79,3 +79,24 @@ def test_crowd_jump_does_not_create_a_screen_banner():
     engine = AttentionEngine(MatchModel(deepcopy(match.meta)))
     engine.model.crowd.extend([(0, 0.1), (1, 0.9)])
     assert not banners(engine.tick(1))
+
+
+@pytest.mark.parametrize("corrected,expected", [(False, "penalty"), (True, "foul")])
+def test_reason_before_audio_uses_the_current_explicit_decision(corrected, expected):
+    match = generate_scenario("penalty_no_card")
+    reason = next(e for e in match.events if e["type"] == "referee_decision" and e["decision"] == "penalty")
+    whistle = next(e for e in match.events if e["id"] == reason["whistle_id"])
+    source_ids = {reason["trigger_event_id"], reason["stoppage_id"]}
+    engine = AttentionEngine(MatchModel(match.meta))
+    for e in match.events:
+        if e["id"] in source_ids:
+            engine.ingest(e, max(20, e["delivered_t"]))
+    engine.ingest(reason, 21)
+    correction = {**reason, "id": "correction", "t": reason["t"] + 1,
+                  "delivered_t": reason["t"] + 2, "decision": "free_kick",
+                  "supersedes_decision_id": reason["id"]}
+    if corrected:
+        engine.ingest(correction, 22)
+    shown = banners(engine.ingest(whistle, 23))
+    assert [o["type"] for o in shown] == [expected]
+    assert shown[0]["evidence"] == [whistle["id"], "correction" if corrected else reason["id"]]
