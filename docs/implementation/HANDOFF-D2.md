@@ -20,7 +20,7 @@
 ## D2-02 — `codex/d2-realtime-session`
 
 - נבנו: run_id/seq, snapshot, מארח עם טוקן, outbox ו־writer לכל לקוח, ביטול עבודה ישנה, `answer_discarded`, ניקוי חדרים (120s) ותקרה (64), אימות פקודות מארח פגומות, `web/session.mjs` (gate, backoff, טוקן), חיבור `tv.js`/`app.js`, הודעת ניתוק באפליקציה. [החוזה](D2-02-SESSION.md).
-- בדיקות: `tests/test_realtime_session.py` ‏(12), עדכון `tests/test_api.py` (הטלפון כבר לא מבצע seek — דרישת התוכנית "בקרת ניגון למארח בלבד"), `tests/web/session.test.mjs` ‏(6).
+- בדיקות: `tests/test_realtime_session.py` ‏(17), עדכון `tests/test_api.py` (הטלפון כבר לא מבצע seek — דרישת התוכנית "בקרת ניגון למארח בלבד"), `tests/web/session.test.mjs` ‏(6).
 - ממצא בדרך: TestClient בלי `with` מריץ כל חיבור בלולאת אירועים נפרדת, ולכן בדיקת seek נתקעה; תוקן בבדיקות ע״י portal משותף. ממצא P2 בסקירה: פקודת seek/new_match פגומה הפילה את חיבור המארח; נוספו אימות ובדיקת רגרסיה שנכשלה לפני ועוברת אחרי.
 - mutations: הסרת בדיקת המארח — 1 נכשלה; הסרת בדיקת run בתשובות — 1 נכשלה.
 - smoke מול uvicorn אמיתי (פורט 17781): מסך מארח עם טוקן, טלפון לא מארח, `play` מהטלפון נדחה, seq עולה ב־1, seek יוצר snapshot ‏r2 עם פיד.

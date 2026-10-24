@@ -49,6 +49,6 @@ Every server message carries:
 
 ## Tests
 
-`tests/test_realtime_session.py` (12) and the updated `tests/test_api.py`; `tests/web/session.test.mjs` (6). Multi-connection tests use `with TestClient(app)` so that every connection shares one event loop, as under uvicorn. Without it, Starlette runs each connection on its own loop.
+`tests/test_realtime_session.py` (17) and the updated `tests/test_api.py`; `tests/web/session.test.mjs` (6). Multi-connection tests use `with TestClient(app)` so that every connection shares one event loop, as under uvicorn. Without it, Starlette runs each connection on its own loop.
 
 Not covered here: linking events that arrive before their source, and duplicate or reverse-order feed records. The engine handles those (D1-01/D1-02 contract tests).

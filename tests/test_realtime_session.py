@@ -246,3 +246,84 @@ def test_full_time_card_reaches_the_phone_after_the_last_tick(monkeypatch):
         return [m for m in phone.outbox if m["type"] == "analysis"]
     cards = asyncio.run(scenario())
     assert any(m["moment"] == "full_time" for m in cards)
+
+
+def test_host_plays_changes_speed_and_loads_a_new_match_for_everyone():
+    with client() as c:
+        with c.websocket_connect("/ws/h1?role=tv") as tv, c.websocket_connect("/ws/h1?role=app") as phone:
+            recv(tv)
+            recv(phone)
+            tv.send_text(json.dumps({"cmd": "play"}))
+            assert until(tv, "state")["playing"] is True
+            tv.send_text(json.dumps({"cmd": "speed", "value": 3}))  # not an allowed speed: ignored
+            tv.send_text(json.dumps({"cmd": "speed", "value": 8}))
+            assert until(tv, "state")["speed"] == 8
+            tv.send_text(json.dumps({"cmd": "new_match", "seed": 7}))
+            snap = until(phone, "snapshot")
+            assert snap["state"]["seed"] == 7 and snap["run_id"] == "r2" and snap["state"]["playing"] is False
+            assert snap["feed"] == []
+
+
+def test_texts_and_pushes_for_an_old_run_are_dropped_even_without_cancellation():
+    async def scenario():
+        room = Room("h2", 12)
+        phone = Client(FakeWS(), "app")
+        room.clients.append(phone)
+
+        class Fast:
+            async def write(self, pack, depth, team):
+                return {"text": "late", "sentences": [], "source": "template", "model": None,
+                        "latency_ms": 0, "validation": "passed"}
+
+        room.explainer = Fast()
+        analysis = {"cue_id": "a9", "moment": "goal", "t": 5.0, "clock": "0:05", "tier": 1,
+                    "factpack": {"facts": [], "moment": "goal"}}
+        key = ("a9", "basic", None)
+        old = room.run
+        room.new_run()
+        await room._generate(analysis, key, old)
+        assert key not in room.texts
+        room.texts[key] = {"text": "x", "sentences": [], "source": "template", "model": None,
+                           "latency_ms": 0, "validation": "passed"}
+        await room.push_analysis(analysis, key, old)
+        assert not phone.outbox
+    asyncio.run(scenario())
+
+
+def test_writer_stops_quietly_when_the_socket_breaks():
+    class Broken:
+        async def send_text(self, text):
+            raise ConnectionError("gone")
+
+    async def scenario():
+        room = Room("h3", 12)
+        c = Client(Broken(), "tv")
+        await room.send(c, {"type": "state"})
+        await asyncio.wait_for(room.writer(c), timeout=1)  # returns instead of raising or hanging
+    asyncio.run(scenario())
+
+
+def test_reconnecting_within_the_grace_period_keeps_the_room_and_its_run():
+    with client() as c:
+        with c.websocket_connect("/ws/h4?role=tv") as tv:
+            token = recv(tv)["host_token"]
+            tv.send_text(json.dumps({"cmd": "seek", "t": 600}))
+            until(tv, "snapshot")
+        room = server.rooms["h4"]
+        assert room.expiry is not None
+        with c.websocket_connect(f"/ws/h4?role=tv&host={token}") as back:
+            snap = recv(back)
+            assert server.rooms["h4"] is room and room.expiry is None
+            assert snap["host"] is True and snap["run_id"] == "r2" and snap["state"]["t"] == 600
+
+
+def test_dropping_a_room_only_removes_empty_known_rooms():
+    server.drop_room_if_empty("never-existed")
+    room = Room("h5", 12)
+    room.clients.append(Client(FakeWS(), "tv"))
+    server.rooms["h5"] = room
+    server.drop_room_if_empty("h5")
+    assert server.rooms["h5"] is room
+    room.clients.clear()
+    server.drop_room_if_empty("h5")
+    assert "h5" not in server.rooms
