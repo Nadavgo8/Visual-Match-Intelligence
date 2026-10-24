@@ -263,6 +263,7 @@ def test_rejected_execution_cannot_hide_a_later_valid_stop(match):
               event(match, "restart_taken", "invalid", t=100, restart_id="a", stoppage_id="s")):
         m.ingest(e)
     assert m.ball_in_play
+    assert m.last_clock_t == 15  # the rejected t=100 execution cannot freeze the clock
     m.ingest(event(match, "play_stopped", "s2", t=20, trigger_event_id="f", reason="unknown"))
     assert not m.ball_in_play and m.active_stoppage_id == "s2"
 
@@ -302,3 +303,27 @@ def test_restart_cannot_precede_its_stoppage_or_award(match, buffered):
         with pytest.raises(ValueError):
             m.ingest(impossible)
     assert m.events == before and not m.ball_in_play
+
+
+def test_correction_cannot_precede_the_decision_it_replaces(match):
+    m = MatchModel(match.meta)
+    for e in (event(match, "foul", "f", t=5, foul={"advantage": False}),
+              event(match, "play_stopped", "s", t=5, trigger_event_id="f", reason="unknown"),
+              event(match, "referee_decision", "d", t=20, trigger_event_id="f", stoppage_id="s", decision="penalty")):
+        m.ingest(e)
+    before = deepcopy(m.events)
+    with pytest.raises(ValueError):
+        m.ingest(event(match, "referee_decision", "impossible-correction", t=10,
+                       trigger_event_id="f", stoppage_id="s", decision="free_kick",
+                       supersedes_decision_id="d"))
+    assert m.events == before and m.decision_by_stop["s"] == "d"
+
+
+def test_conflicting_result_cannot_advance_clock_or_replace_the_first_result(match):
+    m = MatchModel(match.meta)
+    m.ingest(shot(match))
+    m.ingest(result(match))
+    m.ingest(result(match, eid="conflict", outcome="saved") | {"t": 50, "delivered_t": 51, "clock": "0:50"})
+    assert m.last_clock_t == 11 and m.clock == "0:10"
+    assert m.by_id["s1"]["shot"]["outcome"] == "goal" and m.score["home"] == 1
+    assert not m.changes and m.link_errors[-1]["id"] == "conflict"
