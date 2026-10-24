@@ -4,7 +4,7 @@ Read [CLAUDE.md](CLAUDE.md) for shared project context, then the documents relev
 
 ## Active plan and scope
 
-- The active plan is [VMI-FINAL-PLAN-F.md](docs/implementation/VMI-FINAL-PLAN-F.md). Its explicit decisions take precedence over older product summaries: 2D demo, delayed linked generator xG, and no permanent model/runtime choice before D2-00.
+- The active plan is [VMI-FINAL-PLAN-F.md](docs/implementation/VMI-FINAL-PLAN-F.md). The user's 24 October update activates a real 3D match view in D1-04, replacing the earlier 2D-only decision. Preserve the approved accessibility overlay, source-driven motion, delayed linked generator xG and no permanent model/runtime choice before D2-00.
 - Execute only the authorized task. Writing or updating the plan does not authorize implementing the entire product.
 - Keep implementation, meaningful tests, fixes and review for one task in the same PR. A separate tests-only PR needs an independently useful scope, not merely a failing test. Diagnose routine failures before escalating a purported product decision.
 - Each new task branch starts from updated `main`; wait for dependent PRs to merge. Commit bodies explain what changed, why, validation and remaining limits. Consult the work board and handoff for the latest authorized next step.

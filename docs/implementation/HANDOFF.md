@@ -1,60 +1,50 @@
-# VMI — העברה נוכחית: סקירה חוזרת D1
+# VMI — העברה נוכחית: D1-04 בתלת־ממד
 
-PR #10 אומת אחרי מיזוג על e8eb619: ‏202 Python ב־132.30s ו־12 Node עברו;
-ה־smoke אימת אותו מומנטום ב־meters וב־MatchTools. אין חסם פתוח בתיקון זה.
+עודכן: 24.10.2026. המשתמש אישר תלת־ממד אמיתי באיכות חזותית גבוהה, במקום החלטת הדו־ממד. נשמרים מסלול מפתח 1, ענף ו־PR לכל משימה, בדיקות מחמירות, סקירה טכנית, commits מפורטים ומיזוג אוטומטי רק לאחר מעבר השערים. אין אישור ידני שגרתי, עקיפת כללי שרת או תשלום נוסף.
 
-ענף עצמאי נוסף `codex/fix-d1-safe-presenter-trace` בתיקיית `vmi-d1-trace`
-מתקן הצגת טקסט רשומות כ־HTML באזור המציג. 15 בדיקות Node ובדיקת DOM
-אמיתי עברו; חבילה מלאה, סקירה סופית, PR ו־B4 עדיין נדרשים לפני DONE.
-לא נוספו תלויות או יכולות D2. הוא מסונכרן ל־main ‏e8eb619 אחרי מיזוג PR #10.
+## בסיס משותף מאומת
 
-תיקון סדר המסירה מוזג ב־PR #9 ל־main ‏37fe99e; ‏B4 עבר עם 199 Python
-ב־130.54s, ‏12 Node ו־smoke של חמישה תרחישים. ההמשך הנוכחי הוא ענף
-`codex/fix-d1-momentum-window` מהבסיס המאומת, לתיקון חלון ההחזקה בין טיקים.
-תוצאות סופיות ו־B4 של ההמשך טרם הושלמו. D1-04 עדיין ממתין לראיית FPS.
+main: ‏`cbbc511db02b1d0211d3a05a70693aca22b6973d`. ‏B4 אחרון: 202 Python ב־126.03s ו־15 Node; smoke של טקסט מציג מילולי וגבול 40 רשומות עבר.
 
-עדכון סקירה 24.10.2026: נפתח ענף עצמאי `codex/fix-d1-contract-ordering`
-מ־main ‏56732ff. שישה ממצאים שוחזרו ותוקנו: עצירה ישנה באיחור,
-חידוש שקדם לאישורו, בחירת סיבת שריקה לפני שרשרת ההחלטות העדכנית
-יעד replay בלתי תקין או נסוג, תיקון החלטה בזמן בלתי אפשרי ושעון שהתקדם גם באירוע שנדחה.
-[דוח הסקירה והלמידה](D1-AUDIT-2026-10-24.md). תוצאות final SHA ו־B4
-נדרשות לפני סגירת התיקון. דף rAF מבודד ללא קוד VMI מדד גם הוא 1FPS;
-נדרשת עדיין מדידת ביצועים בפועל ב־Chrome גלוי לפני מיזוג D1-04.
+| תחום | PR / commit במיזוג | מצב |
+|---|---|---|
+| D1-01 חוזה v2 ומעבר מתואם | [#4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) · 3baa62d | DONE |
+| D1-02 תרחישים ומעקב עצל | [#5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) · 12adc05 | DONE |
+| D1-03 אווירה ומומנטום | [#6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6) · 52ad4a5 | DONE |
+| D1-05 סמלים ופסים לפי PDF | [#8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8) · 56732ff | DONE |
+| סקירת סדר מסירה ושעון | [#9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9) · 37fe99e | DONE |
+| סקירת חלון מומנטום | [#10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10) · e8eb619 | DONE |
+| סקירת טקסט המציג | [#11](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/11) · cbbc511 | DONE |
 
-המשתמש אישר D1-01 עד D1-05, בדיקות וסקירת קוד, commits מפורטים, push, PR ומיזוג squash אוטומטי בסשן. אין אישור אנושי שגרתי, עקיפת שרת או תשלום. חוזה v2 ומעבר כל הצרכנים אושרו. הבקשה האחרונה מדגישה התאמה למסמך ששת העמודים ולתוכנית; כל ששת העמודים והאיורים נקראו, והקובץ המצורף זהה בעותק בריפו.
+## עבודה נוכחית
 
-## הושלם ואומת
+`codex/d1-match-3d` נפתח ישירות מ־main לעיל, בתיקיית worktree קיימת `vmi-d1-trace`. אינו בנוי על PR שלא מוזג. מחליף את [Draft #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7); דגימת זמן המקור, האיפוס המשותף ובדיקותיהם הועברו במפורש, וה־Canvas משמש רק גיבוי. הענף הקודם וההיסטוריה שלו נשמרים. אין להמשיך את שתי גרסאות D1-04 במקביל.
 
-- נוהל PR #1; ייצוב מחולל PR #3; Draft #2 נסגר כמוחלף, לא מוזג.
-- D1-01, PR #4, main ‏3baa62d: ‏85 בדיקות אחרי מיזוג ב־17.10s ו־smoke משחק מלא.
-- D1-02, PR #5, main ‏12adc05: ‏135 בדיקות אחרי מיזוג ב־17.90s ו־20 exports תקינים.
-- D1-03, PR #6, main ‏52ad4a52f17968cea83f13470d002e4e487c6b5b: ‏174 בדיקות Python ב־64.47s, ‏3 Node ו־smoke הפסקת שתייה/תוצאה אחרי המיזוג. זהו הבסיס המאומת לשני ענפי המסך.
+[מפרט, סקירה וראיות](D1-04-MATCH-3D.md): Three.js ‏0.186.1 מקומי ברישיון MIT ו־hash מאומת; דמויות מפרקיות, מגרש/אצטדיון פרוצדורליים, תאורה/צללים, שתי מצלמות, Low power ו־Reduce motion. עד 22 דמויות ואצוות מוגבלות. עובדות המשחק נשארות במחולל/מנוע. כל סימני הנגישות נשמרים.
 
-## ענפים נפרדים
+ראיות לפני commit: ‏203 Python עברו ב־123.79s; ‏44 Node עברו. בדפדפן: 22 דמויות, 29 draw calls במצב High, ללא שגיאות JS; 391×844 ללא overflow ושני פסי קצה זהים. אובדן WebGL אמיתי והיעדר WebGL2 עברו ב־fixture מבודד: גיבוי מסומן וסמל Foul נשמר. סקירה: אותו Codex כתב וסקר; אין לייחס ביקורת לאדם/סוכן נוסף.
 
-D1-04 נמצא ב־[Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏codex/d1-match-2d, בתיקיית Visual-Match-Intelligence המקורית. HEAD ‏51df5a8f010518a54d7cd09aa71779d606928f71: ‏175 בדיקות Python עברו ב־65.43s ו־13 Node; סקירה עצמית ותיקוני pause/seek. לא מוזג: Chrome דיווח 1FPS עם ציור כ־0.5–1.3ms. נשלחה בקשה אחת להציג את Chrome בחזית. אין לעקוף יעד 30FPS או לטעון שנמדד 60. המימוש החדש של renderer מופרד בענף זה.
+**החסם שנותר הוא ≥30FPS בפועל.** Chrome עדיין מדווח 1FPS וכ־2.4–2.9ms draw; גם דף rAF ללא VMI היה מוגבל ל־1FPS. הגורם המדויק לא אומת. אין להוריד את הסף, להחליף מדידת FPS ב־CPU draw או למזג על סמך המצב הנוכחי. ההרשאה האוטומטית למיזוג נשמרת, אך אינה עוקפת את השער. PR נשאר Draft.
 
-D1-05 נמצא ב־codex/d1-accessibility-overlay, בתיקיית checkout נפרדת vmi-d1-overlay, ונפתח ישירות מ־main ‏52ad4a5. אינו מבוסס על PR #7. שכבת הסמלים והפסים עצמאית מה־renderer, ולכן אפשר להשלים אותה על מסך 2D הקיים. יש לשמר את שתי הכוונות בפתרון התנגשויות עתידי של tv.js/HTML/CSS ותיעוד.
+הצעד הבא בסשן: commit מפורט, חבילה מלאה וסקירה על אותו SHA, push ו־Draft PR עצמאי; לעדכן בו SHA, פקודות, תוצאות וחסם. לאחר ראיית ביצועים תקינה: אימות remote HEAD/base/דיונים, מיזוג רגיל עם match-head ואימות main. אין עבודה עצמאית נוספת של D1 שנותרה להשלמה לפני חסם זה; D2 מחוץ להיקף.
 
-## D1-05 — מימוש וראיות ביניים
+## סביבה ו־QA
 
-[מפת התאמה למסמך](D1-05-ACCESSIBILITY.md): שני פסי קצה דקים זהים, גובה/בהירות ופלטה מובנית, סמל עגול יחיד בצד ימין עליון, scorebug קטן ומומנטום תחתיו, ללא באנר קהל/VAR/כרטיס/xG/דריבל. trace, chapters ומידע טכני נמצאים באזור מציג סגור. הגדרות עוצמה/גודל/הפחתת תנועה אופציונליות, ללא כיול.
-
-המתנת שריקה היא בדיוק שתי שניות מהמסירה, לרבות שבר שנייה; סיבה שמגיעה באותו deadline קודמת לסמל הכללי. העשרה שומרת אותו ID והתחלה. חיי סמלים 3/4 שניות סימולציה; pause מקפיא ועצירת כדורגל אינה מקפיאה. הפסקת שתייה אינה מבצעת restart כשסמלה נעלם. תור pending ו־retired IDs מוגבלים ל־64.
-
-שבע בדיקות חדשות נכשלו לפני המימוש; תשע עברו לאחריו. החבילה המשולבת: ‏183 Python עברו ב־68.12s לפני ניקוי קבוע לא בשימוש. ‏12 Node עברו. mutations של גבול פקיעה ושל ביטול עדיפות נתפסו. סקירת הכותב גילתה Kick-off מאוחר שהסתיר Foul; נוספה עדיפות ובדיקה. ב־Chrome, fixture יד הציג Foul בפינה נפרדת מלוח התוצאות ונשאר בהשהיה. שני הפסים הציגו computed styles זהים; viewport בפועל 391×844 לא גלש אופקית, ולוח/סמל לא חפפו; reduce motion נתן transition=0s. אלו אינן עדיין ראיות final HEAD.
-
-הצעד הבא: סקירה סופית, commit מפורט, בדיקות על ה־SHA, PR ממוקד, אימות HEAD/base/דיונים וכללי שרת, מיזוג רגיל ואימות main. לאחר מכן לסנכרן את D1-04 עם main ולפתור את השילוב החד־משמעי; יעד FPS נשאר פתוח עד מדידה תקינה.
-
-## סביבת בדיקה ושרתים מקומיים
-
-Python זמני: TEMP/vmi-quality-baseline-20261022/Scripts/python.exe, ‏3.12.13; Node ‏24.15.0. אין שינוי תלות בפרויקט. PyMuPDF הותקן רק בסביבה הזמנית לקריאת ה־PDF. pytest עם offline=1, warm_demo=0, plugin_autoload=0, בלי telemetry, temp root תחת out/pytest-d1-05:
+Python זמני בפועל: `C:/Users/Avish/AppData/Local/Temp/vmi-quality-baseline-20261022/Scripts/python.exe` ‏3.12.13. Node ‏24.15.0. אין לשער ש־TEMP של sandbox מצביע לאותה תיקייה.
 
 ```powershell
-python -m pytest tests -q -ra --strict-markers --strict-config -p no:cacheprovider -W error
+$env:VMI_OFFLINE='1'
+$env:VMI_WARM_DEMO='0'
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
+Remove-Item Env:APPLICATIONINSIGHTS_CONNECTION_STRING -ErrorAction SilentlyContinue
+python -m pytest tests -q -ra --strict-markers --strict-config -p no:cacheprovider -W error --tb=short --basetemp=out/pytest-3d-final
 node --test tests/web/*.test.mjs
 ```
 
-שרתים שלנו בלבד: D1-04 בפורט 17761, PID ‏16104, session ‏81650; D1-05 בפורט 17762, PID ‏7424, session ‏9873; harness תרחישים קיים תחת out/fixture-server.py, פורט 17763, PID ‏24340, session ‏40343. אין reload אוטומטי. יש לעצור רק PID שזוהה מחדש כשרת שלנו. ה־harness מחליף get_match עבור חמשת seeds המקומיים בלבד, ללא שינוי API או פריסה. טאבי QA זמניים; יש לאפס viewport override לפני סיום.
+יש להתאים את נתיב Python המדויק, להשתמש בתיקיית basetemp חדשה ולשמור exit code. הרצות מוגבלות הרשאות נתקעו; ריצה רגילה עם אותן בדיקות עברה. אין skips, הנמכת assertions או ביטול warnings.
 
-CI, כיסוי, הגנות שרת, run_id/הרשאת טלפון, מודל, catch-up והפצה נשארים D2. אין לטעון שכל סעיפי המסמך או שערי שלבים 4/5 כבר הושלמו. הרקע והראיות הישנים שמורים בהיסטוריית Git ובלוח העבודה.
+הכתובת שנשמרת למשתמש: `http://127.0.0.1:17761/tv?room=quality-d1-audit`, מוגשת כעת מענף התלת־ממד, offline ובלי חימום/telemetry. שרת uvicorn נוכחי: child PID ‏7196, session ‏24622; יש לזהות מחדש את שורת הפקודה לפני עצירה. שרת fixture זמני 17762 נסגר אחרי הבדיקה. `out/renderer-qa.html` הוא כלי QA מקומי ואינו נכנס ל־commit.
+
+יש שלוש תיקיות של אותו מאגר, לא שלושה מוצרים: primary בענף הדו־ממד הישן; `vmi-d1-overlay` ב־main; `vmi-d1-trace` בענף התלת־ממד. לא למחוק תיקייה/ענף או להחליף branch בתיקיית כלי אחר ללא אימות עבודה ובעלות. קישור PR ומצב final SHA יעודכנו ברשומת ההמשך.
+
+CI, כיסוי אחוזי, הגנות שרת, run_id/הרשאת טלפון, מודל ופריסה נשארים D2 ולא הוצגו כ־PASS.

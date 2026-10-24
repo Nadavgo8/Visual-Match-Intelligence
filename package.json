@@ -1,0 +1,6 @@
+{
+  "name": "vmi-match-view",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/web/*.test.mjs" }
+}

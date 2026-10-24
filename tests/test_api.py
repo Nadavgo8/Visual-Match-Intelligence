@@ -60,3 +60,17 @@ def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
     with c.websocket_connect("/ws/v2-boundary-test?role=app") as ws:
         initial = json.loads(ws.receive_text())
         assert initial["chapters"] == [] and initial["duration"] is None
+
+
+def test_3d_assets_are_served_locally_and_state_identifies_source_match():
+    room = Room("3d-source-identity", 12)
+    assert room.state("tv")["match_id"] == room.tracker.frame(0)["match_id"]
+    original = room.state("tv")["match_id"]
+    room.reset(13)
+    assert room.state("tv")["match_id"] != original
+    client = TestClient(app)
+    for asset in ("match-3d.mjs", "stadium.mjs", "footballers.mjs", "renderer-host.mjs",
+                  "vendor/three/three.module.js", "vendor/three/three.core.js"):
+        response = client.get("/static/" + asset)
+        assert response.status_code == 200
+        assert "javascript" in response.headers["content-type"]

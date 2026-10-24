@@ -1,0 +1,4 @@
+# Keep audited upstream bytes identical on Windows as well as Unix checkouts.
+web/vendor/three/three.core.js -text
+web/vendor/three/three.module.js -text
+web/vendor/three/LICENSE -text

@@ -1,22 +1,17 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { MarkerState, edgePresentation } from "./overlay-state.mjs";
+import { edgePresentation } from "./overlay-state.mjs";
+import { MatchScreen } from "./match-screen.mjs";
+import { createRenderer } from "./renderer-host.mjs";
 import { prependTrace } from "./trace-view.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
-const canvas = $("pitch");
-const ctx = canvas.getContext("2d");
-const W = canvas.width, H = canvas.height;
-const PX = 105, PY = 68, M = 60; // pitch metres, margin px
-const sx = (x) => M + (x / PX) * (W - 2 * M);
-const sy = (y) => H - M - (y / PY) * (H - 2 * M); // y up, like the data
-
-let state = null, frame = null, teams = null;
+const screen = new MatchScreen();
+const renderer = await createRenderer($("pitch"), $("renderer-note"));
+let state = null, teams = null;
 const audio = new SyntheticAudio();
-const markers = new MarkerState();
-let liveTime = 0, waitingForState = false;
 
 $("room-code").textContent = room;
 $("app-link").href = `/app?room=${encodeURIComponent(room)}`;
@@ -26,16 +21,15 @@ const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
   if (m.type === "state") onState(m);
-  else if (m.type === "frame" && !waitingForState) { frame = m; liveTime = m.t; renderMarker(); }
+  else if (m.type === "frame" && screen.frame(m, performance.now())) renderMarker();
   else if (m.type === "banner") onBanner(m);
   else if (m.type === "meters") onMeters(m);
   else if (m.type === "trace") onTrace(m);
 };
-ws.onclose = () => { $("agents").textContent = "disconnected, reload to reconnect"; };
+ws.onclose = () => { screen.freeze(performance.now()); $("agents").textContent = "disconnected, reload to reconnect"; };
 
 function onState(s) {
-  if (waitingForState || (state && (state.seed !== s.seed || s.t < liveTime - 0.01 || Math.abs(s.t - liveTime) > Math.max(3, s.speed * 0.3)))) clearTransient();
-  waitingForState = false; liveTime = s.t;
+  if (screen.sync(s, performance.now())) clearMarkerElement();
   state = s;
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
@@ -84,12 +78,12 @@ function onMeters(m) {
 }
 
 function onBanner(b) {
-  if (waitingForState || !markers.accept(b, liveTime)) return;
+  if (!screen.accept(b)) return;
   if (!b.update) audio.whistle(b.banner);
   renderMarker();
 }
 function renderMarker() {
-  const cue = markers.at(liveTime), el = $("event-marker");
+  const cue = screen.marker(), el = $("event-marker");
   el.hidden = !cue;
   if (!cue) return;
   if (el.dataset.cue === cue.cue_id && el.dataset.kind === cue.banner) return;
@@ -97,58 +91,26 @@ function renderMarker() {
   $("event-icon").innerHTML = bannerIcon(cue.banner);
   $("event-label").textContent = cue.label;
 }
-function clearTransient() {
-  markers.clear(); $("event-marker").hidden = true;
+function clearMarkerElement() {
+  $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
-  frame = null; shown = null;
 }
-function jump(command) { clearTransient(); waitingForState = true; send(command); }
+function jump(command) { screen.beginJump(); clearMarkerElement(); send(command); }
 
-// ---------- pitch ----------
-function drawPitch() {
-  for (let i = 0; i < 12; i++) {
-    ctx.fillStyle = i % 2 ? "#226b35" : "#1f6431";
-    ctx.fillRect((W / 12) * i, 0, W / 12 + 1, H);
-  }
-  ctx.strokeStyle = "rgba(255,255,255,0.75)";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(sx(0), sy(PY), sx(PX) - sx(0), sy(0) - sy(PY));
-  line(52.5, 0, 52.5, PY);
-  ctx.beginPath(); ctx.arc(sx(52.5), sy(34), (9.15 / PX) * (W - 2 * M), 0, 2 * Math.PI); ctx.stroke();
-  for (const [x0, dir] of [[0, 1], [PX, -1]]) {
-    rect(x0, 13.84, x0 + dir * 16.5, 54.16);
-    rect(x0, 24.84, x0 + dir * 5.5, 43.16);
-    dot(x0 + dir * 11, 34, 3, "rgba(255,255,255,0.8)");
-    ctx.lineWidth = 5; line(x0, 30.34, x0, 37.66); ctx.lineWidth = 3;
-  }
-}
-function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(sx(x1), sy(y1)); ctx.lineTo(sx(x2), sy(y2)); ctx.stroke(); }
-function rect(x1, y1, x2, y2) { ctx.strokeRect(Math.min(sx(x1), sx(x2)), sy(Math.max(y1, y2)), Math.abs(sx(x2) - sx(x1)), Math.abs(sy(y2) - sy(y1))); }
-function dot(x, y, r, c) { ctx.beginPath(); ctx.arc(sx(x), sy(y), r, 0, 2 * Math.PI); ctx.fillStyle = c; ctx.fill(); }
-
-let shown = null;
-function render() {
-  drawPitch();
-  if (frame && teams) {
-    // ease towards the latest frame so 10 Hz updates look smooth
-    if (!shown) shown = structuredClone(frame);
-    const k = 0.35;
-    const map = new Map(shown.players.map((p) => [p.id, p]));
-    shown.players = frame.players.map((p) => {
-      const q = map.get(p.id);
-      return q ? { ...p, x: q.x + (p.x - q.x) * k, y: q.y + (p.y - q.y) * k } : p;
-    });
-    shown.ball = [shown.ball[0] + (frame.ball[0] - shown.ball[0]) * k, shown.ball[1] + (frame.ball[1] - shown.ball[1]) * k];
-    for (const p of shown.players) {
-      const home = p.team === "home";
-      dot(p.x, p.y, 15, home ? teams.home.colour : teams.away.colour);
-      ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
-      ctx.fillStyle = home ? "#fff" : "#1a1a1a";
-      ctx.font = "700 14px Inter, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(p.n, sx(p.x), sy(p.y) + 1);
-    }
-    dot(shown.ball[0] + 0.25, shown.ball[1] - 0.25, 7, "rgba(0,0,0,0.35)");
-    dot(shown.ball[0], shown.ball[1], 7, "#fff");
+// Football rendering and accessibility overlays have independent lifecycles.
+let fpsStart = 0, fpsCount = 0, drawMs = 0;
+function render(now) {
+  const frame = screen.sample(now);
+  const drawStart = performance.now();
+  renderer.draw(frame, teams);
+  const canvas = renderer.canvas;
+  drawMs += performance.now() - drawStart;
+  if (frame) canvas.dataset.simTime = frame.t.toFixed(3);
+  else delete canvas.dataset.simTime;
+  fpsCount++;
+  if (now - fpsStart >= 2000) {
+    $("render-status").textContent = `${Math.round(fpsCount * 1000 / (now - fpsStart))} FPS | ${(drawMs / fpsCount).toFixed(1)} ms draw | ${renderer.mode}`;
+    fpsCount = 0; drawMs = 0; fpsStart = now;
   }
   requestAnimationFrame(render);
 }
@@ -179,6 +141,10 @@ function displaySettings() {
   $("stage").style.setProperty("--signal-intensity", $("signal-intensity").value);
   $("stage").style.setProperty("--symbol-size", $("symbol-size").value);
   $("stage").classList.toggle("reduce-motion", $("reduce-motion").checked);
+  renderer.setReducedMotion($("reduce-motion").checked);
 }
+$("render-quality").onchange = e => renderer.setQuality(e.target.value);
+$("camera-view").onchange = e => renderer.setCamera(e.target.value);
+window.addEventListener("pagehide", event => { if (!event.persisted) renderer.dispose(); });
 for (const id of ["signal-intensity", "symbol-size", "reduce-motion"]) $(id).addEventListener("input", displaySettings);
 displaySettings();

@@ -135,7 +135,7 @@ class Room:
 
     def state(self, role: str = "app") -> dict:
         m = self.replay.model
-        return {"type": "state", "room": self.name, "seed": self.seed, "t": round(self.replay.now, 2),
+        return {"type": "state", "room": self.name, "seed": self.seed, "match_id": self.match.meta["match_id"], "t": round(self.replay.now, 2),
                 "duration": self.match.duration if role == "tv" else None, "playing": self.playing, "speed": self.speed,
                 "clock": m.clock, "period": m.period, "score": m.score,
                 "teams": {s: {k: v for k, v in tm.items() if k != "players"} for s, tm in self.match.meta["teams"].items()},

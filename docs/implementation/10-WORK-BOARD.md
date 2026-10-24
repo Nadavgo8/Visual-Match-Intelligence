@@ -7,12 +7,12 @@
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
 | סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |
-| סקירה חוזרת D1-05 — טקסט המציג | IN_REVIEW | codex/fix-d1-safe-presenter-trace התחיל עצמאית מ־37fe99e וסונכרן ל־main ‏e8eb619; ‏15 Node עברו ו־DOM אמיתי אימת טקסט מילולי ללא תגיות זרות; חבילה מלאה ו־B4 נדרשים |
+| סקירה חוזרת D1-05 — טקסט המציג | DONE | [PR #11](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/11), main ‏cbbc511; ‏202 Python ב־126.03s ו־15 Node עברו אחרי המיזוג; DOM אמיתי אימת טקסט מילולי וגבול 40 רשומות |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
-| D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏51df5a8; ‏175 בדיקות Python ו־13 Node עברו על HEAD; יעד FPS עדיין לא אומת ואין מיזוג |
-| D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
+| D1-04 — תלת־ממד מאושר | IN_PROGRESS / FPS BLOCKED | codex/d1-match-3d מ־main ‏cbbc511, מחליף את Draft #7 ללא תלות במיזוגו. 203 Python ו־44 Node עברו לפני commit; [מפרט וראיות](D1-04-MATCH-3D.md). נדרש final SHA ו־≥30FPS לפני מיזוג |
+| D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8), main ‏56732ff; שכבת ה־PDF מוזגה ואומתה. תצוגת התלת־ממד משמרת אותה |
 | D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
 | D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |
 | D2-02 | WAITING_DEPENDENCY | חוזה חדרים, run_id ומספור הודעות |
@@ -22,6 +22,8 @@
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
 
 ## הרשאות ורצף העבודה
+
+ב־24.10 המשתמש אישר במפורש תלת־ממד ברמה חזותית גבוהה. D1-04 עוברת ל־`codex/d1-match-3d`; אין שינוי בהפרדת המשימות, באפס העלות או בשערי הבדיקות. ההיסטוריה להלן נשמרת כרישומי ביניים; מצב נוכחי בטבלה ובמסמך ההעברה.
 
 המשתמש הוא מפתח 1 ואישר D1-01 עד D1-05, כל אחת בענף וב־PR שלה מ־main המעודכן ולאחר מיזוג התלויות. מימוש, בדיקות, סקירה טכנית, תיקונים, commits מפורטים, push, PR ומיזוג squash אוטומטי בסשן מורשים. אין אישור אנושי שגרתי ואין להציג סקירת AI כאישור אנושי. שינוי חוזה v2 עם כל המפיקים והצרכנים באותו PR אושר מפורשות בשיחה. אין תשלום נוסף ואין השתלטות על מסלול D2.
 
