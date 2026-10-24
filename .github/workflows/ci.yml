@@ -1,0 +1,105 @@
+# Required checks for main (docs/implementation/12-QUALITY-AND-GIT-GATES.md §8.2).
+# Runs on every PR to main (documentation branches included) and on every push to main.
+# Actions are pinned to full commit SHAs; the tag is in the trailing comment.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VMI_OFFLINE: "1"
+  VMI_WARM_DEMO: "0"
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-lock.txt
+      - name: Full test suite with line and branch coverage
+        run: >
+          python -m pytest tests -q -ra --strict-markers --strict-config -p no:cacheprovider -W error
+          -p pytest_cov --cov --cov-branch --cov-report=json:out/coverage.json --cov-report=term
+          --junitxml=out/junit.xml
+      - name: Every test layer collects tests
+        run: |
+          for layer in unit contract integration; do
+            n=$(python -m pytest tests --collect-only -q -m "$layer" -p no:cacheprovider | grep -c "::" || true)
+            echo "$layer: $n tests"
+            test "$n" -gt 0
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: python-test-results
+          path: |
+            out/coverage.json
+            out/junit.xml
+          if-no-files-found: error
+
+  coverage-gate:
+    needs: python-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: python-test-results
+          path: out
+      - name: Totals, changed code and critical files
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: python -m tools.coverage_gate --coverage out/coverage.json --base "$BASE"
+
+  web-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Node test runner on the browser modules
+        run: node --test tests/web/*.test.mjs
+
+  static-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install ruff from the lock
+        run: python -m pip install --disable-pip-version-check "$(grep -i '^ruff==' requirements-lock.txt)"
+      - name: Lint (error-class rules from pyproject.toml)
+        run: python -m ruff check vmi tests tools
+      - name: Whitespace in the changed range
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check "$BASE"...HEAD

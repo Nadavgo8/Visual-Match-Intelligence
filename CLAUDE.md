@@ -50,11 +50,14 @@ Current decisions (Oct 21 product doc and Oct 22 plan; history in `docs/context/
 Built (v1): Python 3.12+, FastAPI + WebSocket rooms, vanilla JS with no build step, Microsoft Agent Framework with Foundry wiring (keyless, Entra ID) and offline fallbacks, and an Azure Container Apps + Application Insights script. D1-04 now implements a vendored Three.js 3D view without a build step or CDN; performance acceptance remains open until measured. The provider-neutral model layer remains D2 work: **the model and runtime stay open until D2-00**.
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-lock.txt   # Python 3.12, in a venv; exact tested versions
 uvicorn vmi.api.server:app --reload   # http://localhost:8000 → /tv on a laptop, /app on a phone, same room code
-pytest -q                              # 32 tests, all pass offline (checked Oct 21)
+VMI_OFFLINE=1 VMI_WARM_DEMO=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests -q -ra --strict-markers --strict-config -p no:cacheprovider -W error
+node --test tests/web/*.test.mjs
 python -m vmi.mcp_server               # engine tools over MCP
 ```
+
+Shared setup, test layers, coverage gate, schemas and CI (for every tool, not only Claude): `docs/implementation/02-SETUP-AND-GIT.md`.
 
 - Runs fully offline: without `FOUNDRY_PROJECT_ENDPOINT` + `FOUNDRY_MODEL` (or with `VMI_OFFLINE=1`), every agent falls back to a deterministic local implementation with the same tools and receipts.
 - Env: `VMI_DEMO_SEED` (default **12**: 2–1, early goal, VAR-overturned penalty, routine VAR goal check, header winner), `VMI_WARM_DEMO` (pre-writes demo analysis cache), `APPLICATIONINSIGHTS_CONNECTION_STRING`.
@@ -75,6 +78,7 @@ Open: see `docs/context/decisions.md`, "Still open".
 |---|---|
 | `docs/implementation/VMI-FINAL-PLAN-F.md` | Work plan (Hebrew, Oct 22): goals, zero-cost rule, split, contracts, generator, tasks D1-01…05 and D2-00…06, gates, git, AI prompts, tests, demo. **Start here for "what next".** |
 | `docs/implementation/12-QUALITY-AND-GIT-GATES.md` | Mandatory review and unit-test gates per branch and stage; two-developer Git workflow, CI setup requirements, evidence templates and improvement log. Read before executing a task. |
+| `docs/implementation/02-SETUP-AND-GIT.md` | Shared setup (locked install), test layers, coverage gate, v2 JSON Schemas, CI checks and their enforcement status |
 | `docs/context/product-doc-2026-10-21.pdf` | Six-page product doc (Hebrew) with design illustrations: edge bars, markers, app, engine, research basis |
 | `docs/spec.md` | Build spec v2: behaviour, formulas, data realism, sync, targets |
 | `docs/context/decisions.md` | Every decision, the 4-round interview, the Oct 21–22 changes, open items. **Start here for "why".** |

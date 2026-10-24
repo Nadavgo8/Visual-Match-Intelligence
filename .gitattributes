@@ -1,5 +1,7 @@
 # Keep audited upstream bytes identical on Windows as well as Unix checkouts.
 web/vendor/three/three.core.js -text
+# This single upstream indentation is hash-verified; keep all other checks.
+web/vendor/three/three.core.js whitespace=blank-at-eol,blank-at-eof,-space-before-tab,cr-at-eol
 web/vendor/three/three.module.js -text
 web/vendor/three/LICENSE -text
 web/assets/athlete/athlete.json -text

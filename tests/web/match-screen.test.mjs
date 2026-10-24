@@ -6,6 +6,17 @@ const frame = (t, extra = {}) => ({ match_id:'m1', t, ball:[20,34], ball_height:
   ball_in_play:false, players:[], ...extra });
 const cue = { cue_id:'cue1', banner:'foul', t_start:1, label:'Foul' };
 
+test("same-run reconnect snapshot replaces frozen poses and markers before new tracking", () => {
+  const screen = new MatchScreen(); screen.snapshot(state({run_id:'r1'}),0);
+  screen.frame(frame(1,{run_id:'r1'}),1); screen.accept(cue); screen.freeze(2);
+  assert.ok(screen.marker()); assert.ok(screen.sample(2));
+  assert.ok(screen.snapshot(state({t:1,run_id:'r1',playing:false}),3));
+  assert.equal(screen.marker(),null); assert.equal(screen.sample(3),null);
+  assert.equal(screen.frame(frame(1,{run_id:'r0'}),4),false);
+  assert.ok(screen.frame(frame(1,{run_id:'r1'}),5));
+  assert.equal(screen.sample(5).t,1);
+});
+
 test("seek clears both layers and ignores in-flight frames and symbols until state", () => {
   const screen = new MatchScreen(); screen.sync(state(),0); screen.frame(frame(1),1); screen.accept(cue);
   screen.beginJump(); assert.equal(screen.sample(2),null); assert.equal(screen.marker(),null);

@@ -11,7 +11,7 @@ Built for the Microsoft *Inside the Game* hackathon. **All matches, teams and pl
 ## Run it
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-lock.txt
 uvicorn vmi.api.server:app --reload
 # open http://localhost:8000 → TV view on a laptop, Companion on a phone (same room code)
 pytest -q

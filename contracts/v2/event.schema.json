@@ -1,0 +1,578 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nadavgo8/Visual-Match-Intelligence/contracts/v2/event.schema.json",
+  "title": "VMI v2 delivered event",
+  "description": "An event-feed, audio or analytics record as the engine receives it. Internal VMI contract (docs/implementation/D1-01-CONTRACT-PROPOSAL.md), not an external standard. Cross-field rules that JSON Schema cannot express (delivered_t >= t, a link never pointing to its own id, link targets existing and arriving in order) are enforced by vmi/contracts.py and vmi/engine/model.py.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "match_id",
+    "type",
+    "source",
+    "t",
+    "delivered_t",
+    "period",
+    "clock"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "match_id": {
+      "$ref": "#/$defs/id"
+    },
+    "type": {
+      "$ref": "#/$defs/id"
+    },
+    "source": {
+      "enum": [
+        "event_feed",
+        "audio",
+        "synthetic_analytics"
+      ]
+    },
+    "t": {
+      "$ref": "#/$defs/time"
+    },
+    "delivered_t": {
+      "$ref": "#/$defs/time"
+    },
+    "period": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "clock": {
+      "type": "string",
+      "minLength": 1
+    },
+    "team": {
+      "enum": [
+        "home",
+        "away",
+        null
+      ]
+    },
+    "player_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "location": {
+      "$ref": "#/$defs/point"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "pass",
+              "shot",
+              "foul",
+              "handball",
+              "dribble",
+              "carry",
+              "set_piece",
+              "whistle",
+              "substitution",
+              "card",
+              "var",
+              "period_start",
+              "period_end",
+              "added_time"
+            ]
+          }
+        }
+      },
+      "then": {
+        "$comment": "these types carry a nested payload named after the type",
+        "$ref": "#/$defs/payload_named_after_type"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "shot"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "shot": {
+            "type": "object",
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "outcome"
+                  ]
+                },
+                {
+                  "required": [
+                    "xg"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "shot_result"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "shot_id",
+          "outcome"
+        ],
+        "properties": {
+          "shot_id": {
+            "$ref": "#/$defs/id"
+          },
+          "outcome": {
+            "enum": [
+              "goal",
+              "saved",
+              "blocked",
+              "post",
+              "off_target"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "shot_xg"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "shot_id",
+          "xg",
+          "method_version"
+        ],
+        "properties": {
+          "shot_id": {
+            "$ref": "#/$defs/id"
+          },
+          "xg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "source": {
+            "const": "synthetic_analytics"
+          },
+          "method_version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "$comment": "xG exists only as delayed analytics",
+        "not": {
+          "required": [
+            "xg"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "goal_cancelled"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "shot_id",
+          "result_id",
+          "decision_id"
+        ],
+        "properties": {
+          "shot_id": {
+            "$ref": "#/$defs/id"
+          },
+          "result_id": {
+            "$ref": "#/$defs/id"
+          },
+          "decision_id": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "referee_decision"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "trigger_event_id",
+          "stoppage_id",
+          "decision"
+        ],
+        "properties": {
+          "trigger_event_id": {
+            "$ref": "#/$defs/id"
+          },
+          "stoppage_id": {
+            "$ref": "#/$defs/id"
+          },
+          "decision": {
+            "enum": [
+              "penalty",
+              "no_penalty",
+              "free_kick",
+              "kick_off",
+              "goal_kick",
+              "corner",
+              "throw_in"
+            ]
+          },
+          "supersedes_decision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "restart_awarded"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "decision_id",
+          "stoppage_id"
+        ],
+        "properties": {
+          "decision_id": {
+            "$ref": "#/$defs/id"
+          },
+          "stoppage_id": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "restart_taken"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "restart_id",
+          "stoppage_id"
+        ],
+        "properties": {
+          "restart_id": {
+            "$ref": "#/$defs/id"
+          },
+          "stoppage_id": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "dribble"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "dribble": {
+            "required": [
+              "outcome",
+              "defender_id"
+            ],
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "complete",
+                  "failed",
+                  "interrupted",
+                  "unresolved"
+                ]
+              },
+              "defender_id": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "handball"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "handball": {
+            "required": [
+              "offence"
+            ],
+            "properties": {
+              "offence": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "time": {
+      "type": "number",
+      "minimum": 0
+    },
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "payload_named_after_type": {
+      "$comment": "JSON Schema can't name a property after another value, so each type is listed",
+      "anyOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "pass"
+            },
+            "pass": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "pass"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "shot"
+            },
+            "shot": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "shot"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "foul"
+            },
+            "foul": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "foul"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "handball"
+            },
+            "handball": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "handball"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "dribble"
+            },
+            "dribble": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "dribble"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "carry"
+            },
+            "carry": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "carry"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "set_piece"
+            },
+            "set_piece": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "set_piece"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "whistle"
+            },
+            "whistle": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "whistle"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "substitution"
+            },
+            "substitution": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "substitution"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "card"
+            },
+            "card": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "card"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "var"
+            },
+            "var": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "var"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "period_start"
+            },
+            "period_start": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "period_start"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "period_end"
+            },
+            "period_end": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "period_end"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "added_time"
+            },
+            "added_time": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "added_time"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,9 @@ export class MatchScreen {
     this.timeline = new FrameTimeline(); this.markers = new MarkerState();
     this.liveTime = 0; this.state = null; this.waiting = false;
   }
+  // Reconnect/resync replaces even a same-run, same-time snapshot. No old pose
+  // or marker survives while we wait for its first delivered tracking frame.
+  snapshot(state, now) { this.beginJump(); return this.sync(state, now); }
   sync(state, now) {
     const old = this.state;
     const reset = this.waiting || (old && (old.seed !== state.seed

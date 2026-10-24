@@ -1,8 +1,9 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
 import { edgePresentation } from "./overlay-state.mjs";
-import { MatchScreen } from "./match-screen.mjs";
+import { MatchScreen } from "./match-screen.mjs?v=3.1";
 import { createRenderer } from "./renderer-host.mjs";
+import { openSession, hostTokenStore } from "./session.mjs";
 import { prependTrace } from "./trace-view.mjs";
 
 const params = new URLSearchParams(location.search);
@@ -16,20 +17,36 @@ const audio = new SyntheticAudio();
 $("room-code").textContent = room;
 $("app-link").href = `/app?room=${encodeURIComponent(room)}`;
 
-const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/${encodeURIComponent(room)}?role=tv`);
-const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
-ws.onmessage = (ev) => {
-  const m = JSON.parse(ev.data);
-  if (m.type === "state") onState(m);
+let isHost = false;
+const session = openSession({ room, role: "tv", hostToken: hostTokenStore(room), onMessage, onStatus });
+const send = (m) => session.send(m);
+function onMessage(m) {
+  if (m.type === "snapshot") {
+    isHost = m.host;
+    onState({ ...m.state, run_id: m.run_id }, true);
+    if (m.meters) onMeters(m.meters);
+  }
+  else if (m.type === "state") onState(m);
   else if (m.type === "frame" && screen.frame(m, performance.now())) renderMarker();
   else if (m.type === "banner") onBanner(m);
   else if (m.type === "meters") onMeters(m);
   else if (m.type === "trace") onTrace(m);
-};
-ws.onclose = () => { screen.freeze(performance.now()); $("agents").textContent = "disconnected, reload to reconnect"; };
+  else if (m.type === "error") $("agents").textContent = m.message;
+}
+function onStatus(s) {
+  if (s === "disconnected") {
+    screen.freeze(performance.now());
+    isHost = false; hostControls();
+    $("agents").textContent = "disconnected, reconnecting…";
+  }
+}
+function hostControls() {
+  for (const el of document.querySelectorAll("#play, #speed, #scrub, #seed, #new, #chapters button")) el.disabled = !isHost;
+}
 
-function onState(s) {
-  if (screen.sync(s, performance.now())) { clearMarkerElement(); renderer.setAtmosphere(null); }
+function onState(s, snapshot = false) {
+  const now = performance.now();
+  if (snapshot ? screen.snapshot(s, now) : screen.sync(s, now)) { clearMarkerElement(); renderer.setAtmosphere(null); }
   state = s;
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
@@ -49,6 +66,7 @@ function onState(s) {
     b.onclick = () => jump({ cmd: "seek", t: c.t });
     ch.appendChild(b);
   }
+  hostControls();
   scoreBug(s.score, s.clock);
 }
 
