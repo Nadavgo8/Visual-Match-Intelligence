@@ -12,7 +12,7 @@
 | D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
 | D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
 | D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |
-| D2-02 | WAITING_DEPENDENCY | חוזה חדרים, run_id ומספור הודעות |
+| D2-02 | IN_REVIEW | `codex/d2-realtime-session`: run_id ו־seq בכל הודעה, snapshot ראשון ובכל run, שליטה למארח בלבד (טוקן), outbox לכל לקוח עם החלפת פריים ו־resync, ביטול ניתוח/תשובה ישנים, reconnect מוגבל ב־`web/session.mjs`, ניקוי חדרים ותקרה. [חוזה](D2-02-SESSION.md), [העברת D2](HANDOFF-D2.md) |
 | D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
 | D2-04 | WAITING_DEPENDENCY | snapshot, חלון זמן ומצב משתמש |
 | D2-05 | WAITING_DEPENDENCY | הכרעת D2-00 וחוזי עובדות; שלד עצמאי אפשרי |

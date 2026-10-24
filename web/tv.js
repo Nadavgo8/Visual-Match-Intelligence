@@ -1,6 +1,7 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
 import { MarkerState, edgePresentation } from "./overlay-state.mjs";
+import { openSession, hostTokenStore } from "./session.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -20,17 +21,29 @@ let liveTime = 0, waitingForState = false;
 $("room-code").textContent = room;
 $("app-link").href = `/app?room=${encodeURIComponent(room)}`;
 
-const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/${encodeURIComponent(room)}?role=tv`);
-const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
-ws.onmessage = (ev) => {
-  const m = JSON.parse(ev.data);
-  if (m.type === "state") onState(m);
+let isHost = false;
+const session = openSession({ room, role: "tv", hostToken: hostTokenStore(room), onMessage, onStatus });
+const send = (m) => session.send(m);
+function onMessage(m) {
+  if (m.type === "snapshot") {
+    waitingForState = true; isHost = m.host;
+    onState(m.state);
+    if (m.meters) onMeters(m.meters);
+  }
+  else if (m.type === "state") onState(m);
   else if (m.type === "frame" && !waitingForState) { frame = m; liveTime = m.t; renderMarker(); }
   else if (m.type === "banner") onBanner(m);
   else if (m.type === "meters") onMeters(m);
   else if (m.type === "trace") onTrace(m);
-};
-ws.onclose = () => { $("agents").textContent = "disconnected, reload to reconnect"; };
+  else if (m.type === "error") $("agents").textContent = m.message;
+}
+function onStatus(s) {
+  // No frames arrive while disconnected; never animate play that wasn't delivered.
+  if (s === "disconnected") { clearTransient(); $("agents").textContent = "disconnected, reconnecting…"; }
+}
+function hostControls() {
+  for (const el of document.querySelectorAll("#play, #speed, #scrub, #seed, #new, #chapters button")) el.disabled = !isHost;
+}
 
 function onState(s) {
   if (waitingForState || (state && (state.seed !== s.seed || s.t < liveTime - 0.01 || Math.abs(s.t - liveTime) > Math.max(3, s.speed * 0.3)))) clearTransient();
@@ -54,6 +67,7 @@ function onState(s) {
     b.onclick = () => jump({ cmd: "seek", t: c.t });
     ch.appendChild(b);
   }
+  hostControls();
   scoreBug(s.score, s.clock);
 }
 

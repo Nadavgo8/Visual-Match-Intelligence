@@ -20,27 +20,28 @@ def test_health_and_pages():
 
 
 def test_room_seek_feed_and_ask():
-    c = TestClient(app)
-    with c.websocket_connect("/ws/test?role=app") as ws:
-        assert json.loads(ws.receive_text())["type"] == "state"
-        ws.send_text(json.dumps({"cmd": "profile", "profile": {"depth": "deep", "amount": "everything"}}))
-        assert json.loads(ws.receive_text())["type"] == "backlog"
-        ws.send_text(json.dumps({"cmd": "seek", "t": 1200}))
-        seen = set()
-        for _ in range(60):
-            m = json.loads(ws.receive_text())
-            seen.add(m["type"])
-            if m["type"] == "backlog" and m["feed"]:
-                break
-        assert "backlog" in seen
-        ws.send_text(json.dumps({"cmd": "ask", "q": "what's the score?", "id": "q1"}))
-        for _ in range(60):
-            m = json.loads(ws.receive_text())
-            if m["type"] == "answer":
-                assert m["id"] == "q1" and "Harbour City" in m["text"]
-                break
-        else:
-            raise AssertionError("no answer")
+    # D2-02: the hosting match screen seeks; the phone follows through a new snapshot.
+    with TestClient(app) as c:
+        with c.websocket_connect("/ws/test?role=tv") as tv, c.websocket_connect("/ws/test?role=app") as ws:
+            assert json.loads(tv.receive_text())["host"] is True
+            assert json.loads(ws.receive_text())["type"] == "snapshot"
+            ws.send_text(json.dumps({"cmd": "profile", "profile": {"depth": "deep", "amount": "everything"}}))
+            assert json.loads(ws.receive_text())["type"] == "backlog"
+            tv.send_text(json.dumps({"cmd": "seek", "t": 1200}))
+            for _ in range(60):
+                m = json.loads(ws.receive_text())
+                if m["type"] == "snapshot" and m["feed"]:
+                    break
+            else:
+                raise AssertionError("no snapshot with the feed after the seek")
+            ws.send_text(json.dumps({"cmd": "ask", "q": "what's the score?", "id": "q1"}))
+            for _ in range(60):
+                m = json.loads(ws.receive_text())
+                if m["type"] == "answer":
+                    assert m["id"] == "q1" and "Harbour City" in m["text"]
+                    break
+            else:
+                raise AssertionError("no answer")
 
 
 def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
@@ -59,4 +60,5 @@ def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
     c = TestClient(app)
     with c.websocket_connect("/ws/v2-boundary-test?role=app") as ws:
         initial = json.loads(ws.receive_text())
-        assert initial["chapters"] == [] and initial["duration"] is None
+        assert initial["type"] == "snapshot"
+        assert initial["state"]["chapters"] == [] and initial["state"]["duration"] is None
