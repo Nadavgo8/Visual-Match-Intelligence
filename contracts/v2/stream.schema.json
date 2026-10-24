@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nadavgo8/Visual-Match-Intelligence/contracts/v2/stream.schema.json",
+  "title": "VMI v2 sampled stream record",
+  "description": "Crowd level (1 Hz), match state (on change) and tracking (20 Hz) samples. Internal VMI contract. Missing crowd data is a gap in the samples, never a quiet reading.",
+  "type": "object",
+  "required": ["schema_version", "stream", "match_id", "t"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "stream": {"enum": ["crowd", "match_state", "tracking"]},
+    "match_id": {"type": "string", "minLength": 1},
+    "t": {"type": "number", "minimum": 0},
+    "quality": {
+      "type": "object",
+      "properties": {"status": {"type": "string"}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"stream": {"const": "crowd"}}},
+      "then": {"required": ["crowd_level"], "properties": {"source": {"const": "audio"}, "crowd_level": {"type": "number", "minimum": 0, "maximum": 1}}}
+    },
+    {
+      "if": {"properties": {"stream": {"const": "match_state"}}},
+      "then": {
+        "required": ["ball_in_play", "period", "score"],
+        "properties": {
+          "ball_in_play": {"type": "boolean"},
+          "period": {"type": "integer", "minimum": 1},
+          "score": {"type": "object", "required": ["home", "away"], "properties": {"home": {"type": "integer", "minimum": 0}, "away": {"type": "integer", "minimum": 0}}},
+          "active_stoppage_id": {"type": ["string", "null"]},
+          "pending_restart_id": {"type": ["string", "null"]}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"stream": {"const": "tracking"}}},
+      "then": {
+        "required": ["ball", "ball_height", "ball_in_play", "possession", "quality", "players"],
+        "properties": {
+          "source": {"const": "tracking"},
+          "ball": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}], "minItems": 2, "maxItems": 2},
+          "ball_height": {"type": "number", "minimum": 0},
+          "ball_in_play": {"type": "boolean"},
+          "possession": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": {"enum": ["controlled", "loose", "stopped"]},
+              "team": {"enum": ["home", "away", null]},
+              "holder_id": {"type": ["string", "null"]},
+              "id": {"type": ["string", "null"]}
+            }
+          },
+          "players": {
+            "type": "array",
+            "items": {"type": "object", "required": ["id", "team", "x", "y"], "properties": {"id": {"type": "string"}, "team": {"enum": ["home", "away"]}, "x": {"type": "number"}, "y": {"type": "number"}}}
+          }
+        }
+      }
+    }
+  ]
+}

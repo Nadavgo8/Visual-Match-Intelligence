@@ -1,0 +1,6 @@
+{
+  "lines": 90.18,
+  "branches": 83.41,
+  "measured": "2026-10-24 on codex/d2-platform-contracts (main 56732ff + D2-01 tests), Python 3.12.9, 249 tests",
+  "command": "python -m pytest tests -p pytest_cov --cov --cov-branch --cov-report=json:out/coverage.json"
+}
