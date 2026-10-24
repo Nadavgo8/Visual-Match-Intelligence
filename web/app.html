@@ -45,7 +45,7 @@
 <dialog id="onboard">
   <form method="dialog" id="onboard-form">
     <h2 id="ob-title">Set up your companion</h2>
-    <p class="muted">Three questions, once. You can change them any time in Settings.</p>
+    <p class="muted">Three questions, once. You can skip them and change them any time in Settings. The app is optional: the match screen works without it.</p>
     <fieldset>
       <legend>How well do you know football?</legend>
       <label><input type="radio" name="knowledge" value="new"> New to it</label>
@@ -65,7 +65,7 @@
       <label><input type="radio" name="amount" value="everything"> Everything</label>
     </fieldset>
     <p class="muted small">Room: <b id="room-code"></b> · Agents: <span id="agents"></span></p>
-    <button class="primary" value="ok">Done</button>
+    <div class="ob-actions"><button class="primary" value="ok">Done</button> <button value="skip">Skip, use defaults</button></div>
   </form>
 </dialog>
 
