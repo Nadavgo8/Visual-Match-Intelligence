@@ -14,8 +14,8 @@
 | D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏51df5a8; ‏175 בדיקות Python ו־13 Node עברו על HEAD; יעד FPS עדיין לא אומת ואין מיזוג |
 | D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
 | D2-00 | BLOCKED (הכרעה) | `codex/d2-model-feasibility`: שכבת ספק ניטרלית, סט 30 שאלות וכלי הערכה; 208 Python ו־12 Node עברו על HEAD. ההכרעה חסומה: אין מקום בדיסק ל־Ollama, זכאות Azure for Students לא ידועה, ונדרשת ביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md), [העברת D2](HANDOFF-D2.md) |
-| D2-01 | IN_REVIEW (חלקי) | `codex/d2-platform-contracts`: נעילת תלויות, שכבות בדיקה, שער כיסוי (baseline ‏90.18% שורות / 83.41% ענפים), סכמות v2, CI, ‏`.env.example`, [הקמה](02-SETUP-AND-GIT.md). ‏249 Python עם כיסוי ו־12 Node עברו. **לא אומת:** ריצת CI בפועל, הגנת `main` ו"CI כושל חוסם מיזוג" — דורשים `gh` עם הרשאת admin; הריפו פרטי ו־Actions חינמי רק בתקציב $0. [העברת D2](HANDOFF-D2.md) |
-| D2-02 | WAITING_DEPENDENCY | חוזה חדרים, run_id ומספור הודעות |
+| D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
+| D2-02 | DONE | [PR #15](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/15) מוזג ל־9063ca5; ארבעת ה־checks עברו (הריצה הראשונה נכשלה בשער הכיסוי ונוספו 5 בדיקות; שורות קריטיות שהשתנו 100%, ענפים 97.14%); אחרי המיזוג: 285 Python ו־21 Node עברו על main. [חוזה](D2-02-SESSION.md) |
 | D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
 | D2-04 | WAITING_DEPENDENCY | snapshot, חלון זמן ומצב משתמש |
 | D2-05 | WAITING_DEPENDENCY | הכרעת D2-00 וחוזי עובדות; שלד עצמאי אפשרי |

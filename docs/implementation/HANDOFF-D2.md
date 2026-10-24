@@ -2,12 +2,10 @@
 
 המשתמש הוא מפתח 2 ואישר את משימות D2 לפי התוכנית והנוהל: מימוש, בדיקות, סקירה, תיקונים, commits מפורטים, push, PR ומיזוג אוטומטי בסשן אחרי השערים. אין אישור אנושי פיקטיבי, אין עקיפת שרת ואין תשלום. הכרעת D2-00 דורשת את שני המפתחים. כלי: Claude Code (Claude Opus 5.5), שהוא גם הכותב וגם הסוקר; אין זו ביקורת עצמאית.
 
-## סביבה (מחשב מפתח 2)
+## סביבה וחסמים
 
-- Python 3.12.9 ב־`.venv` (מחוץ ל־Git); Node 24.3.0. בדיקות לפי [02-SETUP-AND-GIT](02-SETUP-AND-GIT.md).
-- baseline על main ‏56732ff: ‏183 Python עברו ב־244s, ‏12 Node עברו.
-- **חסם:** כ־0.1–0.3GB פנויים ב־C:. מונע Ollama (D2-00) והתקנות נוספות.
-- **חסם:** `gh` לא מותקן ואין הזדהות GitHub לכלי. אפשר push של ענפים; פתיחת PR, מיזוג, הרצת CI והגנת `main` חסומים עד `gh auth login` של המשתמש. חילוץ אסימון ממנהל ההרשאות נחסם ולא נעקף.
+- Python 3.12.9 ב־`app/.venv`; Node 24.3.0. D2-02 ב־worktree `../app-d2-02`.
+- `gh` מותקן ומחובר (Nadavgo8). מקום בדיסק עדיין מעט (כ־4GB) — מספיק לעבודה, לא ל־Ollama + מודל בנוחות.
 
 ## D2-01 — `codex/d2-platform-contracts`
 
@@ -17,6 +15,17 @@
 - השפעה על מפתח 1: כל קובץ בדיקה חדש צריך שורה ב־`LAYERS` שב־`tests/conftest.py`.
 - לא אומת: התקנה נקייה מהקובץ הנעול (אין מקום בדיסק לסביבה שנייה; ה־CI יבדוק על Linux), ריצת CI, required checks והגנת `main`.
 
+- **מוזג:** PR #13 ל־9918ede. CI ראשון ירוק (התקנה נקייה מהקובץ הנעול על Linux אומתה), כיסוי ב־CI ‏90.32%/83.71%. הגנת `main` הופעלה (ארבעה required checks, strict, enforce_admins, בלי force push/מחיקה). PR #14 עם assertion כושל: python-tests נכשל, GitHub סימן BLOCKED, לא נעשה ניסיון מיזוג; נסגר והענף נמחק.
+
+## D2-02 — `codex/d2-realtime-session`
+
+- נבנו: run_id/seq, snapshot, מארח עם טוקן, outbox ו־writer לכל לקוח, ביטול עבודה ישנה, `answer_discarded`, ניקוי חדרים (120s) ותקרה (64), אימות פקודות מארח פגומות, `web/session.mjs` (gate, backoff, טוקן), חיבור `tv.js`/`app.js`, הודעת ניתוק באפליקציה. [החוזה](D2-02-SESSION.md).
+- בדיקות: `tests/test_realtime_session.py` ‏(17), עדכון `tests/test_api.py` (הטלפון כבר לא מבצע seek — דרישת התוכנית "בקרת ניגון למארח בלבד"), `tests/web/session.test.mjs` ‏(6).
+- ממצא בדרך: TestClient בלי `with` מריץ כל חיבור בלולאת אירועים נפרדת, ולכן בדיקת seek נתקעה; תוקן בבדיקות ע״י portal משותף. ממצא P2 בסקירה: פקודת seek/new_match פגומה הפילה את חיבור המארח; נוספו אימות ובדיקת רגרסיה שנכשלה לפני ועוברת אחרי.
+- mutations: הסרת בדיקת המארח — 1 נכשלה; הסרת בדיקת run בתשובות — 1 נכשלה.
+- smoke מול uvicorn אמיתי (פורט 17781): מסך מארח עם טוקן, טלפון לא מארח, `play` מהטלפון נדחה, seq עולה ב־1, seek יוצר snapshot ‏r2 עם פיד.
+- לא נבדק: דפדפן אמיתי לשני המסכים (אין כלי דפדפן בסשן); reconnect אמיתי של רשת.
+
 ## D2-00 — `codex/d2-model-feasibility`
 
 - נבנו: `vmi/agents/providers.py`, `vmi/evaluation/` (סט 30 שאלות, runner, ציון, גיליון ביקורת), `prompts/model_eval.md`, `tests/test_model_layer.py`, `tests/test_model_eval.py`, [11-MODEL-DECISION](11-MODEL-DECISION.md).
@@ -24,7 +33,4 @@
 - mutations (עותק זמני, שוחזר): הסרת `check_zero_cost` — 2 בדיקות נכשלו; סימון fallback כ־`live` — 3 נכשלו.
 - סקירה: אין P0–P2. P3 נדחו: ייבוא פונקציות פרטיות מ־explainer; ערך `atmosphere` במאגר החוקים עדיין מזכיר "mood label" (שייך ל־D2-05).
 - הכרעה: PENDING. נדרש: מקום בדיסק או מחשב אחר ל־Ollama, בירור זכאות Azure for Students, הרצת הסט פעמיים וביקורת שני המפתחים.
-
-## הצעד הבא
-
-D2-02 (`codex/d2-realtime-session`) נבנה בתיקיית worktree נפרדת `../app-d2-02` מ־main ‏56732ff.
+- PR [#16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ממזג רק את הכלים; ההכרעה נשארת חסומה.
