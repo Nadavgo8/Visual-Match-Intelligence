@@ -5,7 +5,8 @@
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
-| סקירה חוזרת D1 — סדר מסירה | IN_REVIEW | ענף עצמאי codex/fix-d1-contract-ordering מ־56732ff; שישה ממצאים שוחזרו ותוקנו; [ראיות ולמידה](D1-AUDIT-2026-10-24.md); שערים סופיים ו־B4 טרם הושלמו |
+| סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
+| סקירה חוזרת D1-03 — חלון מומנטום | IN_REVIEW | codex/fix-d1-momentum-window מ־main מאומת 37fe99e; שתי רגרסיות של גבול שברי שוחזרו ותוקנו; [דוח](D1-AUDIT-2026-10-24.md) |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |

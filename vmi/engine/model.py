@@ -377,7 +377,9 @@ class MatchModel:
     # ---------- measures ----------
     def momentum(self) -> Momentum:
         t0 = self.t - MOMENTUM_WINDOW_S
-        poss = [s for _, s in self.possession_samples]
+        # Meters can be emitted between cleanup ticks. Apply the window at read
+        # time as well, so possession and event counts describe one snapshot.
+        poss = [s for sample_t, s in self.possession_samples if t0 <= sample_t <= self.t]
         ph = poss.count("home") / len(poss) if poss else 0.5
         kp = {"home": 0, "away": 0}
         sh = {"home": 0, "away": 0}
