@@ -14,7 +14,7 @@
 | D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏51df5a8; ‏175 בדיקות Python ו־13 Node עברו על HEAD; יעד FPS עדיין לא אומת ואין מיזוג |
 | D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
 | D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
-| D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |
+| D2-01 | IN_REVIEW (חלקי) | `codex/d2-platform-contracts`: נעילת תלויות, שכבות בדיקה, שער כיסוי (baseline ‏90.18% שורות / 83.41% ענפים), סכמות v2, CI, ‏`.env.example`, [הקמה](02-SETUP-AND-GIT.md). ‏249 Python עם כיסוי ו־12 Node עברו. **לא אומת:** ריצת CI בפועל, הגנת `main` ו"CI כושל חוסם מיזוג" — דורשים `gh` עם הרשאת admin; הריפו פרטי ו־Actions חינמי רק בתקציב $0. [העברת D2](HANDOFF-D2.md) |
 | D2-02 | WAITING_DEPENDENCY | חוזה חדרים, run_id ומספור הודעות |
 | D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
 | D2-04 | WAITING_DEPENDENCY | snapshot, חלון זמן ומצב משתמש |
