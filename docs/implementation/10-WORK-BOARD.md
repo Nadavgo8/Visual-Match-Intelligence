@@ -6,7 +6,8 @@
 |---|---|---|
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
-| סקירה חוזרת D1-03 — חלון מומנטום | IN_REVIEW | codex/fix-d1-momentum-window מ־main מאומת 37fe99e; שתי רגרסיות של גבול שברי שוחזרו ותוקנו; [דוח](D1-AUDIT-2026-10-24.md) |
+| סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |
+| סקירה חוזרת D1-05 — טקסט המציג | IN_REVIEW | codex/fix-d1-safe-presenter-trace התחיל עצמאית מ־37fe99e וסונכרן ל־main ‏e8eb619; ‏15 Node עברו ו־DOM אמיתי אימת טקסט מילולי ללא תגיות זרות; חבילה מלאה ו־B4 נדרשים |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
