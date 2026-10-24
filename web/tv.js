@@ -3,6 +3,7 @@ import { SyntheticAudio } from "./audio.js";
 import { edgePresentation } from "./overlay-state.mjs";
 import { MatchScreen } from "./match-screen.mjs";
 import { MatchRenderer } from "./match-renderer.mjs";
+import { prependTrace } from "./trace-view.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -127,15 +128,10 @@ $("new").onclick = () => jump({ cmd: "new_match", seed: Number($("seed").value) 
 // ---------- engine trace: what was shown, and what was left out and why ----------
 function onTrace(m) {
   const c = m.counts;
-  $("trace-sum").innerHTML = `<b>${c.in}</b> feed events in · <b>${c.banner}</b> banners · <b>${c.feed}</b> feed items · `
-    + `<b>${c.analysis}</b> analyses · <b>${c.skip}</b> left out`;
+  $("trace-sum").textContent = `${c.in} feed events in · ${c.banner} banners · ${c.feed} feed items · `
+    + `${c.analysis} analyses · ${c.skip} left out`;
   const ol = $("trace-list");
-  for (const d of m.recent) {
-    const li = document.createElement("li");
-    li.innerHTML = `${d.clock} <span>${d.decision}</span>: ${d.why}`;
-    ol.prepend(li);
-  }
-  while (ol.children.length > 40) ol.lastChild.remove();
+  prependTrace(ol, m.recent);
 }
 
 // Optional settings; defaults work without a calibration step or storage access.

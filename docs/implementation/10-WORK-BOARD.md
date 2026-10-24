@@ -1,14 +1,17 @@
 # VMI — לוח עבודה
 
-עודכן: 23.10.2026. מקור האמת למצב הוא Git והראיות המקושרות, לא עצם הופעת משימה ברשימה.
+עודכן: 24.10.2026. מקור האמת למצב הוא Git והראיות המקושרות, לא עצם הופעת משימה ברשימה.
 
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
+| סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
+| סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |
+| סקירה חוזרת D1-05 — טקסט המציג | DONE | [PR #11](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/11), main ‏cbbc511; ‏202 Python ב־126.03s ו־15 Node עברו אחרי מיזוג; טקסט מילולי ו־40 פריטים אומתו ב־DOM אמיתי |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
-| D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7) משולב עם main ‏56732ff ועיצוב D1-05; ‏184 Python ו־28 Node עברו לפני commit השילוב; 30FPS עדיין NOT_VERIFIED ולכן אין מיזוג |
+| D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7) משולב עם main ‏cbbc511 ותיקוני הסקירה; ‏31 Node עברו לפני commit השילוב; הרצה מלאה על HEAD הסופי נרשמת ב־PR; יעד 30FPS עדיין NOT_VERIFIED |
 | D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8), main ‏56732ff; לאחר מיזוג 183 בדיקות Python עברו ב־65.67s, ‏12 Node ו־smoke סמל שתייה/תוצאה/חידוש עברו |
 | D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
 | D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |

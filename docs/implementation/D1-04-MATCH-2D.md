@@ -6,8 +6,8 @@ source-height ball with a restrained size change and ground shadow. It needs no
 images, downloaded fonts, CDN, build step or purchased assets.
 
 `match-renderer.mjs` owns Canvas drawing. `match-motion.mjs` owns bounded source
-sampling. Accessibility signals remain separate DOM elements, to be replaced in
-D1-05. The background is cached and refreshed on resize; device pixel ratio is
+sampling. Accessibility signals remain separate DOM elements with the approved
+D1-05 layout. The background is cached and refreshed on resize; device pixel ratio is
 capped at two. Pitch projection preserves the same scale on both axes.
 
 While playing, two delivered frames are interpolated with one packet of buffering,
@@ -55,3 +55,21 @@ The foreground FPS requirement is still **NOT VERIFIED**: this session observes
 1 FPS with approximately 0.4–1.3 ms per draw. Neither a fast draw duration nor green
 unit tests count as a 30 FPS measurement. PR #7 remains Draft; final-SHA evidence
 will be recorded there, and it must not merge until this requirement is verified.
+
+## Renewed audit, 24 October
+
+The branch now incorporates verified main `cbbc511`, including independent
+review repairs PRs #9–#11. The import conflict was resolved explicitly to retain
+MatchScreen, MatchRenderer and safe presenter text together. All 31 Node cases
+passed before this integration commit; final committed-SHA results belong in PR
+#7. Fresh in-memory mutations removing pause protection and seek-buffer clearing
+are both detected. The changes remain presentation-only against this main.
+
+An isolated local requestAnimationFrame-only page measured 1.0FPS over 5.1 seconds
+with five callbacks, so the slow observed animation clock also occurs without VMI.
+The user confirmed foreground Chrome, but the tool still read 1FPS after selecting
+the match tab, closing the control page and playing at speed 1. The exact browser
+cause remains unproven. Hardware: Lenovo 81X3, Intel i7-1065G7 (4 cores/8 threads),
+approximately 16GB RAM; observed viewport 2048×926, Canvas 1378×775. A manual actual
+FPS reading was requested; no answer or performance PASS is fabricated. Measure
+again without full test load before making the final performance decision.

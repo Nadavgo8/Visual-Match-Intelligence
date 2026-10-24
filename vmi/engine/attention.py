@@ -205,15 +205,27 @@ class AttentionEngine:
         self.pending.append(PendingWhistle(w, detected_t=self.now))
         self.pending = self.pending[-64:]
         # A linked reason can itself have been delivered before the audio detection.
-        for ev in self.model.events:
-            if ev.get("whistle_id") == w["id"] or ev.get("trigger_event_id") == w["id"]:
+        # Prefer the current explicit decision over its original foul/handball.
+        # Delivery can put the entire correction chain before the audio record.
+        current = set(self.model.decision_by_stop.values())
+        reasons = sorted(self.model.events, key=lambda ev: ev["id"] not in current)
+        for ev in reasons:
+            if self._whistle_link(ev) == w["id"]:
                 resolved = self._resolve_whistles(ev)
                 if self.pending[-1].resolved:
                     return resolved
         return []
 
+    def _whistle_link(self, ev: dict) -> str | None:
+        if ev["type"] == "referee_decision":
+            stop = self.model.by_id.get(ev.get("stoppage_id"), {})
+            return ev.get("whistle_id") or stop.get("trigger_event_id")
+        return ev.get("whistle_id") or ev.get("trigger_event_id")
+
     def _resolve_whistles(self, ev: dict) -> list[dict]:
         etype = ev["type"]
+        if etype == "referee_decision" and self.model.decision_by_stop.get(ev["stoppage_id"]) != ev["id"]:
+            return []
         reason, detail = None, None
         if etype == "referee_decision" and ev["decision"] == "penalty":
             reason = "penalty"
@@ -233,10 +245,7 @@ class AttentionEngine:
             reason = ev["set_piece"]["kind"] + "_restart"
         if not reason:
             return []
-        stop = self.model.by_id.get(ev.get("stoppage_id"), {})
-        whistle_id = ev.get("whistle_id") or ev.get("trigger_event_id")
-        if etype == "referee_decision":
-            whistle_id = ev.get("whistle_id") or stop.get("trigger_event_id")
+        whistle_id = self._whistle_link(ev)
         for pw in self.pending:
             if pw.rec["id"] != whistle_id:
                 continue
@@ -263,6 +272,8 @@ class AttentionEngine:
     def _route(self, ev: dict) -> list[dict]:
         m = self.model
         etype, team = ev["type"], ev.get("team")
+        if etype == "referee_decision" and m.decision_by_stop.get(ev["stoppage_id"]) != ev["id"]:
+            return []  # several buffered decisions can resolve in this same batch
         tn = m.team_name(team)
         who = m.player_name(ev.get("player_id"))
         out: list[dict] = []
