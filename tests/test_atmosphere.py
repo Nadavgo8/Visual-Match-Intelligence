@@ -125,6 +125,27 @@ def test_momentum_window_includes_lower_boundary_and_excludes_older_samples():
     assert list(m.possession_samples)==[(1,"away")]
 
 
+@pytest.mark.parametrize("now,home,available", [(420, 0.5, True), (420.05, 0, True), (421.05, 0.5, False)])
+def test_fractional_meter_uses_one_window_for_possession_and_events(now, home, available):
+    from collections import deque
+    from vmi.generator.scenarios import generate_scenario
+    from vmi.engine.model import MatchModel
+    from vmi.engine.attention import AttentionEngine
+    m = MatchModel(generate_scenario("carry").meta)
+    m.possession_samples = deque([(0, "home"), (1, "away")])
+    m.events = [{"type": "shot", "shot": {}, "team": "home", "t": 0},
+                {"type": "shot", "shot": {}, "team": "away", "t": 1}]
+    m.tick(420)  # cleanup happens on integer ticks, delivery can happen in between
+    engine = AttentionEngine(m)
+    output = engine.ingest({"schema_version": "2.0", "match_id": m.meta["match_id"],
+                            "stream": "crowd", "t": now, "crowd_level": 0.5,
+                            "quality": {"status": "measured", "confidence": 1}}, now)
+    momentum = next(o["momentum"] for o in output if o["kind"] == "meters")
+    assert momentum["possession_home"] == home
+    assert momentum["possession_available"] is available
+    assert momentum["shots"] == {"home": int(now <= 420), "away": int(now <= 421)}
+
+
 def test_tracking_gap_requires_stability_again_after_recovery():
     m=Atmosphere();stable(m)
     assert m.evaluate(0.9,frame(0.9),True,[(0.9,0.5)])["attack"]==0
