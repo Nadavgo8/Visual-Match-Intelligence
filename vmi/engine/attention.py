@@ -210,11 +210,17 @@ class AttentionEngine:
         current = set(self.model.decision_by_stop.values())
         reasons = sorted(self.model.events, key=lambda ev: ev["id"] not in current)
         for ev in reasons:
-            if ev.get("whistle_id") == w["id"] or ev.get("trigger_event_id") == w["id"]:
+            if self._whistle_link(ev) == w["id"]:
                 resolved = self._resolve_whistles(ev)
                 if self.pending[-1].resolved:
                     return resolved
         return []
+
+    def _whistle_link(self, ev: dict) -> str | None:
+        if ev["type"] == "referee_decision":
+            stop = self.model.by_id.get(ev.get("stoppage_id"), {})
+            return ev.get("whistle_id") or stop.get("trigger_event_id")
+        return ev.get("whistle_id") or ev.get("trigger_event_id")
 
     def _resolve_whistles(self, ev: dict) -> list[dict]:
         etype = ev["type"]
@@ -239,10 +245,7 @@ class AttentionEngine:
             reason = ev["set_piece"]["kind"] + "_restart"
         if not reason:
             return []
-        stop = self.model.by_id.get(ev.get("stoppage_id"), {})
-        whistle_id = ev.get("whistle_id") or ev.get("trigger_event_id")
-        if etype == "referee_decision":
-            whistle_id = ev.get("whistle_id") or stop.get("trigger_event_id")
+        whistle_id = self._whistle_link(ev)
         for pw in self.pending:
             if pw.rec["id"] != whistle_id:
                 continue
@@ -269,6 +272,8 @@ class AttentionEngine:
     def _route(self, ev: dict) -> list[dict]:
         m = self.model
         etype, team = ev["type"], ev.get("team")
+        if etype == "referee_decision" and m.decision_by_stop.get(ev["stoppage_id"]) != ev["id"]:
+            return []  # several buffered decisions can resolve in this same batch
         tn = m.team_name(team)
         who = m.player_name(ev.get("player_id"))
         out: list[dict] = []
