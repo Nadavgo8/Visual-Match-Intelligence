@@ -41,3 +41,10 @@
 - בדיקות: `tests/web/companion.test.mjs` ‏(6), כולל בדיקה שאין Notification/vibrate/Audio/service worker ב־`app.js`.
 - ממצא בדרך: `.mjs` הוגש כ־text/plain במחשב הזה, והדפדפן לא היה מריץ את המודולים. תוקן בנפרד ב־[PR #17](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/17) עם בדיקת רגרסיה.
 - לא נבדק: דפדפן אמיתי בטלפון (אין כלי דפדפן בסשן); נבדקו תחביר המודולים, בדיקות Node והגשת הדפים.
+
+## D2-04 — `codex/d2-catch-up`
+
+- נבנו: `vmi/api/catchup.py` (חלון, בחירה דטרמיניסטית, שעון לגבולות, טקסט), `Replay` מסמן כל פלט ב־`at` (זמן מסירה; שינוי תוספתי בקובץ של מפתח 1, מוסבר ב־PR), `delivered` בפריטי פיד ובהודעות, פקודת `catch_up`, כפתור ופאנל באפליקציה, `CatchUpCheckpoints`.
+- בדיקות: `tests/test_catch_up.py` ‏(13, unit), שתי בדיקות שרת ב־`test_realtime_session.py`, שתי בדיקות Node. חבילה מלאה: 326 Python, ‏29 Node.
+- ממצא בבדיקות: פריטי בדיקה בלי `kind` הפילו את `visible_to`; תוקן בנתוני הבדיקה (בפיד אמיתי תמיד יש `kind`).
+- mutations: גבול חלון כולל — 1 נכשלה; בחירה לפי `t` במקום מסירה — 1 נכשלה.

@@ -327,3 +327,35 @@ def test_dropping_a_room_only_removes_empty_known_rooms():
     room.clients.clear()
     server.drop_room_if_empty("h5")
     assert "h5" not in server.rooms
+
+
+def test_catch_up_covers_delivered_items_up_to_the_press_and_is_per_run():
+    with client() as c:
+        with c.websocket_connect("/ws/cu?role=tv") as tv, c.websocket_connect("/ws/cu?role=app") as phone:
+            recv(tv)
+            recv(phone)
+            phone.send_text(json.dumps({"cmd": "profile", "profile": {"depth": "basic", "amount": "everything"}}))
+            until(phone, "backlog")
+            tv.send_text(json.dumps({"cmd": "seek", "t": 1200}))
+            snap = until(phone, "snapshot")
+            room = server.rooms["cu"]
+            phone.send_text(json.dumps({"cmd": "catch_up", "id": "c1", "since_t": None}))
+            first = until(phone, "catch_up")
+            assert first["id"] == "c1" and first["run_id"] == snap["run_id"]
+            assert (first["from_t"], first["to_t"]) == (900.0, 1200.0) and first["first_use"] is True
+            delivered = {o["cue_id"]: o["delivered"] for o in room.feed}
+            assert first["items"] and all(900.0 < delivered[i] <= 1200.0 for i in first["items"])
+            assert "Score:" in first["text"] and first["text"].startswith(f"From {first['from_clock']} to ")
+            phone.send_text(json.dumps({"cmd": "catch_up", "id": "c2", "since_t": first["to_t"]}))
+            again = until(phone, "catch_up")
+            assert again["items"] == [] and again["text"].startswith("Nothing important happened")
+            phone.send_text(json.dumps({"cmd": "catch_up", "id": "c3", "since_t": "yesterday"}))
+            assert until(phone, "error")["code"] == "bad_command"
+
+
+def test_feed_messages_carry_their_first_delivery_time():
+    room = Room("cu2", 12)
+    asyncio.run(room.route(room.replay.advance(1200), live=False))
+    assert all(0 <= o["delivered"] <= 1200 and o["delivered"] >= o["t"] for o in room.feed)
+    msg = room.feed_msg(room.feed[0], dict(server.DEFAULT_PROFILE))
+    assert msg["delivered"] == room.feed[0]["delivered"]

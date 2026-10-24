@@ -1,7 +1,7 @@
 import { FEED_ICONS } from "./icons.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
 import { openSession } from "./session.mjs";
-import { AnswerLog, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile } from "./companion.mjs";
+import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile, scopeOf } from "./companion.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -16,6 +16,9 @@ let profile = load();
 const items = new Map(); // cue_id -> {t, el}
 const feedStore = new FeedStore();
 const answers = new AnswerLog();
+const checkpoints = new CatchUpCheckpoints();
+let scope = null, newestDelivered = null, catchUps = 0;
+const catchUpWhere = new Map(); // request id -> "feed" | chat bubble element
 
 function load() {
   try { const p = JSON.parse(localStorage.getItem(KEY)); return p ? normaliseProfile(p) : null; } catch { return null; }
@@ -37,12 +40,15 @@ const session = openSession({
   },
   onMessage(m) {
     ({ snapshot: onSnapshot, state: onState, meters: onMeters, feed: (x) => addFeed(x, true), backlog: onBacklog,
-       analysis: onAnalysis, answer: onAnswer, answer_discarded: onAnswerDiscarded })[m.type]?.(m);
+       analysis: onAnalysis, answer: onAnswer, answer_discarded: onAnswerDiscarded, catch_up: onCatchUp,
+       error: onError })[m.type]?.(m);
   },
 });
 const send = (m) => session.send(m);
 
 function onSnapshot(s) {
+  scope = scopeOf(room, s.state.seed, s.run_id);  // a seek or a new match starts a new checkpoint
+  newestDelivered = null;
   onState(s.state);
   if (s.meters) onMeters(s.meters);
   onBacklog({ feed: s.feed || [] });
@@ -102,6 +108,8 @@ function addFeed(f, fresh) {
   li.innerHTML = `<span class="clk">${esc(f.clock)}</span><span aria-hidden="true">${FEED_ICONS[f.icon] ?? "•"}</span><span class="txt">${esc(f.text)}</span>`
     + `<details class="sources"><summary><span class="kind">${itemLabel("feed")}</span></summary>Logged events: ${sources || "none"}</details>`;
   place(f.cue_id, f.t, li);
+  if (Number.isFinite(f.delivered)) newestDelivered = Math.max(newestDelivered ?? 0, f.delivered);
+  markSeen();
 }
 
 function onBacklog(m) {
@@ -162,11 +170,16 @@ function onAnswerDiscarded(a) {
   if (el) el.innerHTML = "<span class='muted'>The match jumped before this answer was ready, so it was dropped. Ask again.</span>";
 }
 $("ask-form").onsubmit =(e) => { e.preventDefault(); ask($("q").value); $("q").value = ""; };
-$("suggest").onclick = (e) => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); };
+$("suggest").onclick = (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  if (e.target.dataset.catchUp !== undefined) { bubble("me", "What did I miss?"); catchUp(bubble("bot", "")); }
+  else ask(e.target.textContent);
+};
 
 // ---------- tabs ----------
 function tab(which) {
   const feed = which === "feed";
+  queueMicrotask(markSeen);
   $("feed-view").hidden = !feed; $("ask-view").hidden = feed;
   $("tab-feed").classList.toggle("on", feed); $("tab-ask").classList.toggle("on", !feed);
   $("tab-feed").setAttribute("aria-selected", feed); $("tab-ask").setAttribute("aria-selected", !feed);
@@ -194,3 +207,43 @@ $("onboard").addEventListener("close", () => {
   send({ cmd: "profile", profile });
 });
 $("settings-btn").onclick = openOnboarding;
+
+// ---------- what did I miss? ----------
+// The viewer has seen the feed when the Feed tab is on screen, scrolled to the top.
+function markSeen() {
+  if (!scope || newestDelivered === null || $("feed-view").hidden || document.visibilityState !== "visible") return;
+  if (window.scrollY > 40) return;
+  checkpoints.advance(scope, newestDelivered);
+}
+window.addEventListener("scroll", markSeen, { passive: true });
+document.addEventListener("visibilitychange", markSeen);
+
+function catchUp(where) {
+  const id = `c${++catchUps}`;
+  catchUpWhere.set(id, where);
+  const show = (html) => (where === "feed" ? ($("catch-up-result").hidden = false, $("catch-up-result").innerHTML = html)
+    : (where.innerHTML = html));
+  if (!send({ cmd: "catch_up", id, since_t: scope ? checkpoints.get(scope) : null })) {
+    catchUpWhere.delete(id);
+    show("<span class='muted'>Not connected right now, so there's no summary. Try again when the app reconnects.</span>");
+    return;
+  }
+  show("<span class='muted'>Catching up…</span>");
+}
+function onCatchUp(c) {
+  const where = catchUpWhere.get(c.id);
+  if (!where) return;
+  catchUpWhere.delete(c.id);
+  const html = `<h3>${esc(c.from_clock)}–${esc(c.to_clock)} <span class="kind">Summary · written by code from logged events</span></h3><p>${esc(c.text)}</p>`;
+  if (where === "feed") { $("catch-up-result").hidden = false; $("catch-up-result").innerHTML = html; }
+  else where.innerHTML = html;
+  if (scope) checkpoints.advance(scope, c.to_t);  // only a received summary moves the checkpoint
+}
+function onError(e) {
+  for (const [id, where] of catchUpWhere) {  // a refused summary leaves the checkpoint where it was
+    catchUpWhere.delete(id);
+    const html = `<span class='muted'>${esc(e.message || "That didn't work.")}</span>`;
+    if (where === "feed") $("catch-up-result").innerHTML = html; else where.innerHTML = html;
+  }
+}
+$("catch-up").onclick = () => catchUp("feed");
