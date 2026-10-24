@@ -11,7 +11,7 @@
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
-| D1-04 — תלת־ממד מאושר | IN_PROGRESS / FPS BLOCKED | codex/d1-match-3d מ־main ‏cbbc511, מחליף את Draft #7 ללא תלות במיזוגו. 203 Python ו־44 Node עברו לפני commit; [מפרט וראיות](D1-04-MATCH-3D.md). נדרש final SHA ו־≥30FPS לפני מיזוג |
+| D1-04 — תלת־ממד מאושר | BLOCKED — FPS | codex/d1-match-3d מ־main ‏cbbc511, [Draft PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12) מחליף את #7 שנסגר ללא מיזוג. על d339cc6 עברו 203 Python ב־154.01s ו־44 Node; תיקון 32x מוסיף בדיקה וייבדק על SHA חדש; [מפרט וראיות](D1-04-MATCH-3D.md). נדרש final SHA ו־≥30FPS לפני מיזוג |
 | D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8), main ‏56732ff; שכבת ה־PDF מוזגה ואומתה. תצוגת התלת־ממד משמרת אותה |
 | D2-00 | OPEN | בירור מודל, חומרה, עלות וגישה לשופטים; ההכרעה דורשת שני מפתחים |
 | D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |

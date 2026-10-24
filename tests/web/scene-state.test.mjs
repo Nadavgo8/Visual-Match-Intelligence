@@ -36,6 +36,15 @@ test("roster/history remain bounded through 1000 changes", () => {
   for (let i = 0; i < 1000; i++) motion.update(frame(i / 20, [player(40, 34, `sub-${i}`)]));
   assert.equal(motion.players.size, 1);
 });
+test("32x playback animates a valid 1.6-second source interval without treating it as seek", () => {
+  const motion = new SceneMotion(); motion.update(frame(1, [player(10)]));
+  const pose = motion.update(frame(2.6, [player(18)])).get("h1");
+  assert.equal(pose.speed, 5); assert.notEqual(pose.stride, 0);
+  for (const [t, expected] of [[3, 5], [3.001, 0]]) {
+    const boundary = new SceneMotion(); boundary.update(frame(1, [player(10)]));
+    assert.equal(boundary.update(frame(t, [player(20)])).get("h1").speed, expected);
+  }
+});
 test("camera keeps all pitch corners visible at desktop and mobile aspect ratios", () => {
   for (const aspect of [16 / 9, 391 / 220, 0.46, 3]) for (const ball of [[0, 0], [105, 68]]) {
     const view = cameraView(aspect, false, ball, "wide"), camera = new T.PerspectiveCamera(view.fov, aspect, 0.1, 500);
