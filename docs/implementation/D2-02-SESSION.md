@@ -52,3 +52,20 @@ Every server message carries:
 `tests/test_realtime_session.py` (17) and the updated `tests/test_api.py`; `tests/web/session.test.mjs` (6). Multi-connection tests use `with TestClient(app)` so that every connection shares one event loop, as under uvicorn. Without it, Starlette runs each connection on its own loop.
 
 Not covered here: linking events that arrive before their source, and duplicate or reverse-order feed records. The engine handles those (D1-01/D1-02 contract tests).
+
+## What did I miss? (D2-04)
+
+Phone → server: `{"cmd": "catch_up", "id": "c1", "since_t": 912.4 | null}`. Server → phone:
+
+```json
+{"type": "catch_up", "id": "c1", "run_id": "r2", "seq": 41, "from_t": 912.4, "to_t": 1200.0,
+ "from_clock": "15:12", "to_clock": "19:59", "items": ["cue_00031", "cue_00034"],
+ "text": "From 15:12 to 19:59: ... Score: Harbour City 1–0 Northvale Rovers.",
+ "answer_kind": "template", "first_use": false}
+```
+
+- The window is `(since_t, press]`. With `since_t: null` (first use) it's the last 5 minutes, or from kick-off. A checkpoint after now gives an empty window; an invalid one gives `bad_command`.
+- Items count by **delivery** time (`delivered` on every feed item, from the replay's `at` stamp). An enrichment such as late xG keeps the item's first delivery time.
+- The most important items come first (by tier), capped at 6 and shown oldest first, filtered by the phone's "how much" setting. With none, the text says nothing important happened. The text always states the range.
+- The phone keeps a checkpoint per room, match and run (`CatchUpCheckpoints` in `web/companion.mjs`). It moves forward only when the Feed tab is on screen at the top, or when a summary arrives; a failed or refused request leaves it as it was.
+- The summary is written by code (`answer_kind: "template"`) and labelled that way. Wording by a model later (D2-05) must keep to the same items.

@@ -26,6 +26,8 @@
 
 <main>
   <section id="feed-view" aria-live="polite">
+    <button id="catch-up" class="catch-up">What did I miss?</button>
+    <div id="catch-up-result" class="card" role="status" hidden></div>
     <ol id="feed" class="feed"></ol>
     <p id="feed-empty" class="empty">Waiting for kick-off. Big moments and stoppage analysis will appear here. No notifications, ever.</p>
   </section>
@@ -33,7 +35,7 @@
   <section id="ask-view" hidden>
     <ol id="chat" class="chat"></ol>
     <div class="suggest" id="suggest">
-      <button>What did I miss?</button><button>Why was that offside?</button><button>Who's on top?</button><button>Match stats</button>
+      <button data-catch-up>What did I miss?</button><button>Why was that offside?</button><button>Who's on top?</button><button>Match stats</button>
     </div>
     <form id="ask-form" class="ask">
       <input id="q" autocomplete="off" placeholder="Ask about this match, the rules, stats…" maxlength="400" aria-label="Your question">
