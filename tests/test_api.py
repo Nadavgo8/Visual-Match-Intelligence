@@ -62,3 +62,11 @@ def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
         initial = json.loads(ws.receive_text())
         assert initial["type"] == "snapshot"
         assert initial["state"]["chapters"] == [] and initial["state"]["duration"] is None
+
+
+def test_browser_modules_are_served_as_javascript():
+    # Browsers refuse module scripts whose MIME type isn't JavaScript; the OS mapping for .mjs varies.
+    c = TestClient(app)
+    for name in ("session.mjs", "atmosphere.mjs", "overlay-state.mjs", "app.js", "tv.js"):
+        r = c.get(f"/static/{name}")
+        assert r.status_code == 200 and "javascript" in r.headers["content-type"], (name, r.headers["content-type"])
