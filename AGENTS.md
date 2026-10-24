@@ -1,6 +1,6 @@
 # Repository instructions
 
-Read [CLAUDE.md](CLAUDE.md) for shared project context, then the documents relevant to the task. Reply in the user's language; code, file names, product UI and submission materials are English.
+Read [CLAUDE.md](CLAUDE.md) for shared project context, then the documents relevant to the task. Shared setup, test commands, coverage gate, schemas and CI for every tool: [02-SETUP-AND-GIT.md](docs/implementation/02-SETUP-AND-GIT.md). Reply in the user's language; code, file names, product UI and submission materials are English.
 
 ## Active plan and scope
 

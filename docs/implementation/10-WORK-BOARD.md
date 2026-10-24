@@ -1,17 +1,20 @@
 # VMI — לוח עבודה
 
-עודכן: 23.10.2026. מקור האמת למצב הוא Git והראיות המקושרות, לא עצם הופעת משימה ברשימה.
+עודכן: 24.10.2026. מקור האמת למצב הוא Git והראיות המקושרות, לא עצם הופעת משימה ברשימה.
 
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
+| סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
+| סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |
+| סקירה חוזרת D1-05 — טקסט המציג | IN_REVIEW | codex/fix-d1-safe-presenter-trace התחיל עצמאית מ־37fe99e וסונכרן ל־main ‏e8eb619; ‏15 Node עברו ו־DOM אמיתי אימת טקסט מילולי ללא תגיות זרות; חבילה מלאה ו־B4 נדרשים |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
 | D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏51df5a8; ‏175 בדיקות Python ו־13 Node עברו על HEAD; יעד FPS עדיין לא אומת ואין מיזוג |
 | D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
 | D2-00 | BLOCKED (הכרעה) | `codex/d2-model-feasibility`: שכבת ספק ניטרלית, סט 30 שאלות וכלי הערכה; 208 Python ו־12 Node עברו על HEAD. ההכרעה חסומה: אין מקום בדיסק ל־Ollama, זכאות Azure for Students לא ידועה, ונדרשת ביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md), [העברת D2](HANDOFF-D2.md) |
-| D2-01 | OPEN | הקמה ו־CI עצמאיים מותרים; שינוי החוזה דורש הכרעה משותפת |
+| D2-01 | IN_REVIEW (חלקי) | `codex/d2-platform-contracts`: נעילת תלויות, שכבות בדיקה, שער כיסוי (baseline ‏90.18% שורות / 83.41% ענפים), סכמות v2, CI, ‏`.env.example`, [הקמה](02-SETUP-AND-GIT.md). ‏249 Python עם כיסוי ו־12 Node עברו. **לא אומת:** ריצת CI בפועל, הגנת `main` ו"CI כושל חוסם מיזוג" — דורשים `gh` עם הרשאת admin; הריפו פרטי ו־Actions חינמי רק בתקציב $0. [העברת D2](HANDOFF-D2.md) |
 | D2-02 | WAITING_DEPENDENCY | חוזה חדרים, run_id ומספור הודעות |
 | D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
 | D2-04 | WAITING_DEPENDENCY | snapshot, חלון זמן ומצב משתמש |

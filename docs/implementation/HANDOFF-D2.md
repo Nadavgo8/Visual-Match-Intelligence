@@ -4,11 +4,18 @@
 
 ## סביבה (מחשב מפתח 2)
 
-- Python 3.12.9 ב־`.venv` (מחוץ ל־Git), מותקן מ־`requirements-dev.txt` ללא prerelease flag; Node 24.3.0.
-- בדיקות: `VMI_OFFLINE=1`, `VMI_WARM_DEMO=0`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, `PYTEST_DEBUG_TEMPROOT=out/pytest-d2`, ואז `python -m pytest tests -q -ra --strict-markers --strict-config -p no:cacheprovider -W error` ו־`node --test tests/web/*.test.mjs`.
+- Python 3.12.9 ב־`.venv` (מחוץ ל־Git); Node 24.3.0. בדיקות לפי [02-SETUP-AND-GIT](02-SETUP-AND-GIT.md).
 - baseline על main ‏56732ff: ‏183 Python עברו ב־244s, ‏12 Node עברו.
-- **חסם:** כ־0.3GB פנויים ב־C:. מונע Ollama ומודל מקומי (D2-00) ומגביל התקנות נוספות.
-- **חסם:** `gh` לא מותקן ואין הזדהות GitHub לכלי. אפשר push של ענפים; פתיחת PR ומיזוג דרך PR חסומים עד `gh auth login` של המשתמש. חילוץ אסימון ממנהל ההרשאות נחסם ולא נעקף.
+- **חסם:** כ־0.1–0.3GB פנויים ב־C:. מונע Ollama (D2-00) והתקנות נוספות.
+- **חסם:** `gh` לא מותקן ואין הזדהות GitHub לכלי. אפשר push של ענפים; פתיחת PR, מיזוג, הרצת CI והגנת `main` חסומים עד `gh auth login` של המשתמש. חילוץ אסימון ממנהל ההרשאות נחסם ולא נעקף.
+
+## D2-01 — `codex/d2-platform-contracts`
+
+- נבנו: `requirements-lock.txt` (pip freeze של סביבה שנבדקה, `pywin32` עם marker), `pyproject.toml` (markers, coverage branch, ruff ברמת שגיאות), שיוך כל קובץ בדיקה לשכבה ב־`tests/conftest.py` (קובץ לא משויך מכשיל איסוף), `tools/coverage_gate.py` + `coverage-baseline.json`, `contracts/v2/*.schema.json` + `examples.json`, `.github/workflows/ci.yml` (ארבעה jobs, SHA נעולים, הרשאות קריאה), `.env.example`, [02-SETUP-AND-GIT](02-SETUP-AND-GIT.md), יישור `docs/spec.md` §7 לחוזה שמוזג (tracking כולל `possession.holder_id`).
+- בדיקות: 4 קבצים חדשים (שער כיסוי, CI, שכבות, סכמות). חבילה מלאה עם כיסוי: ‏249 עברו, exit 0 (משך 2:46 שעות כולל שינה של המחשב; ללא כיסוי החבילה נמשכת כ־2–4 דקות). ‏12 Node עברו; ruff נקי; `diff --check` נקי.
+- mutations: גבול `<`→`<=` בשער — 2 נכשלו; התעלמות מקובץ שהשתנה בלי נתונים — 1 נכשל.
+- השפעה על מפתח 1: כל קובץ בדיקה חדש צריך שורה ב־`LAYERS` שב־`tests/conftest.py`.
+- לא אומת: התקנה נקייה מהקובץ הנעול (אין מקום בדיסק לסביבה שנייה; ה־CI יבדוק על Linux), ריצת CI, required checks והגנת `main`.
 
 ## D2-00 — `codex/d2-model-feasibility`
 
@@ -20,4 +27,4 @@
 
 ## הצעד הבא
 
-D2-01 מ־main מעודכן (הקמה, נעילת תלויות, markers, כיסוי, CI, בדיקות JS). D2-02 עד D2-04 ממתינות לחוזים של D2-01.
+D2-02 (`codex/d2-realtime-session`) נבנה בתיקיית worktree נפרדת `../app-d2-02` מ־main ‏56732ff.
