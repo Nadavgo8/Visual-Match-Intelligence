@@ -144,6 +144,7 @@ class Room:
         for task in self.pending.values():
             task.cancel()
         self.pending = {}
+        self.held: list[tuple[dict, tuple, int]] = []  # explanations waiting for the next stoppage
 
     def reset(self, seed: int | None = None):
         self.new_run()
@@ -249,6 +250,7 @@ class Room:
             if self.playing and not self.replay.done:
                 outs = self.replay.advance(self.replay.now + dt * self.speed)
                 await self.route(outs)
+                await self.flush_held()
                 if self.replay.done:
                     self.playing = False
                     await self.broadcast_state()
@@ -361,7 +363,20 @@ class Room:
         self.texts[key] = res
         _text_cache[(self.seed, a["moment"], a["t"], key[1], key[2])] = res
         self.pending.pop(key, None)
+        if self.replay.model.ball_in_play:
+            # Written too late: play has restarted. Hold it for the next stoppage instead of
+            # inviting the viewer to look away during live play.
+            self.held.append((a, key, run))
+            return
         await self.push_analysis(a, key, run)
+
+    async def flush_held(self):
+        """Publish held explanations once the ball is out of play again (still for this run only)."""
+        if not self.held or self.replay.model.ball_in_play:
+            return
+        held, self.held = self.held, []
+        for a, key, run in held:
+            await self.push_analysis(a, key, run)
 
     async def push_analysis(self, a: dict, key: tuple, run: int):
         if run != self.run or key not in self.texts:

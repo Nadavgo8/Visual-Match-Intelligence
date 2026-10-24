@@ -17,8 +17,8 @@
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
 | D2-02 | DONE | [PR #15](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/15) מוזג ל־9063ca5; ארבעת ה־checks עברו (הריצה הראשונה נכשלה בשער הכיסוי ונוספו 5 בדיקות; שורות קריטיות שהשתנו 100%, ענפים 97.14%); אחרי המיזוג: 285 Python ו־21 Node עברו על main. [חוזה](D2-02-SESSION.md) |
 | D2-03 | DONE | [PR #18](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/18) מוזג ל־8924791; ארבעת ה־checks עברו; אחרי המיזוג 311 Python ו־27 Node עברו על main |
-| D2-04 | IN_REVIEW | `codex/d2-catch-up`: חלון לפי זמן מסירה (`at`/`delivered`), עד 6 פריטים חשובים, טווח מוצג, 'שום דבר חשוב', נקודת מעקב לכל חדר/משחק/הרצה שמתקדמת רק בצפייה בראש הפיד או בתקציר שהתקבל. [חוזה](D2-02-SESSION.md#what-did-i-miss-d2-04) |
-| D2-05 | WAITING_DEPENDENCY | הכרעת D2-00 וחוזי עובדות; שלד עצמאי אפשרי |
+| D2-04 | DONE | [PR #19](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/19) מוזג ל־5414521; ארבעת ה־checks עברו (שורות קריטיות שהשתנו 96.30%, ענפים 100%) |
+| D2-05 | IN_REVIEW (שלד) | `codex/d2-commentary-agents`: תשובת Ask מול snapshot קפוא, מגבלת 20s לנתיב הסוכנים, תוויות live/template, תווית Interpretation, הסבר אוטומטי שהושלם במשחק פעיל ממתין לעצירה, תיקון ערך האווירה במאגר החוקים. חיבור מודל קבוע, אנליסט משמעות וכותב כסוכני מודל — ממתינים להכרעת D2-00 |
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
 
 ## הרשאות ורצף העבודה
