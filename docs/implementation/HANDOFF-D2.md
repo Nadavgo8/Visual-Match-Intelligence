@@ -25,3 +25,12 @@
 - mutations: הסרת בדיקת המארח — 1 נכשלה; הסרת בדיקת run בתשובות — 1 נכשלה.
 - smoke מול uvicorn אמיתי (פורט 17781): מסך מארח עם טוקן, טלפון לא מארח, `play` מהטלפון נדחה, seq עולה ב־1, seek יוצר snapshot ‏r2 עם פיד.
 - לא נבדק: דפדפן אמיתי לשני המסכים (אין כלי דפדפן בסשן); reconnect אמיתי של רשת.
+
+## D2-00 — `codex/d2-model-feasibility`
+
+- נבנו: `vmi/agents/providers.py`, `vmi/evaluation/` (סט 30 שאלות, runner, ציון, גיליון ביקורת), `prompts/model_eval.md`, `tests/test_model_layer.py`, `tests/test_model_eval.py`, [11-MODEL-DECISION](11-MODEL-DECISION.md).
+- בדיקות: 25 חדשות; timeout בבדיקה הראשונה נכשל באמת (timeout 0 לא התחיל ניסיון) ותוקן ל־10ms. חבילה מלאה על HEAD: ‏208 Python עברו ב־101s, ‏12 Node עברו, `diff --check` נקי.
+- mutations (עותק זמני, שוחזר): הסרת `check_zero_cost` — 2 בדיקות נכשלו; סימון fallback כ־`live` — 3 נכשלו.
+- סקירה: אין P0–P2. P3 נדחו: ייבוא פונקציות פרטיות מ־explainer; ערך `atmosphere` במאגר החוקים עדיין מזכיר "mood label" (שייך ל־D2-05).
+- הכרעה: PENDING. נדרש: מקום בדיסק או מחשב אחר ל־Ollama, בירור זכאות Azure for Students, הרצת הסט פעמיים וביקורת שני המפתחים.
+- PR [#16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ממזג רק את הכלים; ההכרעה נשארת חסומה.
