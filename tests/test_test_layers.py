@@ -19,3 +19,7 @@ def test_every_test_file_has_exactly_one_layer():
 def test_each_required_layer_has_test_functions(layer):
     count = sum((TESTS / name).read_text(encoding="utf-8").count("\ndef test_") for name in LAYERS[layer])
     assert count > 0, layer
+
+
+def test_deliberate_failure_to_prove_ci_blocks_merge():
+    assert 1 == 2  # never merged: verifies required checks block the PR
