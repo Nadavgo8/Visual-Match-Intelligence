@@ -1,6 +1,7 @@
 import { FEED_ICONS } from "./icons.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
 import { openSession } from "./session.mjs";
+import { AnswerLog, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile } from "./companion.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -13,9 +14,11 @@ const KEY = "vmi.profile.v1";
 let teams = null;
 let profile = load();
 const items = new Map(); // cue_id -> {t, el}
+const feedStore = new FeedStore();
+const answers = new AnswerLog();
 
 function load() {
-  try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; }
+  try { const p = JSON.parse(localStorage.getItem(KEY)); return p ? normaliseProfile(p) : null; } catch { return null; }
 }
 function save(p) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode: keep in memory */ }
@@ -74,6 +77,12 @@ function onMeters(m) {
 // ---------- feed ----------
 function place(id, t, el) {
   const old = items.get(id);
+  if (old && Number(old.el.dataset.t) === t) {  // same item, same moment: replace in place, don't move it
+    old.el.replaceWith(el);
+    el.dataset.t = t;
+    items.set(id, { t, el });
+    return;
+  }
   if (old) old.el.remove();
   items.set(id, { t, el });
   const list = $("feed");
@@ -85,14 +94,19 @@ function place(id, t, el) {
 }
 
 function addFeed(f, fresh) {
+  // Late information (such as xG) updates the same item quietly: no highlight, no new message.
+  const isNew = feedStore.upsert(f) === "insert" && fresh;
   const li = document.createElement("li");
-  li.className = `item tier${f.tier}${f.mine ? " mine" : ""}${fresh ? " new" : ""}`;
-  li.innerHTML = `<span class="clk">${esc(f.clock)}</span><span aria-hidden="true">${FEED_ICONS[f.icon] ?? "•"}</span><span class="txt">${esc(f.text)}</span>`;
+  li.className = `item tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
+  const sources = (f.evidence || []).map((e) => `<code>${esc(e)}</code>`).join(" ");
+  li.innerHTML = `<span class="clk">${esc(f.clock)}</span><span aria-hidden="true">${FEED_ICONS[f.icon] ?? "•"}</span><span class="txt">${esc(f.text)}</span>`
+    + `<details class="sources"><summary><span class="kind">${itemLabel("feed")}</span></summary>Logged events: ${sources || "none"}</details>`;
   place(f.cue_id, f.t, li);
 }
 
 function onBacklog(m) {
   items.clear();
+  feedStore.reset(m.feed);
   $("feed").innerHTML = "";
   $("feed-empty").hidden = m.feed.length > 0;
   for (const f of m.feed) addFeed(f, false);
@@ -110,7 +124,7 @@ function receiptsHtml(sentences, facts, r) {
 function onAnalysis(a) {
   const li = document.createElement("li");
   li.className = "card new";
-  li.innerHTML = `<h3>${esc(MOMENT[a.moment] ?? "Analysis")} · ${esc(a.clock)}</h3><p>${esc(a.text)}</p>${receiptsHtml(a.sentences, a.facts, a.receipts)}`;
+  li.innerHTML = `<h3>${esc(MOMENT[a.moment] ?? "Analysis")} · ${esc(a.clock)} <span class="kind">${itemLabel("analysis")}</span></h3><p>${esc(a.text)}</p>${receiptsHtml(a.sentences, a.facts, a.receipts)}`;
   place(a.cue_id, a.t + 0.01, li);
 }
 
@@ -130,9 +144,12 @@ function ask(q) {
   bubble("me", esc(q));
   const pending = bubble("bot", "<span class='muted'>Thinking…</span>");
   pending.id = `q${++qid}`;
-  send({ cmd: "ask", q, id: pending.id });
+  if (!send({ cmd: "ask", q, id: pending.id })) {
+    pending.innerHTML = "<span class='muted'>Not connected right now, so the question wasn't sent. Try again when the app reconnects.</span>";
+  }
 }
 function onAnswer(a) {
+  if (!answers.accept(a.id)) return;
   const el = document.getElementById(a.id) || bubble("bot", "");
   const who = { match_analyst: "Match analyst", rules_expert: "Rules expert", router: "Router", both: "Analyst + rules" }[a.agent] ?? a.agent;
   const src = a.source === "agent" ? `${who} agent on ${esc(a.model)}` : `${who} (local)`;
@@ -171,8 +188,8 @@ function openOnboarding() {
 }
 $("onboard").addEventListener("close", () => {
   const f = $("onboard-form");
-  const knowledge = f.knowledge.value;
-  profile = { knowledge, depth: knowledge === "expert" ? "deep" : "basic", team: f.team.value || null, amount: f.amount.value };
+  profile = normaliseProfile($("onboard").returnValue === "skip" ? DEFAULT_PROFILE
+    : { knowledge: f.knowledge.value, team: f.team.value || null, amount: f.amount.value });
   save(profile);
   send({ cmd: "profile", profile });
 });

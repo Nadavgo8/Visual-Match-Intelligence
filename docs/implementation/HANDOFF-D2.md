@@ -34,3 +34,10 @@
 - סקירה: אין P0–P2. P3 נדחו: ייבוא פונקציות פרטיות מ־explainer; ערך `atmosphere` במאגר החוקים עדיין מזכיר "mood label" (שייך ל־D2-05).
 - הכרעה: PENDING. נדרש: מקום בדיסק או מחשב אחר ל־Ollama, בירור זכאות Azure for Students, הרצת הסט פעמיים וביקורת שני המפתחים.
 - PR [#16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ממזג רק את הכלים; ההכרעה נשארת חסומה.
+
+## D2-03 — `codex/d2-companion-app`
+
+- נבנו: `web/companion.mjs` (`normaliseProfile` + `DEFAULT_PROFILE`, `FeedStore.upsert` שמחזיר update לפריט קיים, `AnswerLog` שמציג תשובה פעם אחת לכל שאלה, `itemLabel`), חיבור ב־`web/app.js`: פריט שהועשר (xG) מוחלף במקומו בלי הדגשה ובלי שינוי מיקום; תווית Fact לפריטי פיד ו־Analysis · interpretation לכרטיסים; מקורות (מזהי אירועים) נפתחים בלחיצה; כפתור "Skip, use defaults"; Ask בזמן ניתוק מודיע שלא נשלח; פרופיל ישן מאחסון מנורמל.
+- בדיקות: `tests/web/companion.test.mjs` ‏(6), כולל בדיקה שאין Notification/vibrate/Audio/service worker ב־`app.js`.
+- ממצא בדרך: `.mjs` הוגש כ־text/plain במחשב הזה, והדפדפן לא היה מריץ את המודולים. תוקן בנפרד ב־[PR #17](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/17) עם בדיקת רגרסיה.
+- לא נבדק: דפדפן אמיתי בטלפון (אין כלי דפדפן בסשן); נבדקו תחביר המודולים, בדיקות Node והגשת הדפים.

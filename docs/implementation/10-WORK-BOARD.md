@@ -13,10 +13,10 @@
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
 | D1-04 | BLOCKED | [Draft PR #7](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/7), ‏51df5a8; ‏175 בדיקות Python ו־13 Node עברו על HEAD; יעד FPS עדיין לא אומת ואין מיזוג |
 | D1-05 | IN_PROGRESS | codex/d1-accessibility-overlay מ־main המאומת 52ad4a5, בתיקיית vmi-d1-overlay נפרדת; משימה עצמאית שאינה נבנית על PR #7. מימוש לפי PDF, בדיקות וסקירה סופיות בהמשך |
-| D2-00 | BLOCKED (הכרעה) | `codex/d2-model-feasibility`: שכבת ספק ניטרלית, סט 30 שאלות וכלי הערכה; 208 Python ו־12 Node עברו על HEAD. ההכרעה חסומה: אין מקום בדיסק ל־Ollama, זכאות Azure for Students לא ידועה, ונדרשת ביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md), [העברת D2](HANDOFF-D2.md) |
+| D2-00 | BLOCKED (הכרעה) | הכלים מוזגו ב־[PR #16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ל־bf9152c (שכבת ספק ניטרלית, סט 30 שאלות, כלי הערכה; CI ירוק). לא נבחר מודל. חסום: מקום בדיסק ל־Ollama, זכאות Azure for Students, וביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
 | D2-02 | DONE | [PR #15](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/15) מוזג ל־9063ca5; ארבעת ה־checks עברו (הריצה הראשונה נכשלה בשער הכיסוי ונוספו 5 בדיקות; שורות קריטיות שהשתנו 100%, ענפים 97.14%); אחרי המיזוג: 285 Python ו־21 Node עברו על main. [חוזה](D2-02-SESSION.md) |
-| D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
+| D2-03 | IN_REVIEW | `codex/d2-companion-app`: `web/companion.mjs` (ברירות מחדל ונרמול העדפות, FeedStore לעדכון במקום, AnswerLog), תוויות Fact / Analysis · interpretation, מקורות לפי לחיצה, דילוג על onboarding, Ask מנותק כן, בדיקה שאין התראות. [העברת D2](HANDOFF-D2.md) |
 | D2-04 | WAITING_DEPENDENCY | snapshot, חלון זמן ומצב משתמש |
 | D2-05 | WAITING_DEPENDENCY | הכרעת D2-00 וחוזי עובדות; שלד עצמאי אפשרי |
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
