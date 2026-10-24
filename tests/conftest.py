@@ -14,7 +14,7 @@ LAYERS = {
     "contract": {"test_contract_v2.py", "test_fixture_export.py", "test_scenarios.py", "test_schemas.py"},
     "integration": {"test_agents.py", "test_api.py", "test_engine.py", "test_generator.py",
                     "test_generator_determinism.py", "test_generator_motion_v2.py", "test_substitutions.py",
-                    "test_test_layers.py"},
+                    "test_test_layers.py", "test_realtime_session.py"},
 }
 LAYER_OF = {name: layer for layer, names in LAYERS.items() for name in names}
 

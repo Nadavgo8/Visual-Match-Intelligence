@@ -1,5 +1,6 @@
 import { FEED_ICONS } from "./icons.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
+import { openSession } from "./session.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -21,14 +22,28 @@ function save(p) {
 }
 
 $("room-code").textContent = room;
-const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/${encodeURIComponent(room)}?role=app`);
-const send = (m) => ws.readyState === 1 && ws.send(JSON.stringify(m));
-ws.onopen = () => { if (profile) send({ cmd: "profile", profile }); else openOnboarding(); };
-ws.onmessage = (ev) => {
-  const m = JSON.parse(ev.data);
-  ({ state: onState, meters: onMeters, feed: (x) => addFeed(x, true), backlog: onBacklog,
-     analysis: onAnalysis, answer: onAnswer })[m.type]?.(m);
-};
+let onboarded = false;
+const session = openSession({
+  room, role: "app",
+  onStatus(s) {
+    $("conn").hidden = s !== "disconnected";
+    if (s !== "connected") return;
+    // The server forgets a phone's settings when it disconnects: send them again on every connection.
+    if (profile) send({ cmd: "profile", profile });
+    else if (!onboarded) { onboarded = true; openOnboarding(); }
+  },
+  onMessage(m) {
+    ({ snapshot: onSnapshot, state: onState, meters: onMeters, feed: (x) => addFeed(x, true), backlog: onBacklog,
+       analysis: onAnalysis, answer: onAnswer, answer_discarded: onAnswerDiscarded })[m.type]?.(m);
+  },
+});
+const send = (m) => session.send(m);
+
+function onSnapshot(s) {
+  onState(s.state);
+  if (s.meters) onMeters(s.meters);
+  onBacklog({ feed: s.feed || [] });
+}
 
 function onState(s) {
   teams = s.teams;
@@ -125,7 +140,11 @@ function onAnswer(a) {
   el.innerHTML = `${esc(a.text)}<details class="receipts"><summary>Receipts · ${src} · ${a.latency_ms} ms</summary>
     <ul><li>Tools: ${esc((a.tool_calls || []).join(", ") || "none")}</li><li>Evidence: ${ev || "none"}</li>${a.fallback_reason ? `<li>Fallback: ${esc(a.fallback_reason)}</li>` : ""}</ul></details>`;
 }
-$("ask-form").onsubmit = (e) => { e.preventDefault(); ask($("q").value); $("q").value = ""; };
+function onAnswerDiscarded(a) {
+  const el = document.getElementById(a.id);
+  if (el) el.innerHTML = "<span class='muted'>The match jumped before this answer was ready, so it was dropped. Ask again.</span>";
+}
+$("ask-form").onsubmit =(e) => { e.preventDefault(); ask($("q").value); $("q").value = ""; };
 $("suggest").onclick = (e) => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); };
 
 // ---------- tabs ----------
