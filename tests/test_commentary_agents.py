@@ -162,3 +162,27 @@ def test_held_explanations_from_an_old_run_are_never_published():
 
 def test_server_assistant_answers_carry_labels():
     assert server.Room("ag3", 12).assistant is not None
+
+
+def test_playback_loop_publishes_held_explanations_at_a_stoppage():
+    async def scenario():
+        room = Room("ag4", 12)  # before kick-off the ball is out of play
+        phone = Client(FakeWS(), "app")
+        room.clients.append(phone)
+        analysis = {"cue_id": "a4", "moment": "goal", "t": 1.0, "clock": "0:01", "tier": 1, "kind": "analysis",
+                    "factpack": {"facts": [], "moment": "goal"}}
+        key = ("a4", "basic", None)
+        room.texts[key] = {"text": "Held.", "sentences": [], "source": "template", "model": None,
+                           "latency_ms": 0, "validation": "passed"}
+        room.held = [(analysis, key, room.run)]
+        room.playing = True
+        loop = asyncio.create_task(room.loop())
+        for _ in range(40):  # a few real ticks of the 20 Hz loop
+            await asyncio.sleep(0.01)
+            if room.held == []:
+                break
+        room.clients.clear()  # ends the loop
+        await asyncio.wait_for(loop, timeout=2)
+        return [m["type"] for m in phone.outbox], room.held, room.replay.model.ball_in_play
+    kinds, held, in_play = asyncio.run(scenario())
+    assert in_play is False and held == [] and kinds.count("analysis") == 1
