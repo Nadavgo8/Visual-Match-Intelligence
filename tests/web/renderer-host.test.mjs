@@ -38,3 +38,11 @@ test("context loss replaces only the canvas, releases GPU once and tolerates rep
   assert.equal(disposed, 1); assert.strictEqual(host.canvas, replacement);
   host.draw(null, null);
 });
+test("prepared texture ownership is released if WebGL construction fails", async () => {
+  const fixture = canvasFixture(), status = { textContent: "" }; let disposed = 0;
+  const host = await createRenderer(fixture.canvas, status, async () => ({
+    prepareAssets: async () => ({ dispose() { disposed++; } }),
+    Match3D: class { constructor() { throw Error("No GPU context"); } },
+  }));
+  assert.equal(host.mode, "2D fallback"); assert.equal(disposed, 1);
+});

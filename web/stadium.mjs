@@ -1,4 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
+import { createCrowd, createCrowdUniforms } from "./crowd.mjs";
 
 const boxGeometry = new T.BoxGeometry(1, 1, 1);
 const materials = new Map();
@@ -15,18 +16,9 @@ export function box(parent, size, position, mat, shadow = false) {
 function paintPitch(document) {
   const canvas = document.createElement("canvas"); canvas.width = 2048; canvas.height = 1360;
   const c = canvas.getContext("2d"), sx = canvas.width / 114, sy = canvas.height / 76;
-  c.fillStyle = "#285d32"; c.fillRect(0, 0, canvas.width, canvas.height);
-  let seed = 47;
-  // Fixed-seed grain: original texture, stable across reloads, no image download.
-  for (let i = 0; i < 110000; i++) {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    const x = seed % canvas.width; seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    c.fillStyle = i % 2 ? "#ffffff0b" : "#0000000d";
-    c.fillRect(x, seed % canvas.height, 1, 2);
-  }
   c.save(); c.translate(4.5 * sx, 4 * sy); c.scale(sx, sy);
   for (let i = 0; i < 14; i++) {
-    c.fillStyle = i % 2 ? "#85a85516" : "#061c1210"; c.fillRect(i * 7.5, 0, 7.5, 68);
+    c.fillStyle = i % 2 ? "#bfd0a00a" : "#07160b10"; c.fillRect(i * 7.5, 0, 7.5, 68);
   }
   c.strokeStyle = "#e7eee1"; c.fillStyle = "#e7eee1"; c.lineWidth = 0.12;
   c.strokeRect(0, 0, 105, 68); c.beginPath(); c.moveTo(52.5, 0); c.lineTo(52.5, 68); c.stroke();
@@ -64,28 +56,18 @@ function net(parent, x, direction) {
   box(parent, [0.12, 0.12, half * 2], [x, height, 0], white, true);
 }
 
-function stand(parent, length, x, z, rotation) {
+function stand(parent, length, x, z, rotation, uniforms) {
   const group = new T.Group(); group.position.set(x, 0, z); group.rotation.y = rotation; parent.add(group);
   const concrete = material(0x27323d), roof = material(0x17232e), rail = material(0x7b8b96, 0.4);
-  for (let row = 0; row < 18; row++) box(group, [length, 0.6, 0.9], [0, 0.65 + row * 0.62, row * 0.86], concrete);
+  for (let row = 0; row < 24; row++) box(group, [length, 0.45, 0.76], [0, 0.3 + row * 0.52, row * 0.76], concrete);
   box(group, [length + 2, 0.4, 21], [0, 16, 6], roof);
   for (let x = -length / 2; x <= length / 2; x += 13) {
     box(group, [0.2, 16, 0.2], [x, 8, 14.6], rail);
     box(group, [0.16, 0.16, 20], [x, 15.6, 6], rail);
   }
-  const count = Math.floor(length / 0.7) * 18;
-  const crowd = new T.InstancedMesh(new T.IcosahedronGeometry(0.25, 0), material(0xffffff), count);
-  const dummy = new T.Object3D(), color = new T.Color(); let i = 0;
-  const palette = [0x172c40, 0x2c5b79, 0x879ba7, 0x5a6875, 0xd1c3ad, 0x2c3f51];
-  for (let row = 0; row < 18; row++) for (let col = 0; col < Math.floor(length / 0.7); col++) {
-    dummy.position.set(-length / 2 + col * 0.7 + 0.35, 1.25 + row * 0.62, row * 0.86);
-    dummy.scale.set(0.85, 1.65, 0.85); dummy.updateMatrix(); crowd.setMatrixAt(i, dummy.matrix);
-    crowd.setColorAt(i, color.setHex(palette[(col * 7 + row * 13) % palette.length])); i++;
-  }
-  crowd.instanceMatrix.needsUpdate = true; crowd.instanceColor.needsUpdate = true;
-  crowd.computeBoundingSphere(); group.add(crowd);
+  group.add(createCrowd(length, 24, uniforms));
   // Continuous luminous fascia, no real club, sponsor, league or broadcast marks.
-  box(group, [length, 0.5, 0.2], [0, 0.75, -0.65], new T.MeshStandardMaterial({ color: 0x12394a, emissive: 0x207f95, emissiveIntensity: 0.4 }));
+  box(group, [length, 0.5, 0.2], [0, 0.75, -0.65], material(0x273431));
   return group;
 }
 
@@ -106,18 +88,22 @@ function batchStaticBoxes(group) {
   }
 }
 
-export function buildStadium(document) {
+export function buildStadium(document, turfMaps = {}) {
   const group = new T.Group(); group.name = "Original procedural stadium";
+  const uniforms = createCrowdUniforms(); group.userData.crowdUniforms = uniforms;
   const pitchTexture = paintPitch(document);
-  const turf = new T.Mesh(new T.PlaneGeometry(114, 76), new T.MeshStandardMaterial({ map: pitchTexture, roughness: 0.98 }));
+  const turf = new T.Mesh(new T.PlaneGeometry(114, 76), new T.MeshStandardMaterial({ color: turfMaps.color ? 0xd1e5cb : 0x476343,
+    map: turfMaps.color ?? null, normalMap: turfMaps.normal ?? null, normalScale: new T.Vector2(0.22, 0.22), roughness: 1 }));
   turf.rotation.x = -Math.PI / 2; turf.receiveShadow = true; group.add(turf);
+  const markings = new T.Mesh(new T.PlaneGeometry(114, 76), new T.MeshBasicMaterial({ map: pitchTexture, transparent: true, depthWrite: false }));
+  markings.rotation.x = -Math.PI / 2; markings.position.y = 0.012; group.add(markings);
   box(group, [158, 0.3, 118], [0, -0.2, 0], material(0x18282b));
   net(group, -52.5, -1); net(group, 52.5, 1);
   // Broadcast cutaway: the camera-side roof would physically occlude the pitch.
   // Keep the three visible stands; the near touchline stays open to the camera.
-  stand(group, 132, 0, -43, Math.PI);
+  stand(group, 132, 0, -43, Math.PI, uniforms);
   box(group, [116, 0.7, 0.25], [0, 0.35, 39], material(0x173d4b));
-  stand(group, 78, -62, 0, -Math.PI / 2); stand(group, 78, 62, 0, Math.PI / 2);
+  stand(group, 78, -62, 0, -Math.PI / 2, uniforms); stand(group, 78, 62, 0, Math.PI / 2, uniforms);
   for (const x of [-52.5, 52.5]) for (const z of [-34, 34]) {
     box(group, [0.045, 1.6, 0.045], [x, 0.8, z], material(0xecede1));
     box(group, [0.45, 0.3, 0.025], [x + 0.22, 1.4, z], material(0xebba5a));

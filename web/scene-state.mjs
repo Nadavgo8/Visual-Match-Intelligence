@@ -16,7 +16,8 @@ export function playerPose(previous, player, t) {
   const heading = speed > 0.1 ? Math.atan2(dx, dz) : previous?.heading ?? (player.team === "home" ? Math.PI / 2 : -Math.PI / 2);
   const phase = t * 10;
   const stride = Math.sin(phase) * Math.min(0.65, speed * 0.09);
-  return { t, x: player.x, y: player.y, heading, speed, stride,
+  const distance = (previous?.distance ?? 0) + (dt > 0 && dt <= MAX_POSE_INTERVAL ? Math.hypot(dx, dz) : 0);
+  return { t, x: player.x, y: player.y, heading, speed, stride, distance,
     knee: Math.max(0, -Math.sin(phase)) * Math.min(0.8, speed * 0.1),
     bob: Math.abs(Math.cos(phase)) * Math.min(0.04, speed * 0.005) };
 }
@@ -26,8 +27,8 @@ export function cameraView(aspect, reducedMotion = false, ball = [52.5, 34], mod
   // Keep the complete metric pitch in frame at narrow sizes as well as 16:9.
   const distance = Math.max(1, (16 / 9) / safeAspect);
   if (!reducedMotion && mode === "broadcast") {
-    const x = (ball[0] - 52.5) * 0.75, z = (34 - ball[1]) * 0.6;
-    return { position: [x, 34 * distance, z + 52 * distance], target: [x, 0, z], fov: 48 };
+    const x = Math.max(-40, Math.min(40, (ball[0] - 52.5) * 0.9)), z = Math.max(-25, Math.min(25, (34 - ball[1]) * 0.8));
+    return { position: [x - 6, 22 * distance, z + 36 * distance], target: [x, 0, z], fov: 43 };
   }
   const targetX = reducedMotion ? 0 : Math.max(-5, Math.min(5, (ball[0] - 52.5) * 0.1));
   return { position: [targetX, 72 * distance, 84 * distance], target: [targetX, 0, 0], fov: 46 };

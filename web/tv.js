@@ -29,7 +29,7 @@ ws.onmessage = (ev) => {
 ws.onclose = () => { screen.freeze(performance.now()); $("agents").textContent = "disconnected, reload to reconnect"; };
 
 function onState(s) {
-  if (screen.sync(s, performance.now())) clearMarkerElement();
+  if (screen.sync(s, performance.now())) { clearMarkerElement(); renderer.setAtmosphere(null); }
   state = s;
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
@@ -75,6 +75,7 @@ function onMeters(m) {
   $("atmo-label").title = a.why;
   $("atmo-label").textContent = view.label;
   audio.crowd(a.crowd ?? 0);
+  renderer.setAtmosphere(a);
 }
 
 function onBanner(b) {
@@ -95,7 +96,7 @@ function clearMarkerElement() {
   $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
 }
-function jump(command) { screen.beginJump(); clearMarkerElement(); send(command); }
+function jump(command) { screen.beginJump(); clearMarkerElement(); renderer.setAtmosphere(null); send(command); }
 
 // Football rendering and accessibility overlays have independent lifecycles.
 let fpsStart = 0, fpsCount = 0, drawMs = 0;

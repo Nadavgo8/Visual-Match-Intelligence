@@ -2,10 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as T from "../../web/vendor/three/three.module.js";
 import { worldPosition, playerPose, cameraView, qualitySettings, SceneMotion } from "../../web/scene-state.mjs";
-import { buildFootballer, Footballers } from "../../web/footballers.mjs";
 const player = (x = 10, y = 34, id = "h1", team = "home") => ({ id, x, y, n: 7, team, role: "FW" });
 const frame = (t, players = [player()], match_id = "m1", extra = {}) => ({ t, players, match_id, ...extra });
-const teams = { home: { colour: "#2678b9" }, away: { colour: "#e9e4d6" } };
 
 test("world uses exact metric axes and source ball height", () => {
   assert.deepEqual(worldPosition(52.5, 34), [0, 0, 0]);
@@ -35,6 +33,15 @@ test("roster/history remain bounded through 1000 changes", () => {
   const motion = new SceneMotion();
   for (let i = 0; i < 1000; i++) motion.update(frame(i / 20, [player(40, 34, `sub-${i}`)]));
   assert.equal(motion.players.size, 1);
+});
+test("travel distance drives gait independently of display refresh rate and resets on seek", () => {
+  const sample = steps => {
+    const motion = new SceneMotion();
+    for (let i = 0; i <= steps; i++) motion.update(frame(1 + i / steps, [player(10 + i * 5 / steps)]));
+    assert.ok(Math.abs(motion.players.get("h1").distance - 5) < 1e-8);
+    motion.update(frame(0.5, [player(50)])); assert.equal(motion.players.get("h1").distance, 0);
+  };
+  sample(20); sample(60);
 });
 test("32x playback animates a valid 1.6-second source interval without treating it as seek", () => {
   const motion = new SceneMotion(); motion.update(frame(1, [player(10)]));
@@ -67,27 +74,4 @@ test("reduced motion fixes camera; low power reduces GPU cost without changing s
   assert.deepEqual(cameraView(16 / 9, true, [0, 0]), cameraView(16 / 9, true, [105, 68]));
   assert.deepEqual(qualitySettings("low", 3), { pixelRatio: 1, shadows: false, shadowSize: 0 });
   assert.deepEqual(qualitySettings("high", 3), { pixelRatio: 1.5, shadows: true, shadowSize: 2048 });
-});
-test("original human geometry has body, head, articulated limbs and keeper kit", () => {
-  const p = player(), a = buildFootballer(p, teams), keeper = buildFootballer({ ...p, role: "GK" }, teams);
-  assert.equal(a.legs.length, 2); assert.equal(a.arms.length, 2);
-  const boot = a.legs[0].knee.children.at(-1), before = new T.Vector3(), after = new T.Vector3();
-  a.root.updateMatrixWorld(true); boot.getWorldPosition(before);
-  a.legs[0].joint.rotation.x = 0.5; a.root.updateMatrixWorld(true); boot.getWorldPosition(after);
-  assert.ok(before.distanceTo(after) > 0.3, "hip articulation must move the boot, not just a detached decoration");
-  assert.notEqual(a.parts[0].color, keeper.parts[0].color);
-  assert.equal(a.parts[0].color, teams.home.colour);
-});
-test("22 articulated players batch into 3 draws; substitutions and hiding release actor history", () => {
-  const scene = new T.Scene(), footballers = new Footballers(scene), motion = new SceneMotion();
-  const players = Array.from({ length: 22 }, (_, i) => player(i * 4, 34, `p${i}`, i < 11 ? "home" : "away"));
-  const f = frame(1, players); footballers.update(f, motion.update(f), teams);
-  assert.equal(footballers.actors.size, 22); assert.equal(scene.children.length, 3);
-  for (const mesh of scene.children) {
-    assert.ok(mesh.isInstancedMesh && mesh.count > 0 && mesh.count <= 660);
-    assert.ok([...mesh.instanceMatrix.array.slice(0, mesh.count * 16)].every(Number.isFinite));
-  }
-  const sub = frame(2, [player(30, 30, "new")]); footballers.update(sub, motion.update(sub), teams);
-  assert.deepEqual([...footballers.actors.keys()], ["new"]);
-  footballers.hide(); assert.equal(footballers.actors.size, 0); assert.ok(scene.children.every(m => m.count === 0));
 });

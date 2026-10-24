@@ -69,8 +69,13 @@ def test_3d_assets_are_served_locally_and_state_identifies_source_match():
     room.reset(13)
     assert room.state("tv")["match_id"] != original
     client = TestClient(app)
-    for asset in ("match-3d.mjs", "stadium.mjs", "footballers.mjs", "renderer-host.mjs",
+    for asset in ("match-3d.mjs", "stadium.mjs", "athlete.mjs", "crowd.mjs", "renderer-host.mjs",
                   "vendor/three/three.module.js", "vendor/three/three.core.js"):
         response = client.get("/static/" + asset)
         assert response.status_code == 200
         assert "javascript" in response.headers["content-type"]
+    athlete = client.get("/static/assets/athlete/athlete.json")
+    assert athlete.status_code == 200 and athlete.json()["height"] == 1.85
+    for image in ("color", "normal"):
+        response = client.get(f"/static/assets/turf/{image}.jpg")
+        assert response.status_code == 200 and response.content.startswith(b"\xff\xd8")

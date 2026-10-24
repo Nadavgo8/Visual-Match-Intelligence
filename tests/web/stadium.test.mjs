@@ -12,7 +12,7 @@ test("stadium batches static detail and leaves the broadcast line of sight open"
   let meshes = 0, spectators = 0;
   stadium.traverse(object => {
     if (object.isMesh) meshes++;
-    if (object.isInstancedMesh && object.geometry.type === "IcosahedronGeometry") spectators += object.count;
+    if (object.isInstancedMesh && object.name === "Delivered-amplitude crowd") spectators += object.count;
   });
   assert.ok(meshes < 30, `static draw count must stay bounded: ${meshes}`);
   assert.ok(spectators > 5000 && spectators < 15000);

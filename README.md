@@ -6,7 +6,7 @@ Built for the Microsoft *Inside the Game* hackathon. **All matches, teams and pl
 
 | TV view (the broadcast) | Companion app (phone) |
 |---|---|
-| Source-driven **3D football replay**, original articulated players and stadium, broadcast/full-pitch cameras, shadows and a low-power setting. Two identical **atmosphere edge bars**, one **round event marker** and a **momentum bar** under the score. Presenter diagnostics stay outside the viewing area. A labelled 2D fallback handles unavailable WebGL2. | **Feed** of goals, VAR, cards and subs; **stoppage analysis** in 2–3 sentences with receipts; **Ask**: a chat about this match, the rules, stats and tactics. No notifications. Two depth levels from a 3-question onboarding. |
+| Source-driven **3D football replay**, skinned human athletes, locally licensed turf, an original stadium and a crowd driven by delivered crowd amplitude. Broadcast/full-pitch cameras, shadows and a low-power setting. Two identical **atmosphere edge bars**, one **round event marker** and **momentum** under the score. Presenter diagnostics stay outside the viewing area. Labelled 2D fallback if WebGL2 is unavailable. | **Feed** of goals, VAR, cards and subs; **stoppage analysis** in 2–3 sentences with receipts; **Ask**: a chat about this match, the rules, stats and tactics. No notifications. Two depth levels from a 3-question onboarding. |
 
 ## Run it
 
@@ -73,4 +73,4 @@ flowchart LR
 
 ## Status
 
-The 3D view is implemented on the D1-04 task branch and remains under validation: the required 30 FPS has not yet been demonstrated in the current browser environment. See [3D implementation and evidence](docs/implementation/D1-04-MATCH-3D.md). The merged D1 baseline includes generator v2, atmosphere, momentum, accessibility signals and causal-clock fixes. A "What did I miss?" summary, model choice and hosting remain Developer 2 work. Foundry and Azure deployment are wired but have not run against a live subscription. No extra-cost service is authorized.
+The D1-04 task branch now includes skinned athletes, CC0 turf maps and source-driven crowd motion. Visible-browser samples exceed 30 FPS on the documented test machine; the stronger visual-reference acceptance remains open and PR #12 is still Draft. See [implementation, licenses and evidence](docs/implementation/D1-04-MATCH-3D.md). Crowd motion illustrates delivered amplitude, without inferring emotions or independently validating the atmosphere formula. The merged D1 baseline includes generator v2, atmosphere, momentum, accessibility signals and causal-clock fixes. A "What did I miss?" summary, model choice and hosting remain Developer 2 work. Foundry and Azure deployment have not run against a live subscription. No extra-cost service is authorized.

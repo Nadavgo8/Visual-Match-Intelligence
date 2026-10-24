@@ -1,24 +1,41 @@
 import * as T from "./vendor/three/three.module.js";
 import { buildStadium } from "./stadium.mjs";
-import { Footballers } from "./footballers.mjs";
+import { DetailedFootballers, loadAthlete } from "./athlete.mjs";
+import { updateCrowd } from "./crowd.mjs";
 import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs";
 
+export async function prepareAssets() {
+  const loader = new T.TextureLoader();
+  const results = await Promise.allSettled([loadAthlete(), ...["color", "normal"].map(name => loader.loadAsync(new URL(`./assets/turf/${name}.jpg`, import.meta.url).href))]);
+  if (results.some(result => result.status === "rejected")) {
+    for (const result of results) if (result.status === "fulfilled" && result.value?.isTexture) result.value.dispose();
+    throw Error("Local 3D assets unavailable");
+  }
+  const [athlete, color, normal] = results.map(result => result.value);
+  for (const texture of [color, normal]) {
+    texture.wrapS = texture.wrapT = T.RepeatWrapping; texture.repeat.set(114 / 1.4, 76 / 1.4); texture.anisotropy = 8;
+  }
+  color.colorSpace = T.SRGBColorSpace;
+  return { athlete, turfMaps: { color, normal }, dispose() { color.dispose(); normal.dispose(); } };
+}
+
 export class Match3D {
-  constructor(canvas, onLost) {
+  constructor(canvas, onLost, assets) {
     this.canvas = canvas; this.motion = new SceneMotion(); this.quality = "high"; this.reducedMotion = false;
     this.gpu = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.gpu.outputColorSpace = T.SRGBColorSpace; this.gpu.toneMapping = T.ACESFilmicToneMapping;
-    this.gpu.toneMappingExposure = 1.15; this.gpu.shadowMap.type = T.PCFShadowMap;
-    this.scene = new T.Scene(); this.scene.background = new T.Color(0x182c42);
-    this.scene.fog = new T.Fog(0x182c42, 130, 280);
+    this.gpu.toneMappingExposure = 0.92; this.gpu.shadowMap.type = T.PCFShadowMap;
+    this.scene = new T.Scene(); this.scene.background = new T.Color(0x929e9b);
+    this.scene.fog = new T.Fog(0x929e9b, 150, 350);
     this.camera = new T.PerspectiveCamera(46, 16 / 9, 0.1, 500);
-    this.scene.add(new T.HemisphereLight(0xcde8ff, 0x6d7f5e, 2));
-    this.sun = new T.DirectionalLight(0xffe8c9, 3.1); this.sun.position.set(-30, 70, 25);
+    this.scene.add(new T.HemisphereLight(0xe3e9ef, 0x687651, 1.6));
+    this.sun = new T.DirectionalLight(0xfff0d8, 2.5); this.sun.position.set(-30, 70, 25);
     Object.assign(this.sun.shadow.camera, { left: -63, right: 63, top: 49, bottom: -49, near: 1, far: 150 });
     this.sun.shadow.normalBias = 0.035; this.sun.shadow.bias = -0.00015;
     this.scene.add(this.sun);
-    const fill = new T.DirectionalLight(0xa4cfff, 1.3); fill.position.set(40, 35, -50); this.scene.add(fill);
-    this.scene.add(buildStadium(canvas.ownerDocument)); this.footballers = new Footballers(this.scene);
+    const fill = new T.DirectionalLight(0xc5d7df, 0.65); fill.position.set(40, 35, -50); this.scene.add(fill);
+    this.stadium = buildStadium(canvas.ownerDocument, assets.turfMaps); this.scene.add(this.stadium);
+    this.footballers = new DetailedFootballers(this.scene, assets.athlete, canvas.ownerDocument);
     this.ball = new T.Mesh(new T.IcosahedronGeometry(0.16, 2), new T.MeshStandardMaterial({ color: 0xf9f4e6, roughness: 0.45, flatShading: true }));
     this.ball.castShadow = true; this.ball.visible = false; this.scene.add(this.ball);
     // Small dark panels stay on the ball surface and rotate with its source time.
@@ -27,6 +44,7 @@ export class Match3D {
     canvas.addEventListener("webglcontextlost", this.lost);
     this.setQuality("high"); this.resize(); this.mode = "3D stadium";
   }
+  setAtmosphere(value) { this.atmosphere = value; }
   setQuality(quality) {
     this.quality = quality; const q = qualitySettings(quality, window.devicePixelRatio || 1);
     this.gpu.setPixelRatio(q.pixelRatio); this.gpu.shadowMap.enabled = q.shadows;
@@ -43,7 +61,9 @@ export class Match3D {
   draw(frame, teams) {
     this.resize();
     const view = cameraView(this.camera.aspect, this.reducedMotion, frame?.ball, this.cameraMode);
+    this.camera.fov = view.fov; this.camera.updateProjectionMatrix();
     this.camera.position.set(...view.position); this.camera.lookAt(...view.target);
+    const crowd = updateCrowd(this.stadium.userData.crowdUniforms, this.atmosphere, frame?.t ?? 0, this.reducedMotion);
     if (frame && teams) {
       this.footballers.update(frame, this.motion.update(frame), teams);
       this.ball.visible = true; this.ball.position.set(...worldPosition(...frame.ball, frame.ball_height + 0.16));
@@ -56,8 +76,11 @@ export class Match3D {
     this.canvas.dataset.actors = String(this.footballers.actors.size);
     this.canvas.dataset.quality = this.quality;
     this.canvas.dataset.camera = this.reducedMotion ? "fixed" : this.cameraMode ?? "broadcast";
+    this.canvas.dataset.crowdLevel = crowd.available ? String(crowd.level) : "unavailable";
+    this.canvas.dataset.crowdStanding = String(crowd.standing);
   }
   dispose() {
+    this.footballers.dispose();
     this.canvas.removeEventListener("webglcontextlost", this.lost);
     const geometries = new Set(), materials = new Set(), textures = new Set();
     this.scene.traverse(object => {
