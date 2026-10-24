@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import math
 from collections.abc import Iterator
 
 from ..generator.match import Match
@@ -49,6 +50,9 @@ class Replay:
         return self.now >= self.match.duration
 
     def advance(self, to_t: float) -> list[dict]:
+        if (not isinstance(to_t, (int, float)) or isinstance(to_t, bool)
+                or not math.isfinite(to_t) or to_t < self.now):
+            raise ValueError("replay target must be finite and not precede its current snapshot")
         out: list[dict] = []
         to_t = min(to_t, self.match.duration)
         while True:

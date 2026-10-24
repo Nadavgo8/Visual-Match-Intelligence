@@ -92,3 +92,35 @@ def test_atmosphere_reports_components_and_availability_without_emotion(demo):
     assert all(a["mode"] == "combined" for a in meters)
     assert all(0 <= a["level"] <= 1 for a in meters if a["available"])
     assert all(a["level"] is None for a in meters if not a["available"])
+
+
+@pytest.mark.parametrize("target", [float("nan"), float("inf"), -1, True, "2"])
+def test_invalid_replay_targets_fail_before_processing_any_input(target, monkeypatch):
+    from vmi.engine.replay import Replay
+    from vmi.generator.scenarios import generate_scenario
+    replay = Replay(generate_scenario("carry"))
+
+    def unexpected_tick(now):
+        raise RuntimeError("invalid target reached the processing loop")
+
+    # This sentinel also bounds the pre-fix NaN reproduction: it must never loop.
+    monkeypatch.setattr(replay.engine, "tick", unexpected_tick)
+    with pytest.raises(ValueError):
+        replay.advance(target)
+    assert replay.now == 0 and replay.i == 0 and replay.tracking_index == 0
+    assert not replay.model.events
+
+
+def test_replay_rejects_backward_advance_without_rewinding_snapshot():
+    from copy import deepcopy
+    from vmi.engine.replay import Replay
+    from vmi.generator.scenarios import generate_scenario
+    replay = Replay(generate_scenario("carry"))
+    replay.advance(2)
+    before = deepcopy(replay.model.__dict__)
+    with pytest.raises(ValueError):
+        replay.advance(1)
+    assert replay.now == 2 and replay.model.__dict__ == before
+    assert replay.advance(2) == []
+    replay.advance(3)
+    assert replay.now == 3
