@@ -44,3 +44,31 @@ test("the companion never notifies, vibrates or plays sound", () => {
     assert.equal(src.includes(api), false, api);
   }
 });
+
+function memoryStorage() {
+  const data = new Map();
+  return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, String(v)) };
+}
+
+test("catch-up checkpoints are kept per room, match and run, and only move forward", async () => {
+  const { CatchUpCheckpoints, scopeOf } = await import("../../web/companion.mjs");
+  const cp = new CatchUpCheckpoints(memoryStorage());
+  const a = scopeOf("demo", 12, "r1"), b = scopeOf("demo", 12, "r2"), c = scopeOf("demo", 7, "r1");
+  assert.equal(cp.get(a), null); // first use: the server covers the last 5 minutes
+  assert.equal(cp.advance(a, 300), true);
+  assert.equal(cp.advance(a, 200), false); // never backwards
+  assert.equal(cp.advance(a, Number.NaN), false);
+  assert.equal(cp.get(a), 300);
+  assert.equal(cp.get(b), null); // a new run starts its own checkpoint
+  assert.equal(cp.get(c), null); // so does another match
+});
+
+test("catch-up checkpoints stay bounded and survive blocked storage", async () => {
+  const { CatchUpCheckpoints } = await import("../../web/companion.mjs");
+  const cp = new CatchUpCheckpoints(memoryStorage(), "k", 3);
+  for (let i = 1; i <= 5; i++) cp.advance(`s${i}`, i);
+  assert.deepEqual(Object.keys(cp.all()), ["s3", "s4", "s5"]);
+  const blocked = new CatchUpCheckpoints({ getItem() { throw new Error("no"); }, setItem() { throw new Error("no"); } });
+  assert.equal(blocked.get("x"), null);
+  assert.equal(blocked.advance("x", 5), true); // doesn't throw; simply not remembered
+});

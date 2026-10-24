@@ -62,3 +62,5 @@ dialog .primary { width: 100%; margin-top: 14px; }
 .sources summary { cursor: pointer; list-style: none; }
 .sources code { font-size: 11px; background: #0f141b; padding: 0 4px; border-radius: 4px; }
 .ob-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.catch-up { width: 100%; margin: 0 0 10px; padding: 10px; border-radius: 10px; font-weight: 600; }
+#catch-up-result { margin-bottom: 10px; }

@@ -49,3 +49,35 @@ export class AnswerLog {
 export function itemLabel(kind) {
   return kind === "analysis" ? "Analysis · interpretation" : "Fact";
 }
+
+// "What did I miss?" checkpoints: where the next summary starts, kept separately for each
+// room, match and run. A checkpoint only moves forward, and only after the viewer saw the
+// top of the feed or received a summary; a failed request never moves it.
+export const scopeOf = (room, seed, runId) => `${room}|${seed}|${runId}`;
+
+export class CatchUpCheckpoints {
+  constructor(storage = globalThis.localStorage, key = "vmi.caughtup.v1", keep = 20) {
+    this.storage = storage; this.key = key; this.keep = keep;
+  }
+
+  all() {
+    try { return JSON.parse(this.storage?.getItem(this.key)) || {}; } catch { return {}; }
+  }
+
+  get(scope) {
+    const v = this.all()[scope];
+    return Number.isFinite(v) ? v : null;
+  }
+
+  advance(scope, t) {
+    if (!scope || !Number.isFinite(t)) return false;
+    const all = this.all();
+    if (Number.isFinite(all[scope]) && all[scope] >= t) return false;
+    delete all[scope];  // re-insert last, so the oldest scopes are dropped first
+    all[scope] = t;
+    const scopes = Object.keys(all);
+    for (const old of scopes.slice(0, Math.max(0, scopes.length - this.keep))) delete all[old];
+    try { this.storage?.setItem(this.key, JSON.stringify(all)); } catch { /* private mode: no checkpoint kept */ }
+    return true;
+  }
+}

@@ -31,6 +31,13 @@ def delivery_stream(match: Match) -> list[tuple[float, int, dict]]:
     return [heapq.heappop(items) for _ in range(len(items))]
 
 
+def _delivered(outs: list[dict], at: float) -> list[dict]:
+    """Stamp each engine output with the simulation time it was produced (`at`), so consumers
+    can tell when something reached the viewer, not only when it happened on the pitch."""
+    for o in outs:
+        o.setdefault("at", round(at, 3))
+    return outs
+
 class Replay:
     """Steps a match forward in match time and returns the engine's outputs."""
 
@@ -65,20 +72,20 @@ class Replay:
             if min(next_rec, next_tracking, self.next_tick, expiry, analysis_due, whistle_due) > to_t:
                 break
             if expiry < min(next_rec, next_tracking, self.next_tick, analysis_due, whistle_due):
-                out += self.engine.poll_meters(expiry)
+                out += _delivered(self.engine.poll_meters(expiry), expiry)
             elif analysis_due < min(next_rec, next_tracking, self.next_tick, whistle_due):
-                out += self.engine.release_analysis(analysis_due)
+                out += _delivered(self.engine.release_analysis(analysis_due), analysis_due)
             elif whistle_due < min(next_rec, next_tracking, self.next_tick):
-                out += self.engine.poll_whistles(whistle_due)
+                out += _delivered(self.engine.poll_whistles(whistle_due), whistle_due)
             elif next_tracking <= min(next_rec, self.next_tick):
                 self.tracking_index += 1
-                out += self.engine.ingest(self.tracker.observation(sample_t), next_tracking)
+                out += _delivered(self.engine.ingest(self.tracker.observation(sample_t), next_tracking), next_tracking)
             elif next_rec <= self.next_tick:
                 at, _, rec = self.stream[self.i]
                 self.i += 1
-                out += self.engine.ingest(rec, at)
+                out += _delivered(self.engine.ingest(rec, at), at)
             else:
-                out += self.engine.tick(self.next_tick)
+                out += _delivered(self.engine.tick(self.next_tick), self.next_tick)
                 self.next_tick += 1.0
         self.now = to_t
         return out
