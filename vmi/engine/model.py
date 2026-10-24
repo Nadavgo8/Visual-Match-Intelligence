@@ -80,6 +80,7 @@ class MatchModel:
     xg_by_shot: dict = field(default_factory=dict)
     last_clock_t: float = -1
     last_restart_t: float = -1
+    last_stop_t: float = -1
     shots_by_id: dict = field(default_factory=dict)
     prepared_passes: set = field(default_factory=set)
     control_times: dict = field(default_factory=lambda: {"home": [], "away": []})
@@ -161,11 +162,11 @@ class MatchModel:
                 return True
             if expected and parent["type"] != expected:
                 raise ValueError(f"{key} references a non-{expected} event")
+            if ev["t"] < parent["t"]:
+                raise ValueError(f"event precedes its {key}")
             if ev["type"] in {"shot_result", "shot_xg"}:
                 if ev.get("team") != parent.get("team") or ev.get("player_id") != parent.get("player_id"):
                     raise ValueError("linked shot identity mismatch")
-                if ev["t"] < parent["t"]:
-                    raise ValueError("linked result precedes shot")
         previous = ev.get("supersedes_decision_id")
         if previous:
             parent = self.by_id.get(previous)
@@ -173,6 +174,8 @@ class MatchModel:
                 return True
             if parent["type"] != "referee_decision" or parent["stoppage_id"] != ev["stoppage_id"]:
                 raise ValueError("correction must replace a decision for the same stoppage")
+            if ev["t"] < parent["t"]:
+                raise ValueError("correction precedes the decision it replaces")
         if ev["type"] == "restart_taken":
             parent = self.by_id[ev["restart_id"]]
             if parent["stoppage_id"] != ev["stoppage_id"] or parent["team"] != ev["team"]:
@@ -198,7 +201,6 @@ class MatchModel:
         self.events.append(ev)
         self.by_id[ev["id"]] = ev
         self.changes.append(ev)
-        self._clock(ev)
         etype = ev["type"]
         if self.tracking and ev["t"] >= self.tracking["t"]:
             p = self.tracking.get("possession", {})
@@ -243,7 +245,8 @@ class MatchModel:
             self.owner = None
         if etype == "play_stopped":
             # An old stop arriving after its restart must not stop the new play.
-            if ev["t"] >= self.last_restart_t:
+            if ev["t"] >= max(self.last_restart_t, self.last_stop_t):
+                self.last_stop_t = ev["t"]
                 self.active_stoppage_id = ev["id"]
                 self.ball_in_play = False
                 self.owner = None
@@ -298,6 +301,10 @@ class MatchModel:
                 self.on_pitch[side].remove(ev["player_id"])
         if etype == "period_end" and ev["period_end"]["period_no"] == 2:
             self.finished = True
+        # Rejected conflicts remain in history for diagnostics, but cannot move
+        # the authoritative clock and suppress later valid clock updates.
+        if self.changes and self.changes[-1] is ev:
+            self._clock(ev)
 
     def _derive(self, ev: dict) -> dict:
         d: dict = {}
