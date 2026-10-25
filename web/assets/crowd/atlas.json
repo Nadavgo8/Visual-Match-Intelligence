@@ -1,0 +1,126 @@
+{
+  "width": 1448,
+  "height": 1086,
+  "sprites": [
+    {
+      "rect": [
+        136,
+        100,
+        127,
+        245
+      ],
+      "height": 1.35,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        500,
+        108,
+        113,
+        236
+      ],
+      "height": 1.35,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        823,
+        105,
+        132,
+        240
+      ],
+      "height": 1.35,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        1195,
+        116,
+        112,
+        228
+      ],
+      "height": 1.35,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        139,
+        402,
+        119,
+        301
+      ],
+      "height": 1.82,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        501,
+        417,
+        112,
+        288
+      ],
+      "height": 1.82,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        828,
+        412,
+        122,
+        297
+      ],
+      "height": 1.82,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        1196,
+        424,
+        112,
+        283
+      ],
+      "height": 1.82,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        122,
+        745,
+        154,
+        303
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        490,
+        748,
+        138,
+        300
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        811,
+        748,
+        154,
+        301
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        1180,
+        750,
+        144,
+        298
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    }
+  ]
+}

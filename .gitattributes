@@ -7,3 +7,4 @@ web/vendor/three/LICENSE -text
 web/assets/athlete/athlete.json -text
 web/assets/athlete/CC0.txt -text
 web/assets/turf/*.jpg -text
+web/assets/crowd/*.png -text

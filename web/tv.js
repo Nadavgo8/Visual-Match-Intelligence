@@ -2,7 +2,7 @@ import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
 import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.3";
 import { MatchScreen } from "./match-screen.mjs?v=3.2";
-import { createRenderer } from "./renderer-host.mjs?v=3.3";
+import { createRenderer } from "./renderer-host.mjs?v=3.4";
 import { openSession, hostTokenStore } from "./session.mjs";
 import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
 

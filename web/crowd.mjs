@@ -1,4 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
+import { createAtlasCrowd } from "./crowd-atlas.mjs";
 
 // These are visual encodings of delivered crowd amplitude, not a second metric.
 // Attack never makes the crowd louder; missing observations never mean silence.
@@ -75,8 +76,10 @@ export function crowdLayout(length, rows, standSeed = 0) {
   return seats;
 }
 
-export function createCrowd(length, rows, uniforms, standSeed = 0) {
-  const seats = crowdLayout(length, rows, standSeed), count = seats.length, geometry = personGeometry();
+export function createCrowd(length, rows, uniforms, standSeed = 0, atlas = null) {
+  const seats = crowdLayout(length, rows, standSeed);
+  if (atlas) return createAtlasCrowd(seats, uniforms, atlas);
+  const count = seats.length, geometry = personGeometry();
   const seeds = new Float32Array(count);
   const material = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1 });
   material.onBeforeCompile = shader => {

@@ -1,22 +1,26 @@
 import * as T from "./vendor/three/three.module.js";
-import { buildStadium } from "./stadium.mjs?v=3.2";
+import { buildStadium } from "./stadium.mjs?v=3.4";
 import { DetailedFootballers, loadAthlete } from "./athlete.mjs";
-import { updateCrowd } from "./crowd.mjs?v=3.2";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs";
+import { updateCrowd } from "./crowd.mjs?v=3.4";
+import { loadAtlasMetadata } from "./crowd-atlas.mjs";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.4";
 
 export async function prepareAssets() {
   const loader = new T.TextureLoader();
-  const results = await Promise.allSettled([loadAthlete(), ...["color", "normal"].map(name => loader.loadAsync(new URL(`./assets/turf/${name}.jpg`, import.meta.url).href))]);
+  const results = await Promise.allSettled([loadAthlete(), ...["color", "normal"].map(name => loader.loadAsync(new URL(`./assets/turf/${name}.jpg`, import.meta.url).href)),
+    loader.loadAsync(new URL("./assets/crowd/spectators-v1.png", import.meta.url).href), loadAtlasMetadata()]);
   if (results.some(result => result.status === "rejected")) {
     for (const result of results) if (result.status === "fulfilled" && result.value?.isTexture) result.value.dispose();
     throw Error("Local 3D assets unavailable");
   }
-  const [athlete, color, normal] = results.map(result => result.value);
+  const [athlete, color, normal, crowd, metadata] = results.map(result => result.value);
   for (const texture of [color, normal]) {
     texture.wrapS = texture.wrapT = T.RepeatWrapping; texture.repeat.set(114 / 1.4, 76 / 1.4); texture.anisotropy = 8;
   }
   color.colorSpace = T.SRGBColorSpace;
-  return { athlete, turfMaps: { color, normal }, dispose() { color.dispose(); normal.dispose(); } };
+  crowd.colorSpace = T.SRGBColorSpace; crowd.anisotropy = 4;
+  return { athlete, turfMaps: { color, normal }, crowdAtlas: {texture: crowd, metadata},
+    dispose() { color.dispose(); normal.dispose(); crowd.dispose(); } };
 }
 
 export class Match3D {
@@ -34,7 +38,7 @@ export class Match3D {
     this.sun.shadow.normalBias = 0.035; this.sun.shadow.bias = -0.00015;
     this.scene.add(this.sun);
     const fill = new T.DirectionalLight(0xc5d7df, 0.65); fill.position.set(40, 35, -50); this.scene.add(fill);
-    this.stadium = buildStadium(canvas.ownerDocument, assets.turfMaps); this.scene.add(this.stadium);
+    this.stadium = buildStadium(canvas.ownerDocument, assets.turfMaps, assets.crowdAtlas); this.scene.add(this.stadium);
     this.footballers = new DetailedFootballers(this.scene, assets.athlete, canvas.ownerDocument);
     this.ball = new T.Mesh(new T.IcosahedronGeometry(0.16, 2), new T.MeshStandardMaterial({ color: 0xf9f4e6, roughness: 0.45, flatShading: true }));
     this.ball.castShadow = true; this.ball.visible = false; this.scene.add(this.ball);

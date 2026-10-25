@@ -39,3 +39,17 @@ are recorded in [turf/provenance.json](turf/provenance.json).
 Pitch markings, stadium, crowd geometry/shader, kits and numbers are original
 VMI code. No real team/league/sponsor mark, player likeness or broadcast footage
 is used. The image supplied by the user is a visual target, not a texture asset.
+
+## Synthetic spectator atlas
+
+The current crowd uses [spectators-v1.png](crowd/spectators-v1.png), an original
+RGBA image generated with the built-in image tool for VMI. Four anonymous adults
+have seated, standing and raised-hand poses; neutral faces do not label emotions.
+Photographic cutouts are instanced as planes inside the 3D stadium. The existing
+procedural geometry remains available when no atlas is supplied to the builder.
+The actual runtime loads the local atlas and validates its measured bounds.
+
+[Prompts and method](crowd/PROMPTS.md), [pixel metadata](crowd/atlas.json), and
+[source/hash](crowd/provenance.json) document the original file. No real spectator
+photograph or reference-image content is used. No source retouching, network
+dependency during viewing, purchase or API-key workflow was introduced.
