@@ -276,3 +276,18 @@ def test_cli_foundry_builds_the_guarded_candidate_and_writes_the_report(monkeypa
     assert me.main(["--provider", "foundry", "--model", "gpt-5-mini", "--runs", "1", "--output", str(tmp_path)]) == 0
     assert built["endpoint"] == "https://x/api/projects/p" and built["model"] == "gpt-5-mini" and built["runs"] == 1
     assert isinstance(built["provider"], Fake) and (tmp_path / "gpt-5-mini" / "review.csv").exists()
+
+
+def test_cli_template_baseline_builds_no_model_provider(monkeypatch, tmp_path):
+    seen = {}
+
+    async def fake_run(provider, runs):
+        seen["provider"] = provider
+        return {"rows": [], "summary": {"requests": 0}}
+
+    def no_foundry(*a, **k):
+        raise AssertionError("the template baseline must not build a Foundry candidate")
+    monkeypatch.setattr(me, "run", fake_run)
+    monkeypatch.setattr(me, "FoundryCandidate", no_foundry)
+    assert me.main(["--runs", "1", "--output", str(tmp_path)]) == 0
+    assert seen["provider"] is None and (tmp_path / "template" / "review.csv").exists()
