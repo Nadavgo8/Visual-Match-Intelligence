@@ -13,7 +13,13 @@ export function playerPose(previous, player, t) {
   const dz = previous ? previous.y - player.y : 0;
   // A teleport, repeated timestamp or seek is not a sprint. No stale velocity.
   const speed = dt > 0 && dt <= MAX_POSE_INTERVAL ? Math.min(9, Math.hypot(dx, dz) / dt) : 0;
-  const heading = speed > 0.1 ? Math.atan2(dx, dz) : previous?.heading ?? (player.team === "home" ? Math.PI / 2 : -Math.PI / 2);
+  const wanted = speed > 0.1 ? Math.atan2(dx, dz) : previous?.heading ?? (player.team === "home" ? Math.PI / 2 : -Math.PI / 2);
+  let heading = wanted;
+  if (previous && Number.isFinite(previous.heading) && dt > 0 && dt <= MAX_POSE_INTERVAL) {
+    const turn = Math.atan2(Math.sin(wanted - previous.heading), Math.cos(wanted - previous.heading));
+    heading = previous.heading + Math.max(-9 * dt, Math.min(9 * dt, turn));
+    heading = Math.atan2(Math.sin(heading), Math.cos(heading));
+  }
   const phase = t * 10;
   const stride = Math.sin(phase) * Math.min(0.65, speed * 0.09);
   const distance = (previous?.distance ?? 0) + (dt > 0 && dt <= MAX_POSE_INTERVAL ? Math.hypot(dx, dz) : 0);
@@ -32,7 +38,9 @@ export function cameraView(aspect, reducedMotion = false, ball = [52.5, 34], mod
     // Keep the camera beyond the near touchline rather than crossing the pitch
     // behind a far-side ball. Zoom compensates for distance so the action stays
     // readable, with receivers visible and the crowd confined to the backdrop.
-    return { position: [x - 6, 22 * distance, (60 + 20 * near) * distance],
+    // A broadcast head pans from a central gantry. Following the ball all the
+    // way behind either goal puts the end-stand canopy across the upper image.
+    return { position: [x * 0.42, 22 * distance, (60 + 20 * near) * distance],
       target: [x, -2 + 8 * near, 34 - ball[1]], fov: (18 + 16 * near) * 0.9 };
   }
   const targetX = reducedMotion ? 0 : Math.max(-5, Math.min(5, (ball[0] - 52.5) * 0.1));

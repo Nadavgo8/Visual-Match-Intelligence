@@ -99,7 +99,7 @@ function stadiumSeats(group, length, seed) {
   mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; mesh.computeBoundingSphere(); group.add(mesh);
 }
 
-function stand(parent, length, x, z, rotation, uniforms, seed, atlas, concrete) {
+function stand(parent, length, x, z, rotation, uniforms, seed, atlas, concrete, roofCutaway = false) {
   const group = new T.Group(); group.position.set(x, 0, z); group.rotation.y = rotation; parent.add(group);
   const roof = material(0x202c34), rail = material(0x6f7e84, 0.55);
   for (let row = 0; row < 24; row++) box(group, [length, 0.45, 0.76], [0, 0.3 + row * 0.52, row * 0.76], concrete);
@@ -110,7 +110,9 @@ function stand(parent, length, x, z, rotation, uniforms, seed, atlas, concrete) 
   }
   // A cantilever canopy, rear wall and diagonal steelwork give the crowd a
   // physical home. The broadcast side remains an open cutaway.
-  box(group, [length + 2, 0.28, 22], [0, 16.2, 7.4], roof);
+  const roofLength = roofCutaway ? length / 2 : length + 2;
+  const roofCentre = roofCutaway ? Math.sign(rotation) * length / 4 : 0;
+  box(group, [roofLength, 0.28, 22], [roofCentre, 16.2, 7.4], roof);
   for (let x = -length / 2; x <= length / 2; x += 13) {
     box(group, [0.18, 16, 0.18], [x, 8, 18], rail);
     beam(group, [x, 15.95, -3], [x, 14.9, 18], 0.13, rail);
@@ -187,7 +189,10 @@ export function buildStadium(document, turfMaps = {}, crowdAtlas = null) {
   // Broadcast cutaway: the camera-side roof would physically occlude the pitch.
   // Keep the three main stands and occupied corners; leave the near side open.
   stand(group, 132, 0, -43, Math.PI, uniforms, 1, crowdAtlas, concrete);
-  stand(group, 78, -62, 0, -Math.PI / 2, uniforms, 2, crowdAtlas, concrete); stand(group, 78, 62, 0, Math.PI / 2, uniforms, 3, crowdAtlas, concrete);
+  // Camera-facing halves of the end canopies are cut away too: they previously
+  // filled the upper corners with a large roof even from a central gantry.
+  stand(group, 78, -62, 0, -Math.PI / 2, uniforms, 2, crowdAtlas, concrete, true);
+  stand(group, 78, 62, 0, Math.PI / 2, uniforms, 3, crowdAtlas, concrete, true);
   for (const x of [-62, 62]) {
     // Angled, occupied corner stands replace the opaque featureless cubes.
     stand(group, 14, x, -41, Math.sign(x) * Math.PI * 0.75, uniforms, x < 0 ? 4 : 5, crowdAtlas, concrete);

@@ -11,13 +11,24 @@ test("world uses exact metric axes and source ball height", () => {
   assert.deepEqual(worldPosition(105, 68), [52.5, 0, -34]);
 });
 test("stride follows source velocity, clamps teleports and never uses wall time", () => {
-  const old = { ...player(10), t: 1, heading: 0 };
+  const old = { ...player(10), t: 1, heading: Math.PI / 2 };
   const pose = playerPose(old, player(10.5), 1.1);
   assert.ok(Math.abs(pose.speed - 5) < 1e-10); assert.equal(pose.heading, Math.PI / 2);
   assert.deepEqual(playerPose(old, player(10.5), 1.1), pose);
   assert.equal(playerPose(old, player(90), 8).speed, 0);
   assert.equal(playerPose(old, player(90), 0).speed, 0);
   assert.equal(playerPose(old, player(90), 1.1).speed, 9);
+  assert.equal(playerPose({ ...player(10), t: 1 }, player(10.5), 1.1).heading, Math.PI / 2);
+});
+test("a player turns through source time instead of snapping 180 degrees in one frame", () => {
+  let pose = { ...player(10), t: 1, heading: Math.PI / 2 };
+  const first = playerPose(pose, player(9.75), 1.05);
+  const turn = Math.abs(Math.atan2(Math.sin(first.heading-pose.heading),Math.cos(first.heading-pose.heading)));
+  assert.ok(turn > 0 && turn <= .46, "turn speed stays below nine radians per source second");
+  assert.ok(Math.abs(first.speed-5)<1e-8);
+  pose = first;
+  for(let step=2;step<=10;step++) pose=playerPose(pose,player(10-step*.25),1+step*.05);
+  assert.ok(Math.abs(Math.atan2(Math.sin(pose.heading+Math.PI/2),Math.cos(pose.heading+Math.PI/2)))<1e-8);
 });
 test("same paused frame freezes limbs, substitutions and run/seek reset history", () => {
   const motion = new SceneMotion(); motion.update(frame(1));
@@ -70,6 +81,14 @@ test("broadcast framing keeps the ball clear of the screen edges throughout the 
       const projected = new T.Vector3(...worldPosition(x, y, height)).project(camera);
       assert.ok(Math.abs(projected.x) < 0.85 && Math.abs(projected.y) < 0.85, JSON.stringify({ x, y, height, projected }));
     }
+  }
+});
+
+test("broadcast camera stays at the central gantry while panning towards either goal", () => {
+  for (const x of [0, 10, 52.5, 95, 105]) for (const y of [0, 34, 68]) {
+    const view = cameraView(16 / 9, false, [x, y]);
+    assert.ok(Math.abs(view.position[0]) <= 22, "the camera must not travel behind an end-stand canopy");
+    assert.ok(view.position[2] >= 60, "the camera stays outside the near touchline");
   }
 });
 
