@@ -103,10 +103,11 @@ RULES: dict[str, dict] = {
     },
     "atmosphere": {
         "keywords": ["atmosphere", "crowd", "loud", "noise", "meter", "glow"],
-        "text": ("The atmosphere indicator shows how loud the whole stadium is (height and brightness, five levels) "
-                 "and a mood label worked out from the match situation: Calm, Cheering, Tension or Eruption. The "
-                 "sensor measures loudness only. It cannot tell boos from cheers, so the app never claims why the "
-                 "crowd reacted, only what happened just before."),
+        "text": ("The two identical bars at the screen edges show one atmosphere level for the whole stadium: 80% "
+                 "how loud the crowd is and up to 20% for a detected attack near the opponents' goal. Fill height "
+                 "and colour (turquoise to amber) change together, so it never relies on colour alone, and missing "
+                 "crowd data is shown as unavailable, not as quiet. The sensor measures loudness only. It cannot "
+                 "tell boos from cheers, so the app never claims why the crowd reacted, only what happened just before."),
     },
 }
 

@@ -81,3 +81,11 @@ def test_3d_assets_are_served_locally_and_state_identifies_source_match():
     for image in ("color", "normal"):
         response = client.get(f"/static/assets/turf/{image}.jpg")
         assert response.status_code == 200 and response.content.startswith(b"\xff\xd8")
+
+
+def test_browser_modules_are_served_as_javascript():
+    # Browsers refuse module scripts whose MIME type isn't JavaScript; the OS mapping for .mjs varies.
+    c = TestClient(app)
+    for name in ("session.mjs", "atmosphere.mjs", "overlay-state.mjs", "app.js", "tv.js"):
+        r = c.get(f"/static/{name}")
+        assert r.status_code == 200 and "javascript" in r.headers["content-type"], (name, r.headers["content-type"])

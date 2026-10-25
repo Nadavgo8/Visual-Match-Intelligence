@@ -9,6 +9,8 @@ code over the same tools, so the chat always works.
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import functools
 import json
 import re
@@ -18,6 +20,7 @@ from pathlib import Path
 from ..engine import derive
 from ..engine.model import MatchModel
 from . import rules
+from .providers import TOTAL_TIMEOUT_S
 from .tools import MatchTools
 
 PROMPTS = Path(__file__).resolve().parents[2] / "prompts"
@@ -60,24 +63,32 @@ class Assistant:
         self.model_name = model_name
 
     async def answer(self, question: str, profile: dict | None = None) -> dict:
+        """Answer against a copy of the match frozen when the question was asked: events that
+        arrive while an agent is still working can't leak into this answer."""
         profile = profile or {}
         t0 = time.perf_counter()
+        frozen = type(self)(copy.deepcopy(self.m), self.client, self.model_name)
+        fallback_reason = None
         if self.client is not None:
             try:
-                res = await self._agents(question, profile)
+                res = await asyncio.wait_for(frozen._agents(question, profile), timeout=TOTAL_TIMEOUT_S)
                 if res:
-                    res["latency_ms"] = round((time.perf_counter() - t0) * 1000)
-                    return res
+                    return self._finish(res, frozen, t0)
+                fallback_reason = "agent answer failed validation"
+            except asyncio.TimeoutError:
+                fallback_reason = "timeout"
             except Exception as e:  # fall back to the local agents
                 fallback_reason = f"agent error: {type(e).__name__}"
-            else:
-                fallback_reason = "agent answer failed validation"
-        else:
-            fallback_reason = None
-        res = self._local(question, profile)
-        res["latency_ms"] = round((time.perf_counter() - t0) * 1000)
+        res = frozen._local(question, profile)
         if fallback_reason:
             res["fallback_reason"] = fallback_reason
+        return self._finish(res, frozen, t0)
+
+    @staticmethod
+    def _finish(res: dict, frozen: "Assistant", t0: float) -> dict:
+        res["latency_ms"] = round((time.perf_counter() - t0) * 1000)
+        res["answer_kind"] = "live" if res.get("source") == "agent" else "template"  # never present code as AI
+        res["snapshot_clock"] = frozen.m.clock
         return res
 
     # ------------------------------------------------------------ Foundry agents
@@ -194,8 +205,8 @@ class Assistant:
             lead = mo["home_team"] if share >= 55 else mo["away_team"] if share <= 45 else None
             possession = (f"{round(mo['possession_home'] * 100)}% possession for {mo['home_team']}"
                           if mo["possession_available"] else "possession data unavailable")
-            text = (f"Over the last 7 minutes {'it has been even' if not lead else lead + ' have been on top'}: "
-                    f"{possession}, key passes "
+            text = (f"Interpretation: over the last 7 minutes {'it has been even' if not lead else lead + ' have been on top'}. "
+                    f"Facts: {possession}, key passes "
                     f"{mo['key_passes']['home']}–{mo['key_passes']['away']}, shots {mo['shots']['home']}–{mo['shots']['away']}.")
             ev, calls = list(mo["evidence"]), ["get_momentum"]
             if deep or re.search(r"\b(tactic\w*|pattern|flank|wing|attack\w*)\b", ql):

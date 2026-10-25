@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import math
+import mimetypes
 import os
 import secrets
 import time
@@ -29,6 +30,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..agents.explainer import Explainer
+from . import catchup
 from ..agents.llm import explainer_agent, foundry_client
 from ..agents.qa import Assistant
 from ..engine import derive
@@ -39,6 +41,8 @@ from ..generator.tracking import Tracker
 
 log = logging.getLogger("vmi")
 WEB = Path(__file__).resolve().parents[2] / "web"
+# Browsers only run ES modules served as JavaScript; some OS registries map .mjs to text/plain.
+mimetypes.add_type("text/javascript", ".mjs")
 DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "12"))
 TICK_HZ = 20
 SPEEDS = [1, 2, 4, 8, 16, 32]
@@ -140,6 +144,7 @@ class Room:
         for task in self.pending.values():
             task.cancel()
         self.pending = {}
+        self.held: list[tuple[dict, tuple, int]] = []  # explanations waiting for the next stoppage
 
     def reset(self, seed: int | None = None):
         self.new_run()
@@ -157,6 +162,7 @@ class Room:
         self.analyses: list[dict] = []
         self.texts: dict[tuple, dict] = {}  # (cue_id, depth, team) -> explainer result
         self.last_meters: dict | None = None
+        self.clock_marks: list[tuple[float, str]] = [(0.0, "0:00")]  # (t, clock) seen each second
 
     # ---------- delivery ----------
     async def send(self, c: Client, msg: dict):
@@ -244,6 +250,7 @@ class Room:
             if self.playing and not self.replay.done:
                 outs = self.replay.advance(self.replay.now + dt * self.speed)
                 await self.route(outs)
+                await self.flush_held()
                 if self.replay.done:
                     self.playing = False
                     await self.broadcast_state()
@@ -273,6 +280,7 @@ class Room:
         # a jump replays history silently: keep feed and analyses, drop transient banners
         await self.route([o for o in outs if o["kind"] in ("feed", "analysis")], live=False, traced=True)
         meters = [o for o in outs if o["kind"] == "meters"]
+        self.clock_marks += [(o["t"], o["clock"]) for o in meters]
         if meters:
             self.last_meters = meters[-1]
         for c in self.clients:
@@ -305,6 +313,7 @@ class Room:
                 await self.to_role("tv", {**o, "type": "banner", "banner": o["type"]})
             elif k == "meters":
                 self.last_meters = o
+                self.clock_marks.append((o["t"], o["clock"]))
                 self.counts["in"] = self.replay.engine.n_in
                 await self.to_role("tv", {"type": "trace", "counts": self.counts, "recent": self.recent[-12:]})
                 self.recent.clear()
@@ -313,8 +322,10 @@ class Room:
             elif k == "feed":
                 old = next((i for i, item in enumerate(self.feed) if item["cue_id"] == o["cue_id"]), None)
                 if old is None:
+                    o["delivered"] = o.get("at", self.replay.now)
                     self.feed.append(o)
                 else:
+                    o["delivered"] = self.feed[old]["delivered"]  # an enrichment doesn't make the item new
                     self.feed[old] = o
                 if live:
                     for c in self.clients:
@@ -330,7 +341,7 @@ class Room:
         return {"type": "feed", "cue_id": o["cue_id"], "clock": o["clock"], "t": o["t"], "icon": o["icon"],
                 "team": o["team"], "mine": bool(profile.get("team") and o["team"] == profile["team"]),
                 "text": o["text"][profile["depth"]], "evidence": o["evidence"], "tier": o["tier"],
-                "update": o.get("update", False)}
+                "update": o.get("update", False), "delivered": o["delivered"]}
 
     def request_text(self, a: dict, profile: dict, notify: bool = True):
         key = (a["cue_id"], profile["depth"], profile.get("team"))
@@ -352,7 +363,20 @@ class Room:
         self.texts[key] = res
         _text_cache[(self.seed, a["moment"], a["t"], key[1], key[2])] = res
         self.pending.pop(key, None)
+        if self.replay.model.ball_in_play:
+            # Written too late: play has restarted. Hold it for the next stoppage instead of
+            # inviting the viewer to look away during live play.
+            self.held.append((a, key, run))
+            return
         await self.push_analysis(a, key, run)
+
+    async def flush_held(self):
+        """Publish held explanations once the ball is out of play again (still for this run only)."""
+        if not self.held or self.replay.model.ball_in_play:
+            return
+        held, self.held = self.held, []
+        for a, key, run in held:
+            await self.push_analysis(a, key, run)
 
     async def push_analysis(self, a: dict, key: tuple, run: int):
         if run != self.run or key not in self.texts:
@@ -367,6 +391,11 @@ class Room:
             if c.role == "app" and (c.profile["depth"], c.profile.get("team")) == key[1:] \
                     and visible_to(a, c.profile["amount"]):
                 await self.send(c, msg)
+
+    def catch_up(self, profile: dict, since_t: float | None) -> dict:
+        m = self.replay.model
+        line = f"Score: {m.team_name('home')} {m.score['home']}–{m.score['away']} {m.team_name('away')}."
+        return catchup.summary(self.feed, self.clock_marks, since_t, self.replay.now, profile, line)
 
     async def send_backlog(self, c: Client):
         items = [self.feed_msg(o, c.profile) for o in self.feed if visible_to(o, c.profile["amount"])]
@@ -498,6 +527,13 @@ async def ws(websocket: WebSocket, room_name: str, role: str = "tv", seed: int |
                     await control(room, cmd, msg)
                 except (TypeError, ValueError, OverflowError):
                     await room.send(c, {"type": "error", "code": "bad_command", "message": f"Invalid {cmd} command."})
+            elif cmd == "catch_up":
+                try:
+                    res = room.catch_up(c.profile, msg.get("since_t"))
+                except ValueError:
+                    await room.send(c, {"type": "error", "code": "bad_command", "message": "Invalid catch_up command."})
+                    continue
+                await room.send(c, {"type": "catch_up", "id": msg.get("id"), **res})
             elif cmd == "profile":
                 p = msg.get("profile", {})
                 c.profile = {

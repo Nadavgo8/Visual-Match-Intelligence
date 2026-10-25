@@ -26,6 +26,8 @@
 
 <main>
   <section id="feed-view" aria-live="polite">
+    <button id="catch-up" class="catch-up">What did I miss?</button>
+    <div id="catch-up-result" class="card" role="status" hidden></div>
     <ol id="feed" class="feed"></ol>
     <p id="feed-empty" class="empty">Waiting for kick-off. Big moments and stoppage analysis will appear here. No notifications, ever.</p>
   </section>
@@ -33,7 +35,7 @@
   <section id="ask-view" hidden>
     <ol id="chat" class="chat"></ol>
     <div class="suggest" id="suggest">
-      <button>What did I miss?</button><button>Why was that offside?</button><button>Who's on top?</button><button>Match stats</button>
+      <button data-catch-up>What did I miss?</button><button>Why was that offside?</button><button>Who's on top?</button><button>Match stats</button>
     </div>
     <form id="ask-form" class="ask">
       <input id="q" autocomplete="off" placeholder="Ask about this match, the rules, stats…" maxlength="400" aria-label="Your question">
@@ -45,7 +47,7 @@
 <dialog id="onboard">
   <form method="dialog" id="onboard-form">
     <h2 id="ob-title">Set up your companion</h2>
-    <p class="muted">Three questions, once. You can change them any time in Settings.</p>
+    <p class="muted">Three questions, once. You can skip them and change them any time in Settings. The app is optional: the match screen works without it.</p>
     <fieldset>
       <legend>How well do you know football?</legend>
       <label><input type="radio" name="knowledge" value="new"> New to it</label>
@@ -65,7 +67,7 @@
       <label><input type="radio" name="amount" value="everything"> Everything</label>
     </fieldset>
     <p class="muted small">Room: <b id="room-code"></b> · Agents: <span id="agents"></span></p>
-    <button class="primary" value="ok">Done</button>
+    <div class="ob-actions"><button class="primary" value="ok">Done</button> <button value="skip">Skip, use defaults</button></div>
   </form>
 </dialog>
 

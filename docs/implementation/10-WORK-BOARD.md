@@ -13,12 +13,12 @@
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
 | D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — VISUAL_GATE | codex/d1-match-3d מ־main ‏cbbc511, [Draft PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12). שחקנים עם שלד, דשא CC0 וקהל לפי נתון קהל בלבד; 63 Node עברו לאחר סנכרון D2. נמדדו High ‏31FPS ו־Low ‏38FPS ב־viewport ‏1920×1080. עדיין אין PASS לרמת תמונת הייחוס; SHA ותוצאות סופיות ב־PR, [מפרט וראיות](D1-04-MATCH-3D.md) |
 | D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8), main ‏56732ff; שכבת ה־PDF מוזגה ואומתה. תצוגת התלת־ממד משמרת אותה |
-| D2-00 | BLOCKED (הכרעה) | `codex/d2-model-feasibility`: שכבת ספק ניטרלית, סט 30 שאלות וכלי הערכה; 208 Python ו־12 Node עברו על HEAD. ההכרעה חסומה: אין מקום בדיסק ל־Ollama, זכאות Azure for Students לא ידועה, ונדרשת ביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md), [העברת D2](HANDOFF-D2.md) |
+| D2-00 | BLOCKED (הכרעה) | הכלים מוזגו ב־[PR #16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ל־bf9152c (שכבת ספק ניטרלית, סט 30 שאלות, כלי הערכה; CI ירוק). לא נבחר מודל. חסום: מקום בדיסק ל־Ollama, זכאות Azure for Students, וביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
 | D2-02 | DONE | [PR #15](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/15) מוזג ל־9063ca5; ארבעת ה־checks עברו (הריצה הראשונה נכשלה בשער הכיסוי ונוספו 5 בדיקות; שורות קריטיות שהשתנו 100%, ענפים 97.14%); אחרי המיזוג: 285 Python ו־21 Node עברו על main. [חוזה](D2-02-SESSION.md) |
-| D2-03 | WAITING_DEPENDENCY | חוזה פיד, פרופיל ותקשורת |
-| D2-04 | WAITING_DEPENDENCY | snapshot, חלון זמן ומצב משתמש |
-| D2-05 | WAITING_DEPENDENCY | הכרעת D2-00 וחוזי עובדות; שלד עצמאי אפשרי |
+| D2-03 | DONE | [PR #18](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/18) מוזג ל־8924791; ארבעת ה־checks עברו; אחרי המיזוג 311 Python ו־27 Node עברו על main |
+| D2-04 | DONE | [PR #19](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/19) מוזג ל־5414521; ארבעת ה־checks עברו (שורות קריטיות שהשתנו 96.30%, ענפים 100%) |
+| D2-05 | IN_REVIEW (שלד) | `codex/d2-commentary-agents`: תשובת Ask מול snapshot קפוא, מגבלת 20s לנתיב הסוכנים, תוויות live/template, תווית Interpretation, הסבר אוטומטי שהושלם במשחק פעיל ממתין לעצירה, תיקון ערך האווירה במאגר החוקים. חיבור מודל קבוע, אנליסט משמעות וכותב כסוכני מודל — ממתינים להכרעת D2-00 |
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
 
 ## הרשאות ורצף העבודה

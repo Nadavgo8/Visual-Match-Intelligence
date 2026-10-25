@@ -34,3 +34,25 @@
 - סקירה: אין P0–P2. P3 נדחו: ייבוא פונקציות פרטיות מ־explainer; ערך `atmosphere` במאגר החוקים עדיין מזכיר "mood label" (שייך ל־D2-05).
 - הכרעה: PENDING. נדרש: מקום בדיסק או מחשב אחר ל־Ollama, בירור זכאות Azure for Students, הרצת הסט פעמיים וביקורת שני המפתחים.
 - PR [#16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ממזג רק את הכלים; ההכרעה נשארת חסומה.
+
+## D2-03 — `codex/d2-companion-app`
+
+- נבנו: `web/companion.mjs` (`normaliseProfile` + `DEFAULT_PROFILE`, `FeedStore.upsert` שמחזיר update לפריט קיים, `AnswerLog` שמציג תשובה פעם אחת לכל שאלה, `itemLabel`), חיבור ב־`web/app.js`: פריט שהועשר (xG) מוחלף במקומו בלי הדגשה ובלי שינוי מיקום; תווית Fact לפריטי פיד ו־Analysis · interpretation לכרטיסים; מקורות (מזהי אירועים) נפתחים בלחיצה; כפתור "Skip, use defaults"; Ask בזמן ניתוק מודיע שלא נשלח; פרופיל ישן מאחסון מנורמל.
+- בדיקות: `tests/web/companion.test.mjs` ‏(6), כולל בדיקה שאין Notification/vibrate/Audio/service worker ב־`app.js`.
+- ממצא בדרך: `.mjs` הוגש כ־text/plain במחשב הזה, והדפדפן לא היה מריץ את המודולים. תוקן בנפרד ב־[PR #17](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/17) עם בדיקת רגרסיה.
+- לא נבדק: דפדפן אמיתי בטלפון (אין כלי דפדפן בסשן); נבדקו תחביר המודולים, בדיקות Node והגשת הדפים.
+
+## D2-04 — `codex/d2-catch-up`
+
+- נבנו: `vmi/api/catchup.py` (חלון, בחירה דטרמיניסטית, שעון לגבולות, טקסט), `Replay` מסמן כל פלט ב־`at` (זמן מסירה; שינוי תוספתי בקובץ של מפתח 1, מוסבר ב־PR), `delivered` בפריטי פיד ובהודעות, פקודת `catch_up`, כפתור ופאנל באפליקציה, `CatchUpCheckpoints`.
+- בדיקות: `tests/test_catch_up.py` ‏(13, unit), שתי בדיקות שרת ב־`test_realtime_session.py`, שתי בדיקות Node. חבילה מלאה: 326 Python, ‏29 Node.
+- ממצא בבדיקות: פריטי בדיקה בלי `kind` הפילו את `visible_to`; תוקן בנתוני הבדיקה (בפיד אמיתי תמיד יש `kind`).
+- mutations: גבול חלון כולל — 1 נכשלה; בחירה לפי `t` במקום מסירה — 1 נכשלה.
+
+## D2-05 — `codex/d2-commentary-agents` (שלד, בלי מודל)
+
+- נבנו: `Assistant.answer` עונה מול עותק של מודל המשחק שהוקפא ברגע השאלה (deepcopy, כ־31ms במשחק מלא); נתיב הסוכנים חסום ב־20 שניות כולל (`TOTAL_TIMEOUT_S`) עם גיבוי מקומי מסומן; כל תשובה מסומנת `answer_kind` (live / template) ו־`snapshot_clock`; תשובת "מי לוחץ" מתחילה ב־"Interpretation:" ומפרידה "Facts:"; הסבר אוטומטי שהושלם כשהכדור כבר במשחק מוחזק (`held`) ומפורסם בעצירה הבאה, רק לאותה הרצה; ערך `atmosphere` במאגר החוקים מתאר את פסי 80/20 במקום "mood".
+- בדיקות: `tests/test_commentary_agents.py` ‏(11): snapshot מול משחק שממשיך, timeout, תוויות, שני ניסיונות prompt injection לחשיפת עתיד, תקציב שש קריאות כלים, ערך החוקים, החזקה עד עצירה, ומניעת פרסום מוחזק מהרצה ישנה.
+- ממצא בדרך: `_text_cache` של השרת משותף לכל הבדיקות; בדיקה חדשה הכשילה בדיקת D2-02 שהשתמשה באותו רגע. נוסף fixture שמבודד את המטמון.
+- mutations: מענה מהמודל החי במקום העותק — 1 נכשלה; פרסום בזמן משחק — 2 נכשלו.
+- לא נעשה: אנליסט משמעות וכותב כסוכני מודל, ובדיקת groundedness מול מודל אמיתי — תלויים בהכרעת D2-00.
