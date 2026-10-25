@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createAtlasCrowd } from "./crowd-atlas.mjs";
+import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.9";
 
 // These are visual encodings of delivered crowd amplitude, not a second metric.
 // Attack never makes the crowd louder; missing observations never mean silence.
@@ -71,7 +71,8 @@ export function crowdLayout(length, rows, standSeed = 0) {
     if (row === 12 || aisles.some(aisle => Math.abs(x - aisle) < 0.7)) continue;
     const index = row * columns + col, seed = noise(index + 1 + standSeed * 65537);
     seats.push({ x: x + (seed - 0.5) * 0.08, y: 0.28 + row * 0.52,
-      z: row * 0.76, seed, shape: noise(index + 7919 + standSeed * 31337) });
+      z: row * 0.76, seed, shape: noise(index + 7919 + standSeed * 31337),
+      identity: noise(index + 104729 + standSeed * 99991), clothing: noise(index + 15485863 + standSeed * 49999) });
   }
   return seats;
 }

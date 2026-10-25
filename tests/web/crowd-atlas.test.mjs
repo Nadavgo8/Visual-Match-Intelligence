@@ -53,7 +53,7 @@ test("photographic crowd stays instanced, pitch-facing and controlled by the exi
   assert.equal(mesh.material.transparent,false); assert.equal(mesh.material.depthWrite,true);
   const matrix=new T.Matrix4(); mesh.getMatrixAt(0,matrix);
   assert.ok(new T.Vector3(0,0,1).transformDirection(matrix).z<-.95);
-  const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader}; mesh.material.onBeforeCompile(shader);
+  const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader,fragmentShader:T.ShaderLib.standard.fragmentShader}; mesh.material.onBeforeCompile(shader);
   assert.strictEqual(shader.uniforms.crowdStanding,uniforms.crowdStanding);
   assert.equal(shader.uniforms.crowdRects.value.length,12);
   assert.match(shader.vertexShader,/vMapUv = region.xy \+ vMapUv \* region.zw/);
@@ -61,5 +61,19 @@ test("photographic crowd stays instanced, pitch-facing and controlled by the exi
   updateCrowd(uniforms,{crowd:1,attack:0},10,false); assert.equal(uniforms.crowdStanding.value,.68);
   updateCrowd(uniforms,{crowd:1,attack:0},10,true); assert.equal(uniforms.crowdArms.value,0); assert.equal(uniforms.crowdSway.value,0);
   updateCrowd(uniforms,{crowd:0,attack:1},10,false); assert.equal(uniforms.crowdStanding.value,0);
+  mesh.dispose(); mesh.geometry.dispose(); mesh.material.dispose(); texture.dispose();
+});
+
+test("all four spectator identities can stand at low amplitude, independent of their activation threshold", () => {
+  const texture = new T.Texture(), seats = crowdLayout(78,24,2);
+  const mesh = createAtlasCrowd(seats,createCrowdUniforms(),{texture,metadata});
+  const identities = mesh.geometry.getAttribute("crowdIdentity");
+  assert.ok(identities, "appearance must have its own random channel");
+  const standing = new Set();
+  for (let i=0;i<seats.length;i++) if (seats[i].seed<0.06) standing.add(Math.floor(identities.getX(i)*4));
+  assert.deepEqual([...standing].sort(),[0,1,2,3]);
+  const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader,fragmentShader:T.ShaderLib.standard.fragmentShader}; mesh.material.onBeforeCompile(shader);
+  assert.match(shader.vertexShader,/floor\(crowdIdentity \* 4.0\)/);
+  assert.doesNotMatch(shader.vertexShader,/floor\(crowdSeed \* 4.0\)/);
   mesh.dispose(); mesh.geometry.dispose(); mesh.material.dispose(); texture.dispose();
 });

@@ -72,7 +72,7 @@ def test_3d_assets_are_served_locally_and_state_identifies_source_match():
     assert room.state("tv")["match_id"] != original
     client = TestClient(app)
     for asset in ("match-3d.mjs", "stadium.mjs", "athlete.mjs", "crowd.mjs", "renderer-host.mjs",
-                  "match-screen.mjs", "meter-view.mjs", "crowd-atlas.mjs",
+                  "match-screen.mjs", "meter-view.mjs", "crowd-atlas.mjs", "football-gait.mjs",
                   "vendor/three/three.module.js", "vendor/three/three.core.js"):
         response = client.get("/static/" + asset)
         assert response.status_code == 200

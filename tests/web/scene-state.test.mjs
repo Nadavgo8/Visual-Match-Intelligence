@@ -105,3 +105,16 @@ test("broadcast retains a forty-metre action span with crowd context behind the 
     assert.ok(crowdFront.y > .3, `crowd front drops into the action at ball y=${y}: ${crowdFront.y}`);
   }
 });
+
+test("ball rolls only with delivered displacement, and resets on seek or run replacement", () => {
+  const motion=new SceneMotion(), frame=(t,ball,run_id="a")=>({match_id:"m",run_id,t,ball,players:[]});
+  motion.update(frame(1,[10,34]));
+  const still={...motion.ballRoll}; motion.update(frame(1.1,[10,34]));
+  assert.deepEqual(motion.ballRoll,still,"a stationary ball cannot rotate with the clock");
+  motion.update(frame(1.2,[10.16,34]));
+  assert.ok(Math.abs(motion.ballRoll.z+1)<1e-10);
+  const paused={...motion.ballRoll}; motion.update(frame(1.2,[10.16,34])); assert.deepEqual(motion.ballRoll,paused);
+  motion.update(frame(0,[10,34])); assert.deepEqual(motion.ballRoll,{x:0,z:0});
+  motion.update(frame(0.1,[10,34.16])); assert.ok(Math.abs(motion.ballRoll.x+1)<1e-10);
+  motion.update(frame(0.1,[10,34.16],"b")); assert.deepEqual(motion.ballRoll,{x:0,z:0});
+});

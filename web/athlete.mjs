@@ -1,4 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
+import { footballGait, legAngles } from "./football-gait.mjs?v=3.9";
 
 export function validateAthlete(data) {
   const n = data?.positions?.length / 3, bones = data?.bones;
@@ -80,7 +81,12 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
     const number = new T.Mesh(numberGeometry, numberMaterial), spine = data.bones.find(b => b.name === "spine03").head;
     number.position.set(-spine[0], 1.32 - spine[1], -0.092 - spine[2]); number.rotation.y = Math.PI; joints.spine03.add(number);
   }
-  return { root, mesh, joints, skeleton, kitPalette, phase: (seed % 997) / 997 * Math.PI * 2,
+  const legRest = Object.fromEntries(["L", "R"].map(side => {
+    const head = name => data.bones.find(b => b.name === `${name}.${side}`).head;
+    const hip = head("upperleg01"), knee = head("lowerleg01"), foot = head("foot");
+    return [side, { upper: knee.map((v, i) => v - hip[i]), lower: foot.map((v, i) => v - knee[i]), y: foot[1] - hip[1], z: foot[2] - hip[2] }];
+  }));
+  return { root, mesh, joints, skeleton, legRest, kitPalette, phase: (seed % 997) / 997,
     dispose() { bodyMaterial.dispose(); skeleton.dispose(); numberTexture?.dispose(); numberMaterial?.dispose(); numberGeometry?.dispose(); } };
 }
 
@@ -98,21 +104,22 @@ export class DetailedFootballers {
         actor = Object.assign(createAthlete(this.data, this.base, p, teams, this.document), { role: p.role, team: p.team, n: p.n });
         this.actors.set(p.id, actor); this.scene.add(actor.root);
       }
-      const pose = poses.get(p.id), phase = pose.distance * 2.8 + actor.phase;
-      const stride = Math.sin(phase) * Math.min(0.8, pose.speed * 0.11), bob = Math.abs(Math.sin(phase * 2)) * Math.min(0.025, pose.speed * 0.004);
+      const pose = poses.get(p.id), gait = footballGait(pose.speed, pose.distance / 2.2 + actor.phase, p.role === "GK");
       const ball = frame.ball ?? [52.5, 34], look = Math.atan2(ball[0] - p.x, p.y - ball[1]);
       const holder = frame.possession?.holder_id === p.id;
       const facing = pose.speed > 0.1 || holder ? pose.heading : look;
-      actor.root.position.set(p.x - 52.5, bob, 34 - p.y); actor.root.rotation.y = facing;
+      actor.root.position.set(p.x - 52.5, gait.pelvis, 34 - p.y); actor.root.rotation.y = facing;
       for (const [side, sign] of [["L", 1], ["R", -1]]) {
-        actor.joints[`upperleg01.${side}`].rotation.set(-stride * sign, 0, -sign * 0.08);
-        actor.joints[`lowerleg01.${side}`].rotation.x = Math.max(0, stride * sign) * 1.1;
-        actor.joints[`foot.${side}`].rotation.x = -Math.max(0, stride * sign) * 0.35;
-        actor.joints[`upperarm01.${side}`].rotation.set(stride * sign * 0.65, 0, -sign * 0.62);
-        actor.joints[`lowerarm01.${side}`].rotation.x = -0.28 - Math.abs(stride) * 0.35;
+        const foot = side === "L" ? gait.left : gait.right, rest = actor.legRest[side];
+        const leg = legAngles(rest.upper, rest.lower, rest.y - gait.pelvis + foot.lift, rest.z + foot.z);
+        actor.joints[`upperleg01.${side}`].rotation.set(leg.hip, 0, 0);
+        actor.joints[`lowerleg01.${side}`].rotation.x = leg.knee;
+        actor.joints[`foot.${side}`].rotation.x = leg.ankle;
+        actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, -sign * gait.armSpread);
+        actor.joints[`lowerarm01.${side}`].rotation.x = gait.elbow;
       }
-      actor.joints.spine03.rotation.x = Math.min(0.12, pose.speed * 0.018);
-      actor.joints.spine03.rotation.y = Math.sin(phase) * Math.min(0.06, pose.speed * 0.01);
+      actor.joints.spine03.rotation.x = gait.lean;
+      actor.joints.spine03.rotation.y = gait.twist;
       const lookDelta = Math.atan2(Math.sin(look - facing), Math.cos(look - facing));
       actor.joints.head.rotation.y = holder ? 0 : Math.max(-0.5, Math.min(0.5, lookDelta));
       actor.root.updateMatrixWorld(true);

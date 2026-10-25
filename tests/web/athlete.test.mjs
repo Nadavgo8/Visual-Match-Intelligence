@@ -72,3 +72,25 @@ test("full 22-player roster shares immutable anatomy buffers and keeps keeper co
   assert.equal(sharedDisposals, 0); assert.equal(actors.actors.size, 21);
   actors.dispose(); assert.equal(scene.children.length, 0); assert.equal(sharedDisposals, 1);
 });
+
+test("running rig keeps a support sole near the turf and preserves the delivered player centre", () => {
+  const actors = new DetailedFootballers(new T.Scene(),data), motion = new SceneMotion();
+  const sole = data.regions.flatMap((region,i) => region===4 && data.positions[i*3+1]<0.055 ? [i] : []);
+  assert.ok(sole.length>10);
+  const vector = new T.Vector3();
+  for (let i=0;i<30;i++) {
+    const player={...p,x:40+i*0.3};
+    const frame={match_id:"m",t:1+i*0.05,players:[player]};
+    actors.update(frame,motion.update(frame),teams);
+    const actor=actors.actors.get(p.id); actor.skeleton.update();
+    const heights=sole.map(index=>{
+      vector.fromBufferAttribute(actors.base.getAttribute("position"),index);
+      actor.mesh.applyBoneTransform(index,vector); vector.applyMatrix4(actor.mesh.matrixWorld);
+      return vector.y;
+    });
+    assert.ok(Math.min(...heights)>-0.025,`sole penetrates turf: ${Math.min(...heights)}`);
+    assert.ok(Math.min(...heights)<0.12,`both feet float: ${Math.min(...heights)}`);
+    assert.equal(actor.root.position.x,player.x-52.5); assert.equal(actor.root.position.z,34-player.y);
+  }
+  actors.dispose();
+});

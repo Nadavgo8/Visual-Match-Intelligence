@@ -9,13 +9,15 @@ const context = new Proxy({}, { get: () => () => {} });
 const document = { createElement: () => ({ width: 0, height: 0, getContext: () => context }) };
 test("stadium batches static detail and leaves the broadcast line of sight open", () => {
   const stadium = buildStadium(document); stadium.updateMatrixWorld(true);
-  let meshes = 0, spectators = 0;
+  let meshes = 0, spectators = 0, seats = 0;
   stadium.traverse(object => {
     if (object.isMesh) meshes++;
     if (object.isInstancedMesh && object.name === "Delivered-amplitude crowd") spectators += object.count;
+    if (object.isInstancedMesh && object.name === "Individual stadium seats") seats += object.count / 2;
   });
   assert.ok(meshes < 30, `static draw count must stay bounded: ${meshes}`);
   assert.ok(spectators > 5000 && spectators < 15000);
+  assert.equal(seats,spectators,"static batching must preserve every individual seat instance");
   for (const mode of ["broadcast", "wide"]) for (const x of [2, 52.5, 103]) for (const y of [2, 34, 66]) {
     const view = cameraView(16 / 9, false, [x, y], mode);
     const origin = new T.Vector3(...view.position), target = new T.Vector3(...worldPosition(x, y, 0.3));

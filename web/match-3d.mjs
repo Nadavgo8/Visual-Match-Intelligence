@@ -1,9 +1,9 @@
 import * as T from "./vendor/three/three.module.js";
-import { buildStadium } from "./stadium.mjs?v=3.4";
-import { DetailedFootballers, loadAthlete } from "./athlete.mjs";
-import { updateCrowd } from "./crowd.mjs?v=3.4";
+import { buildStadium } from "./stadium.mjs?v=3.9";
+import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.9";
+import { updateCrowd } from "./crowd.mjs?v=3.9";
 import { loadAtlasMetadata } from "./crowd-atlas.mjs";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.7";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.9";
 
 export async function prepareAssets() {
   const loader = new T.TextureLoader();
@@ -33,7 +33,7 @@ export class Match3D {
     this.scene.fog = new T.Fog(0x929e9b, 150, 350);
     this.camera = new T.PerspectiveCamera(46, 16 / 9, 0.1, 500);
     this.scene.add(new T.HemisphereLight(0xe3e9ef, 0x687651, 1.6));
-    this.sun = new T.DirectionalLight(0xfff0d8, 2.5); this.sun.position.set(-30, 70, 25);
+    this.sun = new T.DirectionalLight(0xfff8eb, 2.5); this.sun.position.set(-30, 70, 25);
     Object.assign(this.sun.shadow.camera, { left: -63, right: 63, top: 49, bottom: -49, near: 1, far: 150 });
     this.sun.shadow.normalBias = 0.035; this.sun.shadow.bias = -0.00015;
     this.scene.add(this.sun);
@@ -42,7 +42,7 @@ export class Match3D {
     this.footballers = new DetailedFootballers(this.scene, assets.athlete, canvas.ownerDocument);
     this.ball = new T.Mesh(new T.IcosahedronGeometry(0.16, 2), new T.MeshStandardMaterial({ color: 0xf9f4e6, roughness: 0.45, flatShading: true }));
     this.ball.castShadow = true; this.ball.visible = false; this.scene.add(this.ball);
-    // Small dark panels stay on the ball surface and rotate with its source time.
+    // Dark panels stay on the ball surface and roll with delivered displacement.
     const panel = new T.Mesh(new T.IcosahedronGeometry(0.162, 0), new T.MeshStandardMaterial({ color: 0x172330, wireframe: true })); this.ball.add(panel);
     this.lost = event => { event.preventDefault(); onLost(); };
     canvas.addEventListener("webglcontextlost", this.lost);
@@ -71,7 +71,7 @@ export class Match3D {
     if (frame && teams) {
       this.footballers.update(frame, this.motion.update(frame), teams);
       this.ball.visible = true; this.ball.position.set(...worldPosition(...frame.ball, frame.ball_height + 0.16));
-      this.ball.rotation.set(frame.t * 2, 0, frame.t * 3);
+      this.ball.rotation.set(this.motion.ballRoll.x, 0, this.motion.ballRoll.z);
     } else { this.footballers.hide(); this.motion.reset(); this.ball.visible = false; }
     this.gpu.render(this.scene, this.camera);
     this.canvas.dataset.renderer = "3d";
