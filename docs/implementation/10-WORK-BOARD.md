@@ -4,6 +4,7 @@
 
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
+| סקירה חוזרת D1 — שעון הסימולציה בתוצאה | IN_PROGRESS | `codex/fix-d1-clock-progression` מבסיס main ‏7074cf5; [אבחון ורגרסיות](D1-CLOCK-PROGRESSION.md). בדיקות מלאות, PR ו־B4 נדרשים. ענף עצמאי מ־PR #12 |
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
 | סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |

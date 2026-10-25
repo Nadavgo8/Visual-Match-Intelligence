@@ -48,7 +48,7 @@ class SlowAgents(Assistant):
 def test_answer_is_built_from_the_moment_the_question_was_asked(match):
     async def scenario():
         replay = Replay(match)
-        replay.advance(1500)  # 24:59, home lead 1-0
+        replay.advance(1500)  # 25:00 of the simulation, home lead 1-0
         SlowAgents.gate = asyncio.Event()
         task = asyncio.create_task(SlowAgents(replay.model, client=object(), model_name="fake").answer("score?"))
         await asyncio.sleep(0)
@@ -56,7 +56,7 @@ def test_answer_is_built_from_the_moment_the_question_was_asked(match):
         SlowAgents.gate.set()
         return await task, replay.model.clock
     res, live_clock = asyncio.run(scenario())
-    assert res["text"] == "clock 24:59 score 1-0" and res["snapshot_clock"] == "24:59" != live_clock
+    assert res["text"] == "clock 25:00 score 1-0" and res["snapshot_clock"] == "25:00" != live_clock
     assert res["answer_kind"] == "live"
 
 

@@ -15,6 +15,7 @@ from . import derive
 from ..contracts import VERSION, LINK_PARENTS, validate_record
 from ..generator.export import initial_metadata
 from .atmosphere import controlled_owner, crowd_component
+from .match_clock import MatchClock
 
 MOMENTUM_WINDOW_S = 7 * 60
 W_POSSESSION, W_KEY_PASS, W_SHOT = 0.4, 0.3, 0.3
@@ -59,7 +60,7 @@ class MatchModel:
     score: dict = field(default_factory=lambda: {"home": 0, "away": 0})
     period: int = 1
     ball_in_play: bool = False
-    clock: str = "0:00"
+    match_clock: MatchClock = field(default_factory=MatchClock)
     t: float = 0.0
     cards: dict = field(default_factory=lambda: {"home": {"yellow": 0, "red": 0},
                                                  "away": {"yellow": 0, "red": 0}})
@@ -105,6 +106,10 @@ class MatchModel:
     def player_role(self, pid: str | None) -> str | None:
         p = self.players.get(pid or "")
         return self.role_overrides.get(pid, p["position"]) if p else None
+
+    @property
+    def clock(self) -> str:
+        return self.match_clock.read(self.t)
 
     # ---------- ingest ----------
     def ingest(self, rec: dict) -> dict:
@@ -191,9 +196,9 @@ class MatchModel:
         return False
 
     def _clock(self, rec: dict):
+        self.match_clock.observe(rec)
         if rec.get("type") != "shot_xg" and rec["t"] >= self.last_clock_t:
             self.period = rec.get("period", self.period)
-            self.clock = rec.get("clock", self.clock)
             self.last_clock_t = rec["t"]
 
     def _apply(self, ev: dict):
