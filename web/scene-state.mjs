@@ -28,7 +28,7 @@ export function cameraView(aspect, reducedMotion = false, ball = [52.5, 34], mod
   const distance = Math.max(1, (16 / 9) / safeAspect);
   if (!reducedMotion && mode === "broadcast") {
     const x = Math.max(-40, Math.min(40, (ball[0] - 52.5) * 0.9)), z = Math.max(-25, Math.min(25, (34 - ball[1]) * 0.8));
-    return { position: [x - 6, 22 * distance, z + 36 * distance], target: [x, 0, z], fov: 43 };
+    return { position: [x - 6, 20 * distance, z + 32 * distance], target: [x, 0, z], fov: 42 };
   }
   const targetX = reducedMotion ? 0 : Math.max(-5, Math.min(5, (ball[0] - 52.5) * 0.1));
   return { position: [targetX, 72 * distance, 84 * distance], target: [targetX, 0, 0], fov: 46 };

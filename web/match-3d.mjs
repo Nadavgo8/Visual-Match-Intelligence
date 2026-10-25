@@ -1,7 +1,7 @@
 import * as T from "./vendor/three/three.module.js";
-import { buildStadium } from "./stadium.mjs";
+import { buildStadium } from "./stadium.mjs?v=3.2";
 import { DetailedFootballers, loadAthlete } from "./athlete.mjs";
-import { updateCrowd } from "./crowd.mjs";
+import { updateCrowd } from "./crowd.mjs?v=3.2";
 import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs";
 
 export async function prepareAssets() {

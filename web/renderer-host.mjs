@@ -1,7 +1,7 @@
 import { MatchRenderer } from "./match-renderer.mjs";
 
 // WebGL capability/loss affects presentation, never the feed or the accessibility DOM.
-export async function createRenderer(canvas, status, load3D = () => import("./match-3d.mjs")) {
+export async function createRenderer(canvas, status, load3D = () => import("./match-3d.mjs?v=3.2")) {
   let current, assets, fallback = false;
   const useFallback = () => {
     if (fallback) return;
@@ -10,6 +10,9 @@ export async function createRenderer(canvas, status, load3D = () => import("./ma
     assets = null;
     // A WebGL canvas cannot acquire a 2D context, so replace just that canvas.
     const replacement = canvas.cloneNode(false); canvas.replaceWith(replacement); canvas = replacement;
+    // cloneNode copies data attributes too. GPU diagnostics describe the old
+    // context and must not appear to measure the working 2D fallback.
+    for (const key of ["engine", "quality", "camera", "crowdLevel", "crowdStanding", "drawCalls", "triangles"]) delete canvas.dataset[key];
     current = new MatchRenderer(canvas); current.mode = "2D fallback";
     canvas.setAttribute("aria-label", "2D fallback replay of a synthetic match");
     canvas.dataset.renderer = "2d"; status.textContent = "3D unavailable on this device. Using 2D replay.";

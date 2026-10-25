@@ -10,7 +10,8 @@ function canvasFixture() {
   let replacement;
   const make = () => ({ ownerDocument: document, clientWidth: 640, clientHeight: 360, width: 640, height: 360,
     dataset: {}, getContext: () => context, setAttribute(name, value) { this[name] = value; },
-    cloneNode: () => make(), replaceWith(node) { replacement = node; } });
+    cloneNode() { const copy = make(); Object.assign(copy.dataset, this.dataset); return copy; },
+    replaceWith(node) { replacement = node; } });
   return { canvas: make(), get replacement() { return replacement; } };
 }
 globalThis.window = { devicePixelRatio: 1 };
@@ -27,6 +28,8 @@ test("failed module or WebGL construction uses a labelled working fallback canva
 });
 test("context loss replaces only the canvas, releases GPU once and tolerates repeated loss", async () => {
   const fixture = canvasFixture(), status = { textContent: "" };
+  Object.assign(fixture.canvas.dataset, { engine: "three.js", renderer: "3d", quality: "high",
+    camera: "broadcast", crowdLevel: "1", crowdStanding: "0.68", drawCalls: "81", triangles: "3458062" });
   let lose, disposed = 0, calls = 0;
   class Fake3D {
     constructor(_canvas, onLost) { lose = onLost; this.mode = "3D stadium"; }
@@ -36,6 +39,7 @@ test("context loss replaces only the canvas, releases GPU once and tolerates rep
   assert.equal(host.mode, "3D stadium"); host.draw(null, null); assert.equal(calls, 1);
   lose(); const replacement = host.canvas; lose();
   assert.equal(disposed, 1); assert.strictEqual(host.canvas, replacement);
+  assert.deepEqual(host.canvas.dataset, { renderer: "2d" });
   host.draw(null, null);
 });
 test("prepared texture ownership is released if WebGL construction fails", async () => {

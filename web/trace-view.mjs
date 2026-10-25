@@ -1,4 +1,9 @@
 // Presenter text comes from delivered records, including unknown future types.
+export function clearTrace(list, summary) {
+  list.textContent = "";
+  summary.textContent = "Waiting for replay decisions";
+}
+
 export function prependTrace(list, entries) {
   for (const d of entries) {
     const doc = list.ownerDocument;

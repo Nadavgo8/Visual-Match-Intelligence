@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prependTrace } from "../../web/trace-view.mjs";
+import { prependTrace, clearTrace } from "../../web/trace-view.mjs";
 
 // A narrow DOM boundary fake: assigning HTML is forbidden. Browser QA separately
 // verifies the real DOM; tests here guard text identity, order and the size bound.
@@ -20,6 +20,18 @@ function list() {
     createTextNode(value) { const n = new Element("#text", doc); n.textContent = value; return n; } };
   return doc.createElement("ol");
 }
+
+test("reset removes prior replay decisions and counts before replacement records arrive", () => {
+  const target = list(), summary = list();
+  prependTrace(target, [{clock:'18:22', decision:'banner', why:'old run'}]);
+  summary.textContent = 'old counts';
+  clearTrace(target, summary);
+  assert.equal(target.children.length, 0);
+  assert.equal(summary.textContent, 'Waiting for replay decisions');
+  prependTrace(target, [{clock:'0:01', decision:'skip', why:'new run'}]);
+  assert.equal(target.children.length, 1);
+  assert.doesNotMatch(target.textContent, /old run/);
+});
 
 test("delivered clock, decision and reason stay literal text, including HTML payloads", () => {
   const target = list();

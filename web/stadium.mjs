@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createCrowd, createCrowdUniforms } from "./crowd.mjs";
+import { createCrowd, createCrowdUniforms, standAisles } from "./crowd.mjs?v=3.2";
 
 const boxGeometry = new T.BoxGeometry(1, 1, 1);
 const materials = new Map();
@@ -56,7 +56,7 @@ function net(parent, x, direction) {
   box(parent, [0.12, 0.12, half * 2], [x, height, 0], white, true);
 }
 
-function stand(parent, length, x, z, rotation, uniforms) {
+function stand(parent, length, x, z, rotation, uniforms, seed) {
   const group = new T.Group(); group.position.set(x, 0, z); group.rotation.y = rotation; parent.add(group);
   const concrete = material(0x27323d), roof = material(0x17232e), rail = material(0x7b8b96, 0.4);
   for (let row = 0; row < 24; row++) box(group, [length, 0.45, 0.76], [0, 0.3 + row * 0.52, row * 0.76], concrete);
@@ -65,8 +65,21 @@ function stand(parent, length, x, z, rotation, uniforms) {
     box(group, [0.2, 16, 0.2], [x, 8, 14.6], rail);
     box(group, [0.16, 0.16, 20], [x, 15.6, 6], rail);
   }
-  group.add(createCrowd(length, 24, uniforms));
-  // Continuous luminous fascia, no real club, sponsor, league or broadcast marks.
+  group.add(createCrowd(length, 24, uniforms, seed));
+  const aisleMaterial = material(0x62665f), yellow = material(0xc2aa62), dark = material(0x10171c);
+  for (const aisle of standAisles(length)) {
+    for (let row = 0; row < 24; row++) {
+      box(group, [1.36, 0.05, 0.7], [aisle, 0.55 + row * 0.52, row * 0.76], aisleMaterial);
+      box(group, [1.36, 0.035, 0.06], [aisle, 0.59 + row * 0.52, row * 0.76 - 0.32], yellow);
+    }
+    // A real entry portal breaks up the repeated seating blocks.
+    box(group, [2, 2.4, 0.18], [aisle, 1.4, -0.1], dark);
+    box(group, [2.3, 0.2, 1.2], [aisle, 2.7, -0.2], concrete);
+  }
+  box(group, [length, 0.08, 0.76], [0, 6.77, 9.12], aisleMaterial);
+  box(group, [length, 0.08, 0.08], [0, 7.5, 8.7], rail);
+  for (let post = -length / 2; post < length / 2; post += 4) box(group, [0.06, 0.8, 0.06], [post, 7.1, 8.7], rail);
+  // Plain fascia, no real club, sponsor, league or broadcast marks.
   box(group, [length, 0.5, 0.2], [0, 0.75, -0.65], material(0x273431));
   return group;
 }
@@ -101,9 +114,14 @@ export function buildStadium(document, turfMaps = {}) {
   net(group, -52.5, -1); net(group, 52.5, 1);
   // Broadcast cutaway: the camera-side roof would physically occlude the pitch.
   // Keep the three visible stands; the near touchline stays open to the camera.
-  stand(group, 132, 0, -43, Math.PI, uniforms);
+  stand(group, 132, 0, -43, Math.PI, uniforms, 1);
   box(group, [116, 0.7, 0.25], [0, 0.35, 39], material(0x173d4b));
-  stand(group, 78, -62, 0, -Math.PI / 2, uniforms); stand(group, 78, 62, 0, Math.PI / 2, uniforms);
+  stand(group, 78, -62, 0, -Math.PI / 2, uniforms, 2); stand(group, 78, 62, 0, Math.PI / 2, uniforms, 3);
+  for (const x of [-62, 62]) {
+    // Corner links close the four-metre gap between the side and far stands.
+    box(group, [8, 13, 8], [x, 6.5, -41], material(0x27323d));
+    box(group, [9, 0.4, 9], [x, 13.2, -41], material(0x17232e));
+  }
   for (const x of [-52.5, 52.5]) for (const z of [-34, 34]) {
     box(group, [0.045, 1.6, 0.045], [x, 0.8, z], material(0xecede1));
     box(group, [0.45, 0.3, 0.025], [x + 0.22, 1.4, z], material(0xebba5a));

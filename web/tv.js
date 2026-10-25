@@ -1,15 +1,15 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { edgePresentation } from "./overlay-state.mjs";
-import { MatchScreen } from "./match-screen.mjs?v=3.1";
-import { createRenderer } from "./renderer-host.mjs";
+import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.3";
+import { MatchScreen } from "./match-screen.mjs?v=3.2";
+import { createRenderer } from "./renderer-host.mjs?v=3.3";
 import { openSession, hostTokenStore } from "./session.mjs";
-import { prependTrace } from "./trace-view.mjs";
+import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
-const screen = new MatchScreen();
+const screen = new MatchScreen(resetVisualState);
 const renderer = await createRenderer($("pitch"), $("renderer-note"));
 let state = null, teams = null;
 const audio = new SyntheticAudio();
@@ -23,6 +23,7 @@ const send = (m) => session.send(m);
 function onMessage(m) {
   if (m.type === "snapshot") {
     isHost = m.host;
+    $("connection-note").textContent = "";
     onState({ ...m.state, run_id: m.run_id }, true);
     if (m.meters) onMeters(m.meters);
   }
@@ -37,6 +38,7 @@ function onStatus(s) {
   if (s === "disconnected") {
     screen.freeze(performance.now());
     isHost = false; hostControls();
+    $("connection-note").textContent = "Connection lost. Replay paused; reconnecting…";
     $("agents").textContent = "disconnected, reconnecting…";
   }
 }
@@ -46,7 +48,7 @@ function hostControls() {
 
 function onState(s, snapshot = false) {
   const now = performance.now();
-  if (snapshot ? screen.snapshot(s, now) : screen.sync(s, now)) { clearMarkerElement(); renderer.setAtmosphere(null); }
+  if (snapshot) screen.snapshot(s, now); else screen.sync(s, now);
   state = s;
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
@@ -56,6 +58,7 @@ function onState(s, snapshot = false) {
   $("play").textContent = s.playing ? "❚❚ Pause" : "▶ Play";
   $("speed").value = String(s.speed);
   $("scrub").max = Math.floor(s.duration);
+  renderReplayTime($("scrub"), s.t, scrubbing);
   $("seed").value = s.seed;
   $("agents").textContent = s.agents === "foundry" ? `Microsoft Foundry (${s.model})` : "local (offline)";
   const ch = $("chapters");
@@ -78,21 +81,11 @@ function scoreBug(score, clock) {
 
 function onMeters(m) {
   scoreBug(m.score, m.clock);
-  if (!scrubbing) $("scrub").value = Math.floor(m.t);
-  const share = m.momentum.home_index;
-  $("mom-fill").style.width = `${(share * 100).toFixed(1)}%`;
-  $("mom-label").textContent = "Momentum";
-  $("mom-fill").parentElement.setAttribute("aria-label", `Seven-minute momentum: home ${Math.round(share * 100)} percent`);
-  const a = m.atmosphere, view = edgePresentation(a), el = $("atmosphere-edges");
-  el.style.setProperty("--edge-color", view.color);
-  el.style.setProperty("--edge-fill", `${view.height}%`);
-  el.style.setProperty("--edge-brightness", String(view.brightness));
-  el.dataset.available = String(view.available);
-  el.setAttribute("aria-label", `${view.label}; both sides show the same atmosphere`);
-  el.title = view.label;
-  $("atmo-label").title = a.why;
-  $("atmo-label").textContent = view.label;
-  audio.crowd(a.crowd ?? 0);
+  renderReplayTime($("scrub"), m.t, scrubbing);
+  renderMomentum($("mom-fill"), m.momentum?.home_index);
+  const a = m.atmosphere;
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), a);
+  audio.crowd(a?.crowd ?? 0);
   renderer.setAtmosphere(a);
 }
 
@@ -114,7 +107,15 @@ function clearMarkerElement() {
   $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
 }
-function jump(command) { screen.beginJump(); clearMarkerElement(); renderer.setAtmosphere(null); send(command); }
+function resetVisualState() {
+  scrubbing = false;
+  clearTrace($("trace-list"), $("trace-sum"));
+  clearMarkerElement();
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), null);
+  renderMomentum($("mom-fill"), null);
+  renderer.setAtmosphere(null); audio.crowd(0);
+}
+function jump(command) { screen.beginJump(); send(command); }
 
 // Football rendering and accessibility overlays have independent lifecycles.
 let fpsStart = 0, fpsCount = 0, drawMs = 0;
