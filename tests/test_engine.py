@@ -1,11 +1,12 @@
 """The Attention Engine routes correctly and derives what the feed doesn't say."""
 
 import pytest
+import random
 
 from vmi.engine.attention import visible_to
 from vmi.engine.model import momentum_from_counts
 from vmi.engine.replay import run_all
-from vmi.generator.match import generate_match
+from vmi.generator.match import generate_match, _Sim
 
 
 @pytest.fixture(scope="module")
@@ -32,8 +33,20 @@ def test_half_and_full_time_banners(demo):
     assert types.count("half_time") == 1 and types.count("full_time") == 1
 
 
-def test_overturned_penalty_is_detected_from_the_feed(demo):
-    _, outs = demo
+def test_overturned_penalty_is_detected_from_the_feed():
+    class ReviewOverturns(random.Random):
+        def random(self):
+            return .01
+
+    sim = _Sim(12, "reviewed-penalty-regression")
+    sim.emit("period_start", period_no=1)
+    sim.kick_off("home")
+    victim = next(p for p in sim.on_pitch["home"] if p.position == "ST")
+    fouler = sim.opp_nearest("home", 94, 34)
+    sim.key("home", 94, 34, victim)
+    sim.rng = ReviewOverturns(0)
+    assert sim.missed_box_foul("home", victim, fouler, 94, 34, "trip")
+    outs = list(run_all(sim.export_match()))
     assert any(o["kind"] == "banner" and o["type"] == "penalty" for o in outs)
     a = next(o for o in outs if o["kind"] == "analysis" and o["moment"] == "var_check")
     chk = next(f for f in a["factpack"]["facts"] if f["type"] == "var_check")

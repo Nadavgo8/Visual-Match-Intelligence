@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .teams import Player, Team, make_teams
 from .analytics import chance_quality, delayed_xg
 from .export import finish_export
-from .motion import Keyframe
+from .motion import Keyframe, formation_position
 from .state import PlayState
 
 PITCH_X, PITCH_Y = 105.0, 68.0
@@ -17,7 +17,7 @@ BOX_X = PITCH_X - 16.5
 BOX_Y = (13.84, 54.16)
 HT_GAP = 60.0  # half-time compressed to 60 s on the timeline
 SCHEMA_VERSION = "2.0"
-GENERATOR_VERSION = "2.2.0"
+GENERATOR_VERSION = "2.3.0"
 
 
 def _other(side: str) -> str:
@@ -48,6 +48,9 @@ class Match:
 class _Sim:
     def __init__(self, seed: int, match_id: str, xg_delay: tuple[float, float] = (2, 5)):
         self.rng = random.Random(seed)
+        self.detail_rng = random.Random(seed ^ 0xD12026)
+        self.drinks_due = {period: minute * 60 for period, minute in ((1, 22), (2, 67))
+                           if self.detail_rng.random() < 0.25}
         self.seed = seed
         self.match_id = match_id
         self.teams: dict[str, Team] = make_teams()
@@ -297,6 +300,12 @@ class _Sim:
                     self.emit("added_time", minutes=added[period - 1])
                     announced = True
                 self.play_possession()
+            if not announced:
+                # A long possession, review or substitution can cross the
+                # announcement window before control returns to this loop.
+                # Place the scheduled announcement on its source clock; do not
+                # omit it or announce injury time after the final whistle.
+                self.emit("added_time", t=self.period_start_t + 2680, minutes=added[period - 1])
             # end of period
             self.whistle(blasts=2 if period == 1 else 3, length="long")
             self.emit("period_end", period_no=period)
@@ -391,11 +400,13 @@ class _Sim:
             if self.clock_s() >= self.clock_base + 2700 + 7 * 60:
                 return
             # carry a little before acting
+            start = self.keyframes[-1]
             hold = rng.uniform(0.6, 2.2)
             ax = min(ax + rng.uniform(0, 3.0), 101)
             ay = min(max(ay + rng.gauss(0, 1.5), 1), 67)
             self.t += hold
             self.key(side, ax, ay, holder)
+            self.record_carry(side, holder, start, self.keyframes[-1])
             if ax > 70:
                 self.pressure_spans.append((self.t - hold, self.t))
 
@@ -426,11 +437,123 @@ class _Sim:
                 self.carrier = (_other(side), tackler, PITCH_X - ax, PITCH_Y - ay)
                 return
             # pass
+            if holder.position != "GK" and self.detail_rng.random() < 0.012:
+                outcome = self.detail_rng.choices(
+                    ["complete", "failed", "interrupted", "unresolved"], [60, 25, 10, 5])[0]
+                carried = self.attempt_dribble(side, holder, ax, ay, outcome)
+                if carried is None:
+                    return
+                holder, ax, ay = carried
+                continue
             res = self.pass_(side, holder, ax, ay, strength)
             if res is None:
                 return
             holder, ax, ay, last_pass, last_pass_cross = res
         self.carrier = (side, holder, ax, ay)
+
+    def record_carry(self, side, holder, start, end):
+        """Report completed observed movement, independently of outcome RNG."""
+        if (holder.position == "GK" or not start.in_play or not end.in_play
+                or start.holder != holder.id or end.holder != holder.id
+                or end.t <= start.t or math.hypot(end.x - start.x, end.y - start.y) < 1):
+            return None
+        return self.report("carry", team=side, player_id=holder.id,
+                           location=[start.x, start.y], possession_id=start.possession_id,
+                           play_context=self.play.play_context,
+                           carry={"start_t": start.t, "end_t": end.t,
+                                  "end_location": [end.x, end.y]})
+
+    def attempt_dribble(self, side, holder, ax, ay, outcome):
+        """Simulate the encounter first; the renderer only receives its tracking."""
+        if outcome not in {"complete", "failed", "interrupted", "unresolved"}:
+            raise ValueError("unsupported dribble outcome")
+        if not self.ball_in_play or holder.position == "GK":
+            raise ValueError("a dribble requires an active outfield carrier")
+        opponent = _other(side)
+        defender = self.opp_nearest(side, ax, ay)
+        entry = self.keyframes[-1]
+        position = entry.player_positions.get(defender.id, formation_position(
+            defender.base_x, defender.base_y, defender.position, defender.id,
+            self.attacks_right(opponent), entry.x, entry.y, entry.t))
+        entry.player_positions[defender.id] = position
+        target = self.to_pitch(side, min(ax + 1, 104), ay)
+        # Give the defender time to close down, rather than teleporting into a duel.
+        self.t += max(0.4, math.dist(position, target) / 5)
+        self.key(side, ax, ay, holder)
+        start = self.keyframes[-1]
+        start.player_positions[defender.id] = target
+        nx = min(ax + 3, 101)
+        self.t += 1
+        if outcome == "failed":
+            self.key(opponent, 105 - nx, 68 - ay, defender)
+        else:
+            self.key(side, nx, ay, holder if outcome == "complete" else None,
+                     in_play=outcome != "interrupted")
+        end = self.keyframes[-1]
+        end.player_positions[defender.id] = self.to_pitch(side, nx, ay + 0.6)
+        foul = None
+        if outcome == "interrupted":
+            self.whistle()
+            foul = self.emit("foul", opponent, defender, 105 - nx, 68 - ay,
+                             victim_id=holder.id, kind="trip", advantage=False)
+            self.decide(foul, "free_kick", side)
+            self.state(ball_in_play=False)
+        payload = {"outcome": outcome, "defender_id": defender.id,
+                   "start_t": start.t, "end_t": end.t, "end_location": [end.x, end.y]}
+        if foul:
+            payload["foul_id"] = foul["id"]
+        event = self.report("dribble", team=side, player_id=holder.id,
+                            location=[start.x, start.y], possession_id=start.possession_id,
+                            dribble=payload)
+        if outcome == "interrupted":
+            self.stoppage(12)
+            self.restart_free_kick(side, nx, ay)
+            return None
+        if outcome == "failed":
+            self.report("ball_recovery", team=opponent, player_id=defender.id,
+                        possession_id=end.possession_id, related=[event["id"]])
+            self.carrier = (opponent, defender, 105 - nx, 68 - ay)
+            return None
+        if outcome == "unresolved":
+            self.report("ball_loose", related=[event["id"]])
+            self.t += 0.25
+            self.play.possession(side, force=True)
+            self.key(side, nx, ay, holder)
+            self.keyframes[-1].player_positions[defender.id] = end.player_positions[defender.id]
+            self.report("ball_recovery", team=side, player_id=holder.id,
+                        possession_id=self.play.possession_id, related=[event["id"]])
+        position = end.player_positions[defender.id]
+        # Return to the formation over source time before the next action can
+        # replace the encounter endpoint. Bound speed even as the baseline moves.
+        settle_t = self.t
+        for _ in range(4):
+            baseline = formation_position(defender.base_x, defender.base_y, defender.position, defender.id,
+                                          self.attacks_right(opponent), end.x, end.y, settle_t)
+            settle_t = max(settle_t, self.t + 0.4, self.t + math.dist(position, baseline) / 4)
+        self.t = settle_t
+        self.key(side, nx, ay, holder)
+        return holder, nx, ay
+
+    def maybe_drinks(self, side, kind):
+        """Optional scheduled break during a real stoppage, before execution."""
+        due = self.drinks_due.get(self.period)
+        if due is None or self.clock_s() < due or self.play.stoppage_id is None:
+            return False
+        self.drinks_due.pop(self.period)
+        if self.play.restart_id is None:
+            trigger = next(e for e in self.events if e["id"] == self.play.trigger_event_id)
+            self.decide(trigger, kind, side)
+        self.report("drinks_break", stoppage_id=self.play.stoppage_id,
+                    restart_id=self.play.restart_id, trigger_event_id=self.play.trigger_event_id,
+                    reason="drinks_break")
+        self.state(ball_in_play=False)
+        frozen = self.keyframes[-1]
+        self.keyframes.append(replace(frozen, t=round(self.t, 2), holder=None, in_play=False,
+                                      player_positions=dict(frozen.player_positions)))
+        self.t += 60
+        self.keyframes.append(replace(self.keyframes[-1], t=round(self.t, 2)))
+        self.state(ball_in_play=False)
+        return True
 
     def pass_(self, side, holder, ax, ay, strength):
         rng = self.rng
@@ -528,6 +651,7 @@ class _Sim:
 
     # ---------- restarts ----------
     def throw_in(self, side, ax, ay):
+        self.maybe_drinks(side, "throw_in")
         taker = self.nearest(side, ax, ay)
         self.emit("set_piece", side, taker, ax, ay, kind="throw_in")
         self.state(ball_in_play=True)
@@ -535,6 +659,7 @@ class _Sim:
         self.carrier = (side, taker, ax, min(max(ay, 3), 65))
 
     def goal_kick(self, side):
+        self.maybe_drinks(side, "goal_kick")
         gk = self.keeper(side)
         self.emit("set_piece", side, gk, 5.5, 34, kind="goal_kick")
         self.state(ball_in_play=True)
@@ -542,6 +667,7 @@ class _Sim:
         self.carrier = (side, gk, 5.5, 34.0)
 
     def corner(self, side, ax, ay):
+        self.maybe_drinks(side, "corner")
         taker = self.nearest(side, ax, ay)
         self.emit("set_piece", side, taker, 104.5, ay, kind="corner")
         self.state(ball_in_play=True)
@@ -566,6 +692,7 @@ class _Sim:
         self.carrier = (opp, clr, PITCH_X - tx + 25, PITCH_Y - ty)
 
     def restart_free_kick(self, side, ax, ay):
+        self.maybe_drinks(side, "free_kick")
         taker = self.nearest(side, ax, ay)
         self.emit("set_piece", side, taker, ax, ay, kind="free_kick")
         self.state(ball_in_play=True)
@@ -620,10 +747,12 @@ class _Sim:
             self.crowd_hit(0.6, 22, hold=6)
             self.state(ball_in_play=False)
             self.t += rng.uniform(45, 70)  # celebration
-            if rng.random() < 0.18:
-                self.var_goal_check(s)
+            cancelled = self.var_goal_check(s) if rng.random() < 0.18 else False
             self.maybe_subs()
-            self.kick_off(opp)
+            if cancelled:
+                self.restart_free_kick(opp, 105 - ax, 68 - ay)
+            else:
+                self.kick_off(opp)
             return
         self.crowd_hit(0.2, 4)
         if outcome in ("saved",):
@@ -659,8 +788,29 @@ class _Sim:
                   incident="goal", original_decision="goal", outcome=None)
         self.murmurs.append((self.t, self.t + 35, 0.12))
         self.t += self.rng.uniform(25, 45)
+        cancelled = (not goal_evt["shot"].get("penalty") and bool(goal_evt.get("preparing_pass_id"))
+                     and self.detail_rng.random() < 0.25)
         self.emit("var", None, None, review_id=rid, phase="decision", incident="goal",
-                  original_decision="goal", outcome="stands")
+                  original_decision="goal", outcome="overturned" if cancelled else "stands")
+        if cancelled:
+            side = goal_evt["team"]
+            result = next(e for e in self.events if e["type"] == "shot_result"
+                          and e["shot_id"] == goal_evt["id"])
+            offence = self.report("offside", t=goal_evt["t"], delivered_t=round(self.t + 0.75, 2),
+                                  team=side, player_id=goal_evt["player_id"], location=list(goal_evt["location"]))
+            decision = self.decide(offence, "free_kick", _other(side))
+            self.report("goal_cancelled", shot_id=goal_evt["id"], result_id=result["id"],
+                        decision_id=decision["id"], team=side, player_id=goal_evt["player_id"])
+            self.score[side] -= 1
+            self.state(ball_in_play=False)
+        return cancelled
+
+    def emit_offence(self, side, fouler, ax, ay, victim, kind, advantage):
+        if not advantage and self.detail_rng.random() < 0.06:
+            return self.emit("handball", side, fouler, ax, ay,
+                             offence=True, victim_id=victim.id)
+        return self.emit("foul", side, fouler, ax, ay,
+                         victim_id=victim.id, kind=kind, advantage=advantage)
 
     # ---------- fouls ----------
     def foul(self, side, victim, ax, ay) -> bool:
@@ -675,26 +825,24 @@ class _Sim:
             if rng.random() < 0.6:
                 self.whistle(1, "long")
                 self.crowd_hit(0.42, 12, dt=0.4)
-                f = self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
-                              kind=kind, advantage=False)
+                f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, False)
                 self.decide(f, "penalty", side)
-                self.card_maybe(opp, fouler, base=0.35)
+                self.card_maybe(opp, fouler, base=0.35, offence=f)
                 self.stoppage(rng.uniform(55, 80))
                 self.penalty(side)
                 return True
             return self.missed_box_foul(side, victim, fouler, ax, ay, kind)
         advantage = ax > 60 and rng.random() < 0.22
-        f = self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
-                      kind=kind, advantage=advantage)
+        f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, advantage)
         if advantage:
-            self.card_maybe(opp, fouler, base=0.12)
+            self.card_maybe(opp, fouler, base=0.12, offence=f)
             return False
         self.t += 0.3
         self.whistle(1, "normal" if rng.random() < 0.8 else "long")
         self.decide(f, "free_kick", side)
         self.state(ball_in_play=False)
         self.key(side, ax, ay, None, in_play=False)
-        self.card_maybe(opp, fouler, base=0.12)
+        self.card_maybe(opp, fouler, base=0.12, offence=f)
         if rng.random() < 0.05:
             self.emit("injury_stoppage", side, victim, related=[f["id"]])
             self.t += rng.uniform(45, 90)
@@ -742,7 +890,7 @@ class _Sim:
             f = self.emit("foul", opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim_id=victim.id,
                           kind=kind, advantage=False, related=[tk["id"]], incident_t=round(incident_t, 2))
             self.decide(f, "penalty", side, supersedes=original["id"])
-            self.card_maybe(opp, fouler, base=0.5)
+            self.card_maybe(opp, fouler, base=0.5, offence=f)
             self.stoppage(rng.uniform(40, 60))
             self.penalty(side)
             return True
@@ -771,7 +919,7 @@ class _Sim:
         self.state(ball_in_play=True)
         self.shot(side, taker, 94, 34, None, penalty=True)
 
-    def card_maybe(self, side, player, base: float):
+    def card_maybe(self, side, player, base: float, offence: dict):
         rng = self.rng
         if player.id in self.sent_off:
             return
@@ -784,7 +932,8 @@ class _Sim:
         if not colour:
             return
         self.t += rng.uniform(4, 9)
-        self.emit("card", side, player, colour=colour)
+        card = self.emit("card", side, player, colour=colour, related=[offence["id"]])
+        card["offence_id"] = offence["id"]
         self.crowd_hit(0.12, 5)
         if colour == "yellow":
             self.yellows[player.id] = 1

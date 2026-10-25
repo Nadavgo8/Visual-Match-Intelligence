@@ -34,19 +34,30 @@ def test_tactical_substitution_with_no_eligible_starter_preserves_state():
     assert sim.events == []
 
 
-def test_seed_112_preserves_keeper_across_injury_and_tracking_seek():
-    match = generate_match(112)
+@pytest.mark.parametrize("side,keeper_id", [("home", "H1"), ("away", "A1")])
+def test_injured_keeper_role_is_time_local_across_tracking_seek(side, keeper_id):
+    # Seed 112 exposed the original bug in v1. Trigger the same injury directly
+    # so a new generator version cannot silently remove this regression case.
+    sim = _Sim(112, "keeper-injury-regression")
+    sim.emit("period_start", period_no=1)
+    sim.kick_off(side)
+    sim.bench[side].sort(key=lambda p: p.position != "CB")
+    sim.t = 100
+    sim.substitute(side, "injury", off=sim.keeper(side))
+    sim.goal_kick(side)
+    sim.t = 5400
+    match = sim.export_match()
     players = {p["id"]: p for team in match.meta["teams"].values() for p in team["players"]}
     substitution = next(e for e in match.events if e["type"] == "substitution"
-                        and e["substitution"]["off_id"] == "H1")
+                        and e["substitution"]["off_id"] == keeper_id)
     replacement = substitution["substitution"]["on_id"]
     # The initial roster must not reveal a future emergency role assignment.
     assert players[replacement]["position"] == "CB"
     tracker = Tracker(match)
-    before = tracker.lineup("home", substitution["t"] - 0.01)
-    after = tracker.lineup("home", substitution["t"])
-    assert "H1" in before and replacement not in before
-    assert "H1" not in after and replacement in after
+    before = tracker.lineup(side, substitution["t"] - 0.01)
+    after = tracker.lineup(side, substitution["t"])
+    assert keeper_id in before and replacement not in before
+    assert keeper_id not in after and replacement in after
     assert tracker.role_at(replacement, substitution["t"] - 0.01) == "CB"
     assert tracker.role_at(replacement, substitution["t"]) == "GK"
     assert sum(tracker.role_at(pid, substitution["t"]) == "GK" for pid in after) == 1

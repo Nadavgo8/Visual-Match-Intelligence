@@ -4,14 +4,15 @@ import asyncio
 import csv
 import json
 from collections import Counter
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from vmi.agents.providers import CostRiskError, ModelRequest
 from vmi.evaluation import model_eval as me
+from vmi.evaluation import benchmark
 from vmi.evaluation.question_set import CATEGORIES, ITEMS, Item
-from vmi.generator.match import generate_match
 
 
 @pytest.fixture(scope="module")
@@ -27,9 +28,37 @@ def test_question_set_is_30_unique_english_items_in_the_planned_mix():
     assert all(i.trap for i in ITEMS if i.category == "trap")
 
 
+def test_annotated_benchmark_is_pinned_and_each_load_is_independent():
+    match = benchmark.benchmark_match()
+    assert match.meta["generator_version"] == "2.2.0"
+    assert match.meta["final_score"] == {"home": 2, "away": 1}
+    assert len(match.events) == 2431 and match.keyframes
+    match.events[0]["type"] = "corrupted-by-caller"
+    assert benchmark.benchmark_match().events[0]["type"] != "corrupted-by-caller"
+
+
+def test_corrupt_benchmark_fails_before_replay(monkeypatch, tmp_path):
+    damaged = tmp_path / "benchmark.gz"
+    damaged.write_bytes(b"not the annotated benchmark")
+    monkeypatch.setattr(benchmark, "FIXTURE", damaged)
+    with pytest.raises(ValueError, match="checksum"):
+        benchmark.benchmark_match()
+
+
+def test_custom_evaluation_seed_remains_explicit(monkeypatch):
+    calls = []
+    def custom(seed):
+        calls.append(seed)
+        return benchmark.benchmark_match()
+    monkeypatch.setattr(me, "generate_match", custom)
+    packs, futures, templates, delivered, roster = asyncio.run(me.build_snapshots(items=(), seed=99))
+    assert calls == [99] and roster
+    assert packs == futures == templates == delivered == {}
+
+
 def test_every_pack_event_was_delivered_by_the_snapshot_time(snapshots):
     packs = snapshots[0]
-    truth = {e["id"]: e for e in generate_match(12).events}
+    truth = {e["id"]: e for e in me.benchmark_match().events}
     for item in ITEMS:
         ids = packs[item.id]["events"]["evidence"]
         assert ids, item.id
@@ -47,9 +76,20 @@ def test_future_scores_and_players_are_known_but_absent_from_the_pack(snapshots)
             assert name.lower() not in text, (item.id, name)
 
 
+def test_future_score_truth_accounts_for_a_cancelled_goal_before_the_snapshot():
+    events = [
+        {"id": "g1", "type": "shot_result", "outcome": "goal", "t": 10, "team": "home"},
+        {"id": "c1", "type": "goal_cancelled", "result_id": "g1", "t": 20, "team": "home"},
+        {"id": "c2", "type": "goal_cancelled", "result_id": "g1", "t": 21, "team": "home"},
+        {"id": "g2", "type": "shot_result", "outcome": "goal", "t": 30, "team": "away"},
+    ]
+    future = me._future(SimpleNamespace(events=events), 25, "", {})
+    assert future["scores"] == ["0-1"]
+
+
 def test_summary_packs_only_cover_their_window(snapshots):
     packs = snapshots[0]
-    truth = {e["id"]: e for e in generate_match(12).events}
+    truth = {e["id"]: e for e in me.benchmark_match().events}
     y02 = next(i for i in ITEMS if i.id == "Y02")
     assert all(truth[i]["t"] >= y02.snapshot_t - y02.window_s for i in packs["Y02"]["events"]["evidence"])
 

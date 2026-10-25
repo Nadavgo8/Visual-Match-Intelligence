@@ -60,7 +60,7 @@ python -m vmi.mcp_server               # engine tools over MCP
 Shared setup, test layers, coverage gate, schemas and CI (for every tool, not only Claude): `docs/implementation/02-SETUP-AND-GIT.md`.
 
 - Runs fully offline: without `FOUNDRY_PROJECT_ENDPOINT` + `FOUNDRY_MODEL` (or with `VMI_OFFLINE=1`), every agent falls back to a deterministic local implementation with the same tools and receipts.
-- Env: `VMI_DEMO_SEED` (default **12**: 2–1, early goal, VAR-overturned penalty, routine VAR goal check, header winner), `VMI_WARM_DEMO` (pre-writes demo analysis cache), `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+- Env: `VMI_DEMO_SEED` (default **12**; the score and sequence depend on the recorded generator version, so inspect generated metadata instead of assuming the historical 2–1 narrative), `VMI_WARM_DEMO` (pre-writes demo analysis cache), `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 - Layout: `vmi/generator/` seeded match + tracking · `vmi/engine/` derivations, match model (momentum weights in `model.py`), Attention Engine, fact packs, replay clock · `vmi/agents/` Explainer workflow, Router / Match analyst / Rules expert, read-only tools · `vmi/api/server.py` · `web/` TV + companion · `prompts/` agent instructions · `infra/deploy.sh` ACA + App Insights + managed identity · `tests/`.
 - **Build spec (source of truth for behaviour): `docs/spec.md` v2.** It describes the target; the code still implements v1. README has the architecture diagram.
 
