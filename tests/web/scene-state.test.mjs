@@ -70,6 +70,16 @@ test("broadcast framing keeps the ball clear of the screen edges throughout the 
     assert.ok(Math.abs(projected.x) < 0.85 && Math.abs(projected.y) < 0.85, JSON.stringify({ x, y, projected }));
   }
 });
+
+test("broadcast composition keeps delivered crowd context visible across both halves", () => {
+  for (const [ball, standX] of [[[10,34],-40], [[52.5,34],0], [[95,34],40]]) {
+    const view=cameraView(16/9,false,ball), camera=new T.PerspectiveCamera(view.fov,16/9,.1,500);
+    camera.position.set(...view.position);camera.lookAt(...view.target);camera.updateMatrixWorld();
+    const audience=new T.Vector3(standX,6,-43).project(camera);
+    assert.ok(Math.abs(audience.x)<.9 && audience.y>0 && audience.y<.95 && audience.z<1,
+      `crowd context is cropped for ball ${ball}: ${audience.toArray()}`);
+  }
+});
 test("reduced motion fixes camera; low power reduces GPU cost without changing source", () => {
   assert.deepEqual(cameraView(16 / 9, true, [0, 0]), cameraView(16 / 9, true, [105, 68]));
   assert.deepEqual(qualitySettings("low", 3), { pixelRatio: 1, shadows: false, shadowSize: 0 });

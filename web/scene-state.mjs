@@ -27,8 +27,10 @@ export function cameraView(aspect, reducedMotion = false, ball = [52.5, 34], mod
   // Keep the complete metric pitch in frame at narrow sizes as well as 16:9.
   const distance = Math.max(1, (16 / 9) / safeAspect);
   if (!reducedMotion && mode === "broadcast") {
-    const x = Math.max(-47, Math.min(47, (ball[0] - 52.5) * 0.9)), z = Math.max(-30, Math.min(30, (34 - ball[1]) * 0.8));
-    return { position: [x - 6, 16 * distance, z + 25 * distance], target: [x, 0, z], fov: 40 };
+    const x = Math.max(-47, Math.min(47, (ball[0] - 52.5) * 0.9)), z = Math.max(-30, Math.min(30, (34 - ball[1]) * 0.95));
+    // Aim above the turf to retain audience context in the upper frame. The
+    // action remains below centre, with the ball inside its tested safe margin.
+    return { position: [x - 6, 16 * distance, z + 25 * distance], target: [x, 6, z], fov: 40 };
   }
   const targetX = reducedMotion ? 0 : Math.max(-5, Math.min(5, (ball[0] - 52.5) * 0.1));
   return { position: [targetX, 72 * distance, 84 * distance], target: [targetX, 0, 0], fov: 46 };
