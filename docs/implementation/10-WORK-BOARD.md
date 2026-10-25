@@ -4,6 +4,11 @@
 
 ## המשך נוכחי — מגוון משחק מלא וקבלה חזותית
 
+- PR #25 מוזג ל־`e3dcfe4` ועבר B4: ‏412 Python, ‏37 Node וארבעת ה־checks.
+- ענף `codex/fix-session-input-validation` נפתח מאותו main לתיקון גבול קלט.
+  [סקירה וראיות](SESSION-INPUT-REVIEW.md): ‏44 בדיקות ממוקדות ו־37 Node עברו.
+  מצב `IN_REVIEW`; נדרשים CI מלא, כיסוי ו־B4 לפני DONE.
+
 - `codex/fix-d1-full-match-events` נפתח מ־main מאומת `92b5ecf`;
   מימוש וביקורת של מגוון האירועים במשחקים רגילים, קישור כרטיסים ורציפות מגן.
   [אבחון, בדיקות ולמידה](D1-FULL-MATCH-EVENTS.md). מצב: `IN_PROGRESS` עד ראיות final SHA ו־B4.

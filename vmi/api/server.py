@@ -24,6 +24,7 @@ from collections import deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -31,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..agents.explainer import Explainer
 from . import catchup
+from .messages import decode_command
 from ..agents.llm import explainer_agent, foundry_client
 from ..agents.qa import Assistant
 from ..engine import derive
@@ -485,17 +487,23 @@ async def control(room: Room, cmd: str, msg: dict):
     elif cmd == "pause":
         room.playing = False
         await room.broadcast_state()
-    elif cmd == "speed" and msg.get("value") in SPEEDS:
+    elif cmd == "speed":
+        if isinstance(msg.get("value"), bool) or msg.get("value") not in SPEEDS:
+            raise ValueError("invalid speed")
         room.speed = msg["value"]
         await room.broadcast_state()
     elif cmd == "seek":
+        if isinstance(msg.get("t"), bool):
+            raise ValueError("invalid seek time")
         await room.seek(float(msg.get("t", 0)))
     elif cmd == "new_match":
+        if isinstance(msg.get("seed"), bool):
+            raise ValueError("invalid seed")
         await room.new_match(int(msg.get("seed", DEMO_SEED)))
 
 
 @app.websocket("/ws/{room_name}")
-async def ws(websocket: WebSocket, room_name: str, role: str = "tv", seed: int | None = None,
+async def ws(websocket: WebSocket, room_name: str, role: Literal["tv", "app"] = "tv", seed: int | None = None,
              host: str | None = None):
     await websocket.accept()
     room_name = room_name[:40]
@@ -516,8 +524,12 @@ async def ws(websocket: WebSocket, room_name: str, role: str = "tv", seed: int |
     await room.deliver_snapshot(c, new_token)
     try:
         while True:
-            msg = json.loads(await websocket.receive_text())
-            cmd = msg.get("cmd")
+            try:
+                msg = decode_command(await websocket.receive_text())
+            except ValueError:
+                await room.send(c, {"type": "error", "code": "bad_command", "message": "Invalid command."})
+                continue
+            cmd = msg["cmd"]
             if cmd in CONTROL_COMMANDS:
                 if not c.is_host:
                     await room.send(c, {"type": "error", "code": "not_host",

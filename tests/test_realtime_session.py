@@ -115,6 +115,39 @@ def test_malformed_host_commands_are_refused_without_dropping_the_connection():
             assert server.rooms["bad"].run == 1
 
 
+def test_malformed_transport_data_does_not_disconnect_or_change_the_room():
+    with client() as c:
+        with c.websocket_connect("/ws/input?role=tv") as tv:
+            first = recv(tv)
+            room = server.rooms["input"]
+            token = room.host_token
+            for raw in ("[]", "{", "null", '{"cmd":[]}',
+                        '{"cmd":"profile","profile":[]}',
+                        '{"cmd":"speed","value":true}',
+                        '{"cmd":"seek","t":true}',
+                        '{"cmd":"new_match","seed":false}',
+                        '{"cmd":"pause"}' + " " * 4096):
+                tv.send_text(raw)
+                error = until(tv, "error")
+                assert error["code"] == "bad_command" and error["run_id"] == first["run_id"]
+                assert (room.run, room.replay.now, room.seed, room.speed) == (1, 0, 12, 4)
+                assert room.host_token == token and room.clients[0].profile == server.DEFAULT_PROFILE
+            tv.send_text('{"cmd":"pause"}')
+            assert until(tv, "state")["playing"] is False
+            tv.send_text('{"cmd":"profile","profile":{"depth":"deep"}}')
+            until(tv, "backlog")
+            assert room.clients[0].profile["depth"] == "deep"
+
+
+def test_unknown_client_role_is_rejected_before_creating_a_room():
+    with client() as c:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            with c.websocket_connect("/ws/unknown-role?role=admin"):
+                pass
+        assert closed.value.code == 1008
+        assert "unknown-role" not in server.rooms
+
+
 def test_analysis_written_for_an_old_run_is_never_published():
     async def scenario():
         room = Room("s5", 12)
