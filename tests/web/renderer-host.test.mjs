@@ -29,7 +29,7 @@ test("failed module or WebGL construction uses a labelled working fallback canva
 test("context loss replaces only the canvas, releases GPU once and tolerates repeated loss", async () => {
   const fixture = canvasFixture(), status = { textContent: "" };
   Object.assign(fixture.canvas.dataset, { engine: "three.js", renderer: "3d", quality: "high",
-    camera: "broadcast", crowdLevel: "1", crowdStanding: "0.68", drawCalls: "81", triangles: "3458062" });
+    camera: "broadcast", crowdLevel: "1", crowdStanding: "1", crowdRaised:".88", drawCalls: "81", triangles: "3458062" });
   let lose, disposed = 0, calls = 0;
   class Fake3D {
     constructor(_canvas, onLost) { lose = onLost; this.mode = "3D stadium"; }

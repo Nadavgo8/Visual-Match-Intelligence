@@ -3,11 +3,40 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import * as T from "../../web/vendor/three/three.module.js";
-import { validateAthlete, athleteGeometry, createAthlete, DetailedFootballers } from "../../web/athlete.mjs";
+import { validateAthlete, loadAthlete, athleteGeometry, createAthlete, DetailedFootballers } from "../../web/athlete.mjs";
 import { SceneMotion } from "../../web/scene-state.mjs";
 const bytes = await readFile(new URL("../../web/assets/athlete/athlete.json", import.meta.url));
 const data = JSON.parse(bytes), teams = { home: { colour: "#2678b9" }, away: { colour: "#e9e4d6" } };
 const p = { id: "h1", x: 40, y: 34, n: 7, role: "FW", team: "home" };
+
+test("local athlete loading validates the response and fails closed on missing or corrupt assets",async()=>{
+  const oldFetch=globalThis.fetch;
+  try {
+    globalThis.fetch=async url=>{assert.ok(String(url).endsWith('/assets/athlete/athlete.json'));return {ok:true,json:async()=>data};};
+    assert.strictEqual(await loadAthlete(),data);
+    globalThis.fetch=async()=>({ok:false});await assert.rejects(loadAthlete(),/unavailable/);
+    globalThis.fetch=async()=>({ok:true,json:async()=>({})});await assert.rejects(loadAthlete(),/Invalid athlete/);
+  } finally {globalThis.fetch=oldFetch;}
+});
+
+test("jersey number uses the delivered integer and kit detailing leaves skin out of its material mask",()=>{
+  const base=athleteGeometry(data),drawn=[];
+  const document={createElement:()=>({width:0,height:0,getContext:()=>({fillText:text=>drawn.push(text)})})};
+  for(const [n,expected] of [[7,"7"],[0,""],[100,""],["<script>",""]]) {
+    const actor=createAthlete(data,base,{...p,n},teams,document);
+    assert.equal(drawn.at(-1),expected);
+    const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader,fragmentShader:T.ShaderLib.standard.fragmentShader};
+    actor.mesh.material.onBeforeCompile(shader);
+    assert.equal(shader.uniforms.kitPalette.value.length,8);
+    assert.ok(shader.uniforms.kitTrim.value.isColor);
+    assert.match(shader.vertexShader,/vKitRest=position/);
+    assert.match(shader.fragmentShader,/if\(vKitRegion>0.5 && vKitRegion<1.5\)/,"trim is limited to the shirt region");
+    const number=actor.joints.spine03.children.find(child=>child.isMesh);
+    assert.ok(number);let disposed=0;number.material.map.addEventListener('dispose',()=>disposed++);
+    actor.dispose();assert.equal(disposed,1);
+  }
+  base.dispose();
+});
 test("pinned CC0 athlete has complete anatomy, valid skinning and exact provenance", async () => {
   assert.strictEqual(validateAthlete(data), data);
   const provenance = JSON.parse(await readFile(new URL("../../web/assets/athlete/provenance.json", import.meta.url)));
@@ -107,6 +136,60 @@ test("field players lower their arms from the mesh rest pose while keepers keep 
   for (const side of ["L","R"]) {
     assert.ok(spread(p.id,side)<0.36,`field-player arms remain in a spread rest pose: ${spread(p.id,side)}`);
     assert.ok(spread("gk",side)>spread(p.id,side)+0.12,"keeper readiness must remain visibly distinct");
+  }
+  actors.dispose();
+});
+
+test("delivered release bends the actual kicking leg, freezes on pause and leaves player tracking unchanged",()=>{
+  const actors=new DetailedFootballers(new T.Scene(),data),motion=new SceneMotion();
+  const frame=(t,status,ball)=>({match_id:"m",run_id:"a",t,players:[p],ball,ball_in_play:true,
+    ball_height:0,possession:{status,holder_id:status==="controlled"?p.id:null}});
+  const first=frame(0,"controlled",[40,34]);actors.update(first,motion.update(first),teams);
+  const actor=actors.actors.get(p.id),side=actor.phase<.5?"L":"R",foot=actor.joints[`foot.${side}`];
+  const before=foot.getWorldPosition(new T.Vector3());
+  const released=frame(.05,"loose",[40.5,34]);actors.update(released,motion.update(released),teams);
+  const after=foot.getWorldPosition(new T.Vector3());
+  assert.ok(after.y-before.y>.12,"follow-through must lift the bound foot rather than only changing a flag");
+  assert.ok(Math.hypot(after.x-before.x,after.z-before.z)>.3);
+  assert.equal(actor.root.position.x,p.x-52.5);assert.equal(actor.root.position.z,34-p.y);
+  const pose=actor.root.toJSON();actors.update(released,motion.update(released),teams);assert.deepEqual(actor.root.toJSON(),pose);
+  const reset={...released,run_id:"b"};actors.update(reset,motion.update(reset),teams);
+  assert.ok(foot.getWorldPosition(new T.Vector3()).y<after.y-.1);
+  actors.dispose();
+});
+
+test("keeper wrists reach an observed nearby airborne ball and return to readiness after it leaves",()=>{
+  const actors=new DetailedFootballers(new T.Scene(),data),motion=new SceneMotion(),keeper={...p,role:"GK"};
+  const frame={match_id:"m",t:0,players:[keeper],ball:[40.3,34],ball_height:1.3,ball_in_play:false};
+  actors.update(frame,motion.update(frame),teams);
+  const actor=actors.actors.get(p.id),target=new T.Vector3(40.3-52.5,1.46,0);
+  const wrists=()=>["L","R"].map(side=>actor.joints[`wrist.${side}`].getWorldPosition(new T.Vector3()));
+  const ready=wrists(),reaching={...frame,t:.05,ball_in_play:true};actors.update(reaching,motion.update(reaching),teams);
+  wrists().forEach((w,i)=>assert.ok(w.distanceTo(target)<ready[i].distanceTo(target)-.2));
+  assert.equal(actor.root.position.x,keeper.x-52.5);assert.equal(actor.root.position.z,34-keeper.y);
+  const pose=actor.root.toJSON();actors.update(reaching,motion.update(reaching),teams);assert.deepEqual(actor.root.toJSON(),pose);
+  const away={...frame,t:.1,ball:[50,34],ball_in_play:true};actors.update(away,motion.update(away),teams);
+  // The head may follow the new ball; the arm rest pose must not retain IK.
+  wrists().forEach((w,i)=>assert.ok(w.distanceTo(ready[i])<1e-8));
+  actors.dispose();
+});
+
+test("a moving release retains a planted support sole across different stride phases",()=>{
+  const actors=new DetailedFootballers(new T.Scene(),data),motion=new SceneMotion();
+  const soles=data.regions.flatMap((region,i)=>region===4 && data.positions[i*3+1]<.055?[i]:[]);
+  const vertex=new T.Vector3();
+  for(let i=0;i<12;i++) {
+    const player={...p,id:`release-${i}`};
+    const first={match_id:`m${i}`,t:0,players:[player],ball:[40,34],ball_height:0,ball_in_play:true,
+      possession:{status:"controlled",holder_id:player.id}};
+    actors.update(first,motion.update(first),teams);
+    const released={...first,t:.05,players:[{...player,x:40.3}],ball:[40.8,34],possession:{status:"loose",holder_id:null}};
+    actors.update(released,motion.update(released),teams);const actor=actors.actors.get(player.id);actor.skeleton.update();
+    const heights=soles.map(index=>{
+      vertex.fromBufferAttribute(actors.base.getAttribute('position'),index);
+      actor.mesh.applyBoneTransform(index,vertex);return vertex.applyMatrix4(actor.mesh.matrixWorld).y;
+    });
+    assert.ok(Math.min(...heights)>-.025);assert.ok(Math.min(...heights)<.12,"a contact pose must retain ground support");
   }
   actors.dispose();
 });

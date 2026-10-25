@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createCrowd, createCrowdUniforms, crowdLayout, standAisles } from "./crowd.mjs?v=3.10";
+import { createCrowd, createCrowdUniforms, crowdLayout, standAisles } from "./crowd.mjs?v=3.11";
 
 const boxGeometry = new T.BoxGeometry(1, 1, 1);
 const materials = new Map();
@@ -196,7 +196,10 @@ export function buildStadium(document, turfMaps = {}, crowdAtlas = null) {
     box(group, [0.045, 1.6, 0.045], [x, 0.8, z], material(0xecede1));
     box(group, [0.45, 0.3, 0.025], [x + 0.22, 1.4, z], material(0xebba5a));
   }
-  for (const x of [-47, 47]) for (const z of [-49, 49]) {
+  // Daylight broadcast cutaway: lighting masts belong behind the far stand.
+  // Near-side poles previously crossed the composed shot even when the ray to
+  // the ball itself was unobstructed.
+  for (const x of [-47, 47]) for (const z of [-65]) {
     box(group, [0.25, 23, 0.25], [x, 11.5, z], material(0x8d9aa1));
     box(group, [5.4, 1.5, 0.35], [x, 23, z], material(0x202c34));
     for (let lamp = 0; lamp < 8; lamp++) {

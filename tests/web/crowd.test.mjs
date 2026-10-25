@@ -6,7 +6,7 @@ test("quiet and loud crowd encode delivered crowd, independent of attack or comb
   const quietAttack = crowdPresentation({ crowd: 0, attack: 1, level: 0.2 });
   assert.equal(quietAttack.standing, 0); assert.equal(quietAttack.arms, 0);
   const loudNoAttack = crowdPresentation({ crowd: 1, attack: 0, level: 0.8 });
-  assert.equal(loudNoAttack.standing, 0.68); assert.equal(loudNoAttack.arms, 2.35);
+  assert.equal(loudNoAttack.standing, 1); assert.equal(loudNoAttack.arms, 2.35);
   assert.deepEqual(crowdPresentation({ crowd: 0.5, attack: 0 }), crowdPresentation({ crowd: 0.5, attack: 1 }));
 });
 test("spectators face the pitch-facing edge of their stand rather than its back", () => {

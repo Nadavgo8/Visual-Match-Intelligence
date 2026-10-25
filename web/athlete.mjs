@@ -1,5 +1,6 @@
 import * as T from "./vendor/three/three.module.js";
-import { footballGait, legAngles } from "./football-gait.mjs?v=3.10";
+import { footballGait, legAngles } from "./football-gait.mjs?v=3.11";
+import { FootballActions, nearbyBallPose } from "./football-actions.mjs?v=3.11";
 
 export function validateAthlete(data) {
   const n = data?.positions?.length / 3, bones = data?.bones;
@@ -60,8 +61,19 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
   if (!keeper && player.team === "home") kitPalette[1].multiplyScalar(0.65);
   bodyMaterial.onBeforeCompile = shader => {
     shader.uniforms.kitPalette = { value: kitPalette };
-    shader.vertexShader = "attribute float kitRegion; uniform vec3 kitPalette[8];\n" + shader.vertexShader;
+    shader.uniforms.kitTrim = {value:new T.Color(player.team==="home" || keeper ? 0xe7e6de : 0x25364b)};
+    shader.vertexShader = "attribute float kitRegion; uniform vec3 kitPalette[8]; varying vec3 vKitRest; varying float vKitRegion;\n" + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace("#include <color_vertex>", "#include <color_vertex>\nvColor.rgb *= kitPalette[int(kitRegion)];");
+    shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nvKitRest=position;vKitRegion=kitRegion;");
+    shader.fragmentShader="varying vec3 vKitRest; varying float vKitRegion; uniform vec3 kitTrim;\n"+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace("#include <color_fragment>",`#include <color_fragment>
+      if(vKitRegion>0.5 && vKitRegion<1.5) {
+        float collar=(1.0-smoothstep(0.055,0.075,abs(vKitRest.x)))*smoothstep(1.435,1.46,vKitRest.y);
+        float shoulders=smoothstep(0.15,0.18,abs(vKitRest.x))*(1.0-smoothstep(0.22,0.24,abs(vKitRest.x)))*smoothstep(1.46,1.49,vKitRest.y);
+        float sidePanel=smoothstep(0.115,0.15,abs(vKitRest.x))*(1.0-smoothstep(1.36,1.42,vKitRest.y));
+        diffuseColor.rgb*=1.0-sidePanel*0.17;
+        diffuseColor.rgb=mix(diffuseColor.rgb,kitTrim,max(collar,shoulders)*0.85);
+      }`);
   };
   // One geometry owner for the entire squad: disposing a substitute cannot
   // delete GPU attribute buffers that the other 21 players still reference.
@@ -98,10 +110,11 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
 }
 
 export class DetailedFootballers {
-  constructor(scene, data, document) { this.scene = scene; this.data = data; this.document = document; this.base = athleteGeometry(data); this.actors = new Map(); }
+  constructor(scene, data, document) { this.scene = scene; this.data = data; this.document = document; this.base = athleteGeometry(data); this.actors = new Map(); this.actions = new FootballActions(); }
   update(frame, poses, teams) {
     const signature = JSON.stringify(teams);
     if (signature !== this.signature) { this.hide(); this.signature = signature; }
+    const contacts = this.actions.update(frame);
     const active = new Set(frame.players.map(p => p.id));
     for (const [id, actor] of this.actors) if (!active.has(id)) { actor.root.removeFromParent(); actor.dispose(); this.actors.delete(id); }
     for (const p of frame.players) {
@@ -114,24 +127,63 @@ export class DetailedFootballers {
       const pose = poses.get(p.id), gait = footballGait(pose.speed, pose.distance / 2.2 + actor.phase, p.role === "GK");
       const ball = frame.ball ?? [52.5, 34], look = Math.atan2(ball[0] - p.x, p.y - ball[1]);
       const holder = frame.possession?.holder_id === p.id;
-      const facing = pose.speed > 0.1 || holder ? pose.heading : look;
+      const contact = contacts.get(p.id) ?? nearbyBallPose(frame,p), strength = contact?.weight ?? 0;
+      let facing = pose.speed > 0.1 || holder ? pose.heading : look;
+      if(Number.isFinite(contact?.heading)) facing += Math.atan2(Math.sin(contact.heading-facing),Math.cos(contact.heading-facing))*strength;
       actor.root.position.set(p.x - 52.5, gait.pelvis, 34 - p.y); actor.root.rotation.y = facing;
       for (const [side, sign] of [["L", 1], ["R", -1]]) {
         const foot = side === "L" ? gait.left : gait.right, rest = actor.legRest[side];
-        const leg = legAngles(rest.upper, rest.lower, rest.y - gait.pelvis + foot.lift, rest.z + foot.z);
+        const touch = side === (actor.phase < .5 ? "L" : "R") ? strength : 0;
+        const reach = contact?.kind === "receive" ? .2 : .42;
+        const lift = contact && !touch ? 0 : foot.lift;
+        const leg = legAngles(rest.upper, rest.lower, rest.y - gait.pelvis + lift + touch*.16,
+          rest.z + foot.z*(1-touch) + touch*reach);
         actor.joints[`upperleg01.${side}`].rotation.set(leg.hip, 0, 0);
         actor.joints[`lowerleg01.${side}`].rotation.x = leg.knee;
         actor.joints[`foot.${side}`].rotation.x = leg.ankle;
         actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, sign * (gait.armSpread - actor.armRest[side]));
-        actor.joints[`lowerarm01.${side}`].rotation.x = gait.elbow;
+        actor.joints[`lowerarm01.${side}`].rotation.set(gait.elbow,0,0);
       }
-      actor.joints.spine03.rotation.x = gait.lean;
+      actor.joints.spine03.rotation.x = gait.lean + strength*.12;
       actor.joints.spine03.rotation.y = gait.twist;
       const lookDelta = Math.atan2(Math.sin(look - facing), Math.cos(look - facing));
       actor.joints.head.rotation.y = holder ? 0 : Math.max(-0.5, Math.min(0.5, lookDelta));
       actor.root.updateMatrixWorld(true);
+      if(p.role === "GK" && frame.ball_in_play && frame.ball_height > .35 && frame.ball_height < 2.4
+        && Math.hypot(ball[0]-p.x,ball[1]-p.y)<1.5) {
+        const target = new T.Vector3(ball[0]-52.5,frame.ball_height+.16,34-ball[1]);
+        for(const side of ["L","R"]) reachArm(actor,side,target);
+        actor.root.updateMatrixWorld(true);
+      }
     }
   }
-  hide() { for (const actor of this.actors.values()) { actor.root.removeFromParent(); actor.dispose(); } this.actors.clear(); }
+  hide() { for (const actor of this.actors.values()) { actor.root.removeFromParent(); actor.dispose(); } this.actors.clear(); this.actions.reset(); }
   dispose() { this.hide(); this.base.dispose(); }
+}
+
+// Two-bone reach towards an observed nearby airborne ball. The keeper's centre
+// stays on tracking; this does not classify a save, catch, dive or goal.
+export function reachArm(actor, side, target) {
+  const upper=actor.joints[`upperarm01.${side}`],lower=actor.joints[`lowerarm01.${side}`],wrist=actor.joints[`wrist.${side}`];
+  const start=upper.getWorldPosition(new T.Vector3()), elbow=lower.getWorldPosition(new T.Vector3()), end=wrist.getWorldPosition(new T.Vector3());
+  const a=start.distanceTo(elbow),b=elbow.distanceTo(end),direction=target.clone().sub(start);
+  const distance=Math.max(Math.abs(a-b)+1e-5,Math.min(a+b-1e-5,direction.length()));
+  if(direction.lengthSq()<1e-10) return;
+  direction.normalize();
+  const pole=new T.Vector3(side==="L"?1:-1,-.4,-.3).applyQuaternion(actor.root.getWorldQuaternion(new T.Quaternion()));
+  pole.addScaledVector(direction,-pole.dot(direction));
+  if(pole.lengthSq()<1e-8) pole.set(0,0,1).addScaledVector(direction,-direction.z);
+  pole.normalize();
+  const along=(a*a+distance*distance-b*b)/(2*distance),height=Math.sqrt(Math.max(0,a*a-along*along));
+  const desiredElbow=start.clone().addScaledVector(direction,along).addScaledVector(pole,height);
+  const desiredWrist=start.clone().addScaledVector(direction,distance);
+  const rotate=(bone,from,to)=>{
+    const delta=new T.Quaternion().setFromUnitVectors(from.normalize(),to.normalize());
+    const world=delta.multiply(bone.getWorldQuaternion(new T.Quaternion()));
+    const parent=bone.parent.getWorldQuaternion(new T.Quaternion()).invert();
+    bone.quaternion.copy(parent.multiply(world)); actor.root.updateMatrixWorld(true);
+  };
+  rotate(upper,elbow.clone().sub(start),desiredElbow.clone().sub(start));
+  const joint=lower.getWorldPosition(new T.Vector3());
+  rotate(lower,wrist.getWorldPosition(new T.Vector3()).sub(joint),desiredWrist.sub(joint));
 }

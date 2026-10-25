@@ -4,10 +4,42 @@ import {readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import * as T from "../../web/vendor/three/three.module.js";
 import {atlasRegions, createAtlasCrowd, loadAtlasMetadata} from "../../web/crowd-atlas.mjs";
-import {createCrowdUniforms, crowdLayout, updateCrowd} from "../../web/crowd.mjs";
+import {createCrowd, createCrowdUniforms, crowdLayout, updateCrowd} from "../../web/crowd.mjs";
 
 const base = new URL("../../web/assets/crowd/", import.meta.url);
 const metadata = JSON.parse(await readFile(new URL("atlas.json", base)));
+
+test("both six-person sheets retain original RGBA bytes and every pose fits its measured image bounds", async () => {
+  for (const group of ["a", "b"]) {
+    const png = await readFile(new URL(`spectators-${group}-v2.png`, base));
+    const source = JSON.parse(await readFile(new URL(`provenance-${group}-v2.json`, base)));
+    const data = JSON.parse(await readFile(new URL(`atlas-${group}-v2.json`, base)));
+    assert.equal(createHash("sha256").update(png).digest("hex"), source.sha256);
+    assert.equal(png[25], 6);
+    assert.equal(png.readUInt32BE(16), data.width); assert.equal(png.readUInt32BE(20), data.height);
+    assert.equal(data.identities, 6); assert.equal(atlasRegions(data).length, 18);
+    assert.deepEqual(data.sprites.map(s => s.pose), ["seated", "standing", "raised"].flatMap(p => Array(6).fill(p)));
+  }
+});
+
+test("twelve identities share the stand without duplicating seats or tying appearance to amplitude", async () => {
+  const sheets = await Promise.all(["a", "b"].map(async group => ({texture:new T.Texture(),
+    metadata:JSON.parse(await readFile(new URL(`atlas-${group}-v2.json`, base)))})));
+  const crowd = createCrowd(78,24,createCrowdUniforms(),2,sheets);
+  assert.equal(crowd.children.length, 2);
+  assert.equal(crowd.children.reduce((sum, mesh) => sum + mesh.count, 0), crowdLayout(78,24,2).length);
+  for (const mesh of crowd.children) {
+    const identities = new Set(), seeds=mesh.geometry.getAttribute("crowdSeed"), identity=mesh.geometry.getAttribute("crowdIdentity");
+    for(let i=0;i<mesh.count;i++) if(seeds.getX(i)<.1) identities.add(Math.min(5,Math.floor(identity.getX(i)*6)));
+    assert.equal(identities.size,6,"all appearances must remain possible at low amplitude");
+    assert.equal(mesh.material.customProgramCacheKey(),"vmi-crowd-pose-blend-6-v2");
+    const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader,fragmentShader:T.ShaderLib.standard.fragmentShader};
+    mesh.material.onBeforeCompile(shader); assert.equal(shader.uniforms.crowdSizes.value.length,18);
+    assert.match(shader.fragmentShader,/max\(alpha,0.00001\)/,"transparent pose blending must not divide by zero");
+    mesh.dispose(); mesh.geometry.dispose(); mesh.material.dispose();
+  }
+  for(const sheet of sheets) sheet.texture.dispose();
+});
 
 test("original synthetic crowd PNG has real alpha, recorded hash and twelve separate complete regions", async () => {
   const png = await readFile(new URL("spectators-v1.png", base));
@@ -38,8 +70,11 @@ test("malformed or out-of-bounds atlas is rejected before geometry allocation", 
 test("metadata loader requests only the local atlas and rejects missing or corrupt data", async () => {
   const oldFetch=globalThis.fetch;
   try {
-    globalThis.fetch=async url=>{assert.ok(String(url).endsWith('/web/assets/crowd/atlas.json'));return {ok:true,json:async()=>metadata};};
+    globalThis.fetch=async url=>{assert.ok(String(url).endsWith('/web/assets/crowd/atlas-a-v2.json'));return {ok:true,json:async()=>metadata};};
     assert.strictEqual(await loadAtlasMetadata(),metadata);
+    globalThis.fetch=async url=>{assert.ok(String(url).endsWith('/web/assets/crowd/atlas-b-v2.json'));return {ok:true,json:async()=>metadata};};
+    assert.strictEqual(await loadAtlasMetadata("b"),metadata);
+    await assert.rejects(loadAtlasMetadata("../outside"),/Invalid crowd atlas group/);
     globalThis.fetch=async()=>({ok:false}); await assert.rejects(loadAtlasMetadata(),/unavailable/);
     globalThis.fetch=async()=>({ok:true,json:async()=>({})}); await assert.rejects(loadAtlasMetadata(),/Invalid crowd atlas/);
   } finally {globalThis.fetch=oldFetch;}
@@ -49,16 +84,16 @@ test("photographic crowd stays instanced, pitch-facing and controlled by the exi
   const texture = new T.Texture(), uniforms=createCrowdUniforms();
   const mesh=createAtlasCrowd(crowdLayout(78,24,2),uniforms,{texture,metadata});
   assert.equal(mesh.count,2921); assert.equal(mesh.geometry.index.count,6);
-  assert.strictEqual(mesh.material.map,texture); assert.equal(mesh.material.alphaTest,.65);
+  assert.strictEqual(mesh.material.map,texture); assert.equal(mesh.material.alphaTest,.35);
   assert.equal(mesh.material.transparent,false); assert.equal(mesh.material.depthWrite,true);
   const matrix=new T.Matrix4(); mesh.getMatrixAt(0,matrix);
   assert.ok(new T.Vector3(0,0,1).transformDirection(matrix).z<-.95);
   const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader,fragmentShader:T.ShaderLib.standard.fragmentShader}; mesh.material.onBeforeCompile(shader);
   assert.strictEqual(shader.uniforms.crowdStanding,uniforms.crowdStanding);
   assert.equal(shader.uniforms.crowdRects.value.length,12);
-  assert.match(shader.vertexShader,/vMapUv = region.xy \+ vMapUv \* region.zw/);
-  assert.match(shader.vertexShader,/crowdArms > 0.01 \? 2 : 1/);
-  updateCrowd(uniforms,{crowd:1,attack:0},10,false); assert.equal(uniforms.crowdStanding.value,.68);
+  assert.match(shader.fragmentShader,/if\(vCrowdWeights.x>0.0\)seated=texture2D/);
+  assert.match(shader.vertexShader,/vCrowdWeights=vec3\(1.0-standing,standing-raised,raised\)/);
+  updateCrowd(uniforms,{crowd:1,attack:0},10,false); assert.equal(uniforms.crowdStanding.value,1);
   updateCrowd(uniforms,{crowd:1,attack:0},10,true); assert.equal(uniforms.crowdArms.value,0); assert.equal(uniforms.crowdSway.value,0);
   updateCrowd(uniforms,{crowd:0,attack:1},10,false); assert.equal(uniforms.crowdStanding.value,0);
   mesh.dispose(); mesh.geometry.dispose(); mesh.material.dispose(); texture.dispose();

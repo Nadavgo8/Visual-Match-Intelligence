@@ -72,7 +72,7 @@ def test_3d_assets_are_served_locally_and_state_identifies_source_match():
     assert room.state("tv")["match_id"] != original
     client = TestClient(app)
     for asset in ("match-3d.mjs", "stadium.mjs", "athlete.mjs", "crowd.mjs", "renderer-host.mjs",
-                  "match-screen.mjs", "meter-view.mjs", "crowd-atlas.mjs", "football-gait.mjs",
+                  "match-screen.mjs", "meter-view.mjs", "crowd-atlas.mjs", "football-gait.mjs", "football-actions.mjs",
                   "vendor/three/three.module.js", "vendor/three/three.core.js"):
         response = client.get("/static/" + asset)
         assert response.status_code == 200
@@ -84,6 +84,13 @@ def test_3d_assets_are_served_locally_and_state_identifies_source_match():
     assert "image/png" in crowd.headers["content-type"]
     atlas = client.get("/static/assets/crowd/atlas.json")
     assert atlas.status_code == 200 and len(atlas.json()["sprites"]) == 12
+    for group in ("a", "b"):
+        crowd = client.get(f"/static/assets/crowd/spectators-{group}-v2.png")
+        assert crowd.status_code == 200 and crowd.content.startswith(b"\x89PNG\r\n\x1a\n")
+        assert "image/png" in crowd.headers["content-type"]
+        atlas = client.get(f"/static/assets/crowd/atlas-{group}-v2.json")
+        assert atlas.status_code == 200
+        assert atlas.json()["identities"] == 6 and len(atlas.json()["sprites"]) == 18
     for image in ("color", "normal"):
         response = client.get(f"/static/assets/turf/{image}.jpg")
         assert response.status_code == 200 and response.content.startswith(b"\xff\xd8")

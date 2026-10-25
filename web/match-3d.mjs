@@ -1,31 +1,32 @@
 import * as T from "./vendor/three/three.module.js";
-import { buildStadium } from "./stadium.mjs?v=3.10";
-import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.10";
-import { updateCrowd } from "./crowd.mjs?v=3.10";
-import { loadAtlasMetadata } from "./crowd-atlas.mjs";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.10";
+import { buildStadium } from "./stadium.mjs?v=3.11";
+import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.11";
+import { updateCrowd, CrowdDynamics } from "./crowd.mjs?v=3.11";
+import { loadAtlasMetadata } from "./crowd-atlas.mjs?v=3.11";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.11";
 
 export async function prepareAssets() {
   const loader = new T.TextureLoader();
   const results = await Promise.allSettled([loadAthlete(), ...["color", "normal"].map(name => loader.loadAsync(new URL(`./assets/turf/${name}.jpg`, import.meta.url).href)),
-    loader.loadAsync(new URL("./assets/crowd/spectators-v1.png", import.meta.url).href), loadAtlasMetadata()]);
+    ...["a","b"].map(group=>loader.loadAsync(new URL(`./assets/crowd/spectators-${group}-v2.png`,import.meta.url).href)),
+    loadAtlasMetadata("a"),loadAtlasMetadata("b")]);
   if (results.some(result => result.status === "rejected")) {
     for (const result of results) if (result.status === "fulfilled" && result.value?.isTexture) result.value.dispose();
     throw Error("Local 3D assets unavailable");
   }
-  const [athlete, color, normal, crowd, metadata] = results.map(result => result.value);
+  const [athlete, color, normal, crowdA, crowdB, metadataA, metadataB] = results.map(result => result.value);
   for (const texture of [color, normal]) {
     texture.wrapS = texture.wrapT = T.RepeatWrapping; texture.repeat.set(114 / 1.4, 76 / 1.4); texture.anisotropy = 8;
   }
   color.colorSpace = T.SRGBColorSpace;
-  crowd.colorSpace = T.SRGBColorSpace; crowd.anisotropy = 4;
-  return { athlete, turfMaps: { color, normal }, crowdAtlas: {texture: crowd, metadata},
-    dispose() { color.dispose(); normal.dispose(); crowd.dispose(); } };
+  for(const crowd of [crowdA,crowdB]){crowd.colorSpace=T.SRGBColorSpace;crowd.anisotropy=4;}
+  return { athlete, turfMaps: { color, normal }, crowdAtlas: [{texture:crowdA,metadata:metadataA},{texture:crowdB,metadata:metadataB}],
+    dispose() { color.dispose(); normal.dispose(); crowdA.dispose();crowdB.dispose(); } };
 }
 
 export class Match3D {
   constructor(canvas, onLost, assets) {
-    this.canvas = canvas; this.motion = new SceneMotion(); this.quality = "high"; this.reducedMotion = false;
+    this.canvas = canvas; this.motion = new SceneMotion();this.crowdDynamics=new CrowdDynamics(); this.quality = "high"; this.reducedMotion = false;
     this.gpu = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.gpu.outputColorSpace = T.SRGBColorSpace; this.gpu.toneMapping = T.ACESFilmicToneMapping;
     this.gpu.toneMappingExposure = 0.92; this.gpu.shadowMap.type = T.PCFShadowMap;
@@ -67,7 +68,8 @@ export class Match3D {
     const view = cameraView(this.camera.aspect, this.reducedMotion, frame?.ball, this.cameraMode);
     this.camera.fov = view.fov; this.camera.updateProjectionMatrix();
     this.camera.position.set(...view.position); this.camera.lookAt(...view.target);
-    const crowd = updateCrowd(this.stadium.userData.crowdUniforms, this.atmosphere, frame?.t ?? 0, this.reducedMotion);
+    const crowd = updateCrowd(this.stadium.userData.crowdUniforms, this.atmosphere, frame?.t ?? 0, this.reducedMotion,
+      this.crowdDynamics,frame?`${frame.match_id}/${frame.run_id??""}`:"");
     if (frame && teams) {
       this.footballers.update(frame, this.motion.update(frame), teams);
       this.ball.visible = true; this.ball.position.set(...worldPosition(...frame.ball, frame.ball_height + 0.16));
@@ -82,6 +84,7 @@ export class Match3D {
     this.canvas.dataset.camera = this.reducedMotion ? "fixed" : this.cameraMode ?? "broadcast";
     this.canvas.dataset.crowdLevel = crowd.available ? String(crowd.level) : "unavailable";
     this.canvas.dataset.crowdStanding = String(crowd.standing);
+    this.canvas.dataset.crowdRaised=String(crowd.raised);
   }
   dispose() {
     this.footballers.dispose();

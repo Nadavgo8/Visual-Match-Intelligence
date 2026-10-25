@@ -1,5 +1,7 @@
 import * as T from "./vendor/three/three.module.js";
-import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.10";
+import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.11";
+
+const smooth = (a,b,x) => {const u=Math.max(0,Math.min(1,(x-a)/(b-a)));return u*u*(3-2*u);};
 
 // These are visual encodings of delivered crowd amplitude, not a second metric.
 // Attack never makes the crowd louder; missing observations never mean silence.
@@ -8,9 +10,24 @@ export function crowdPresentation(atmosphere, reducedMotion = false) {
   const available = typeof level === "number" && Number.isFinite(level) && level >= 0 && level <= 1;
   const amount = available ? level : 0;
   return { available, level: available ? level : null,
-    standing: available ? amount * amount * 0.68 : 0,
+    standing: available ? smooth(0,1,amount) : 0,
+    raised: reducedMotion || !available ? 0 : smooth(.3,1,amount)*.88,
     arms: reducedMotion || !available ? 0 : amount * 2.35,
-    sway: reducedMotion || !available ? 0 : 0.004 + amount * 0.035 };
+    sway: reducedMotion || !available ? 0 : .002*amount+.026*amount*amount,
+    pulse: reducedMotion || !available ? 0 : .055*smooth(.6,1,amount) };
+}
+
+export class CrowdDynamics {
+  constructor(){this.reset();}
+  reset(){this.t=null;this.identity=null;this.level=null;this.target=null;}
+  sample(atmosphere,t,identity,reducedMotion=false){
+    const raw=crowdPresentation(atmosphere,reducedMotion),dt=this.t===null?0:t-this.t;
+    if(!raw.available || !Number.isFinite(t)){this.reset();return {...crowdPresentation(null,reducedMotion),renderLevel:null};}
+    if(this.level===null || identity!==this.identity || dt<0 || dt>2 || reducedMotion || (dt===0 && raw.level!==this.target)) this.level=raw.level;
+    else if(dt>0) this.level=raw.level+(this.level-raw.level)*Math.exp(-dt/.18);
+    this.t=t;this.identity=identity;this.target=raw.level;
+    return {...crowdPresentation({crowd:this.level},reducedMotion),level:raw.level,renderLevel:this.level};
+  }
 }
 
 function personGeometry() {
@@ -41,12 +58,13 @@ function personGeometry() {
 }
 
 export function createCrowdUniforms() {
-  return { crowdTime: { value: 0 }, crowdStanding: { value: 0 }, crowdArms: { value: 0 }, crowdSway: { value: 0 } };
+  return { crowdTime: { value: 0 }, crowdStanding: { value: 0 }, crowdArms: { value: 0 }, crowdSway: { value: 0 },crowdRaised:{value:0},crowdPulse:{value:0} };
 }
-export function updateCrowd(uniforms, atmosphere, t, reducedMotion) {
-  const view = crowdPresentation(atmosphere, reducedMotion);
+export function updateCrowd(uniforms, atmosphere, t, reducedMotion, dynamics=null, identity="") {
+  const view = dynamics ? dynamics.sample(atmosphere,t,identity,reducedMotion) : crowdPresentation(atmosphere, reducedMotion);
   uniforms.crowdTime.value = Number.isFinite(t) ? t : 0;
   uniforms.crowdStanding.value = view.standing; uniforms.crowdArms.value = view.arms; uniforms.crowdSway.value = view.sway;
+  uniforms.crowdRaised.value=view.raised;uniforms.crowdPulse.value=view.pulse;
   return view;
 }
 
@@ -72,40 +90,51 @@ export function crowdLayout(length, rows, standSeed = 0) {
     const index = row * columns + col, seed = noise(index + 1 + standSeed * 65537);
     seats.push({ x: x + (seed - 0.5) * 0.08, y: 0.28 + row * 0.52,
       z: row * 0.76, seed, shape: noise(index + 7919 + standSeed * 31337),
-      identity: noise(index + 104729 + standSeed * 99991), clothing: noise(index + 15485863 + standSeed * 49999) });
+      identity: noise(index + 104729 + standSeed * 99991), clothing: noise(index + 15485863 + standSeed * 49999),
+      gesture:noise(index+32452843+standSeed*67867967) });
   }
   return seats;
 }
 
 export function createCrowd(length, rows, uniforms, standSeed = 0, atlas = null) {
   const seats = crowdLayout(length, rows, standSeed);
+  if(Array.isArray(atlas)){
+    const group=new T.Group();
+    atlas.forEach((sheet,i)=>{
+      const members=seats.filter(s=>Math.min(atlas.length-1,Math.floor(s.identity*atlas.length))===i)
+        .map(s=>({...s,identity:s.identity*atlas.length-i}));
+      group.add(createAtlasCrowd(members,uniforms,sheet));
+    });
+    return group;
+  }
   if (atlas) return createAtlasCrowd(seats, uniforms, atlas);
   const count = seats.length, geometry = personGeometry();
   const seeds = new Float32Array(count);
   const material = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1 });
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = `attribute float crowdPart; attribute float crowdSeed; attribute float crowdTint;
-      uniform float crowdTime; uniform float crowdStanding; uniform float crowdArms; uniform float crowdSway;\n` + shader.vertexShader;
+    shader.vertexShader = `attribute float crowdPart; attribute float crowdSeed; attribute float crowdTint; attribute float crowdGesture;
+      uniform float crowdTime; uniform float crowdStanding; uniform float crowdArms; uniform float crowdSway;
+      uniform float crowdRaised; uniform float crowdPulse;\n` + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace("#include <color_vertex>", T.ShaderChunk.color_vertex.replace(
       "vColor.rgb *= instanceColor.rgb;", `vColor.rgb *= crowdTint < 0.5 ? vec3(1.0) :
         (crowdTint < 1.5 ? instanceColor.rgb : mix(vec3(0.48, 0.34, 0.25), vec3(1.1, 1.04, 0.96), crowdSeed));`));
-    const angle = "crowdPart * step(crowdSeed, crowdStanding) * crowdArms * (0.9 + 0.1 * sin(crowdTime * 2.1 + crowdSeed * 71.0))";
+    const angle = "crowdPart * step(crowdSeed, crowdStanding) * step(crowdGesture,crowdRaised) * crowdArms * (0.9 + 0.1 * sin(crowdTime * 2.1 + crowdSeed * 71.0))";
     shader.vertexShader = shader.vertexShader.replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>
       if (abs(crowdPart) > 0.5) {
         float normalAngle = ${angle};
         objectNormal.xy = mat2(cos(normalAngle), sin(normalAngle), -sin(normalAngle), cos(normalAngle)) * objectNormal.xy;
       }`);
     shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
-      float standing = step(crowdSeed, crowdStanding);
+      float standing = crowdStanding <= 0.0 ? 0.0 : step(crowdSeed, crowdStanding);
       float phase = crowdTime * 2.1 + crowdSeed * 71.0;
       if (abs(crowdPart) > 0.5) {
-        float a = crowdPart * standing * crowdArms * (0.9 + 0.1 * sin(phase));
+        float a = ${angle};
         vec2 pivot = vec2(crowdPart * 0.18, 0.88);
         transformed.xy = mat2(cos(a), sin(a), -sin(a), cos(a)) * (transformed.xy - pivot) + pivot;
       }
       transformed.x += sin(phase) * crowdSway * transformed.y;
-      transformed.y += standing * 0.22;`);
+      transformed.y += standing * (0.22 + pow(max(0.0,sin(phase)),2.0)*crowdPulse);`);
   };
   const crowd = new T.InstancedMesh(geometry, material, count), dummy = new T.Object3D(), color = new T.Color();
   const palette = [0x7e8a91, 0x233544, 0x52646b, 0xada69b, 0x353d40, 0x79877f, 0xada9a0, 0x234b65];
@@ -118,6 +147,7 @@ export function createCrowd(length, rows, uniforms, standSeed = 0, atlas = null)
     crowd.setMatrixAt(index, dummy.matrix); crowd.setColorAt(index, color.setHex(palette[Math.floor(seed * palette.length)]));
   }
   geometry.setAttribute("crowdSeed", new T.InstancedBufferAttribute(seeds, 1));
+  geometry.setAttribute("crowdGesture",new T.InstancedBufferAttribute(new Float32Array(seats.map(seat=>seat.gesture)),1));
   crowd.instanceMatrix.needsUpdate = true; crowd.instanceColor.needsUpdate = true; crowd.frustumCulled = false;
   crowd.name = "Delivered-amplitude crowd"; return crowd;
 }

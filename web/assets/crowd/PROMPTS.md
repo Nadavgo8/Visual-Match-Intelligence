@@ -25,3 +25,42 @@ The requested uniform layout/scale was not exact in the generated result.
 Runtime metadata therefore uses observed pixel bounds and explicit metric pose
 heights (1.35m seated, 1.82m standing, 2.08m including raised hands). Hash, actual
 dimensions and generated source identifier are recorded in provenance.json.
+
+## V2 — twelve identities, 25 October 2026
+
+The production briefs below summarize the two selected built-in generation
+requests. They are generation records, not evidence of participant research.
+The original PNG bytes remain unchanged. Measured UV rectangles, pixel sizes
+and SHA-256 hashes are in `atlas-a-v2.json`, `atlas-b-v2.json` and their
+`provenance-*-v2.json` companions. A rejected layout-edit candidate is not shipped.
+
+**Group A brief:** A transparent production texture atlas of anonymous fictional
+adult football spectators, photographic natural lighting, six distinct people
+per row, consistent identities and understated unbranded clothes across poses.
+Include a young man in navy, a blonde woman in burgundy, a Black man in olive,
+an Asian woman in navy, an older grey-haired man in navy and a red-haired woman
+in tan. Full bodies, complete hands and shoes, no background, text or marks.
+Seated attentive people with hands on thighs; standing with arms relaxed;
+standing with hands raised. Keep identities, anatomy, scale and camera consistent.
+The requested six-row layout was not exact: only the complete first three pose
+rows are used, giving eighteen source cutouts and six identities.
+
+Selected original source: `exec-1cb56fb4-5a0b-4cd0-9f28-edfa1917d5a2.png`.
+
+**Group B brief:** A new transparent six-column, three-row atlas, eighteen isolated
+full-body adult supporters, six additional distinct identities with varied ages,
+skin tones, hair and neutral everyday clothes, consistent by column. First row
+seated, second standing with arms relaxed, third standing with raised hands.
+Natural photographic detail, neutral attentive faces, no logos, slogans,
+stadium, seats or background. Complete figures and generous transparent gutters.
+
+Selected original source: `exec-55d5b550-8e3c-4be7-a7ff-0c6a49c73550.png`.
+
+The image model did not produce perfectly separated regular cells. Runtime UVs
+use measured silhouettes. A small empty top-centre gutter in the raised pose is
+masked in the material to exclude neighbouring-row boots; this is documented
+in provenance and does not retouch the source image. Twelve identities and
+colour variation reduce repetition; this is not twelve thousand unique humans.
+These remain alpha-tested photographic planes in a 3D stadium. They are not
+individually rigged spectator bodies. Posture and motion encode delivered crowd
+amplitude only, with no inferred cause or emotion.

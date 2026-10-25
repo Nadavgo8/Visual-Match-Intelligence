@@ -1,0 +1,12 @@
+{
+  "method": "Built-in image_gen original fictional adults; PNG bytes preserved; UV bounds measured from opaque connected silhouettes, no image editing or source-photo copying.",
+  "sha256": "9ca40a30a2531cd96578e235ae3b5534b8fce30de0b646f9394b4c3e279321a2",
+  "identities": 6,
+  "poses": [
+    "seated",
+    "standing",
+    "raised"
+  ],
+  "file": "spectators-b-v2.png",
+  "uvGutterNote": "Raised-card top centre masks up to six percent to remove preceding-row shoe bleed; neighbouring figures never intentionally sampled."
+}

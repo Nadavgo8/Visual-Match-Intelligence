@@ -42,14 +42,17 @@ is used. The image supplied by the user is a visual target, not a texture asset.
 
 ## Synthetic spectator atlas
 
-The current crowd uses [spectators-v1.png](crowd/spectators-v1.png), an original
-RGBA image generated with the built-in image tool for VMI. Four anonymous adults
-have seated, standing and raised-hand poses; neutral faces do not label emotions.
+The current crowd uses [group A](crowd/spectators-a-v2.png) and
+[group B](crowd/spectators-b-v2.png), original RGBA images generated with the
+built-in image tool for VMI. Twelve anonymous fictional adults have seated,
+standing and raised-hand poses; neutral faces do not label emotions.
 Photographic cutouts are instanced as planes inside the 3D stadium. The existing
 procedural geometry remains available when no atlas is supplied to the builder.
 The actual runtime loads the local atlas and validates its measured bounds.
 
-[Prompts and method](crowd/PROMPTS.md), [pixel metadata](crowd/atlas.json), and
-[source/hash](crowd/provenance.json) document the original file. No real spectator
+[Prompts and method](crowd/PROMPTS.md), [metadata A](crowd/atlas-a-v2.json),
+[metadata B](crowd/atlas-b-v2.json), [source A](crowd/provenance-a-v2.json) and
+[source B](crowd/provenance-b-v2.json) document the original files. The earlier
+four-identity v1 asset remains a tested historical fixture. No real spectator
 photograph or reference-image content is used. No source retouching, network
 dependency during viewing, purchase or API-key workflow was introduced.
