@@ -207,4 +207,3 @@ def test_foundry_candidate_with_the_limit_on_is_a_zero_cost_provider():
                             read_subscription=lambda: SUB_ON, client_factory=lambda e, m: ("client", e, m))
     assert c.may_charge is False and c.model == "gpt-5-mini" and c.name == "microsoft-foundry"
     assert c._client == ("client", "https://x.services.ai.azure.com/api/projects/p", "gpt-5-mini")
-
