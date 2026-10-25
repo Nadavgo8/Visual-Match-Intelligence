@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.9";
+import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.10";
 
 // These are visual encodings of delivered crowd amplitude, not a second metric.
 // Attack never makes the crowd louder; missing observations never mean silence.

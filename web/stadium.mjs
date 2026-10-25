@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createCrowd, createCrowdUniforms, crowdLayout, standAisles } from "./crowd.mjs?v=3.9";
+import { createCrowd, createCrowdUniforms, crowdLayout, standAisles } from "./crowd.mjs?v=3.10";
 
 const boxGeometry = new T.BoxGeometry(1, 1, 1);
 const materials = new Map();

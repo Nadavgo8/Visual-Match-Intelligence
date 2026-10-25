@@ -1,7 +1,7 @@
 import { MatchRenderer } from "./match-renderer.mjs";
 
 // WebGL capability/loss affects presentation, never the feed or the accessibility DOM.
-export async function createRenderer(canvas, status, load3D = () => import("./match-3d.mjs?v=3.9")) {
+export async function createRenderer(canvas, status, load3D = () => import("./match-3d.mjs?v=3.10")) {
   let current, assets, fallback = false;
   const useFallback = () => {
     if (fallback) return;

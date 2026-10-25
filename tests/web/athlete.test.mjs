@@ -94,3 +94,19 @@ test("running rig keeps a support sole near the turf and preserves the delivered
   }
   actors.dispose();
 });
+
+test("field players lower their arms from the mesh rest pose while keepers keep a wider ready stance", () => {
+  const actors=new DetailedFootballers(new T.Scene(),data),motion=new SceneMotion();
+  const frame={match_id:"m",t:1,players:[p,{...p,id:"gk",role:"GK",x:20}]};
+  actors.update(frame,motion.update(frame),teams);
+  const spread=(id,side)=>{
+    const actor=actors.actors.get(id),wrist=new T.Vector3();
+    actor.joints[`wrist.${side}`].getWorldPosition(wrist);actor.root.worldToLocal(wrist);
+    return Math.abs(wrist.x);
+  };
+  for (const side of ["L","R"]) {
+    assert.ok(spread(p.id,side)<0.36,`field-player arms remain in a spread rest pose: ${spread(p.id,side)}`);
+    assert.ok(spread("gk",side)>spread(p.id,side)+0.12,"keeper readiness must remain visibly distinct");
+  }
+  actors.dispose();
+});

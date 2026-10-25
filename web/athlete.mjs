@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { footballGait, legAngles } from "./football-gait.mjs?v=3.9";
+import { footballGait, legAngles } from "./football-gait.mjs?v=3.10";
 
 export function validateAthlete(data) {
   const n = data?.positions?.length / 3, bones = data?.bones;
@@ -86,7 +86,14 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
     const hip = head("upperleg01"), knee = head("lowerleg01"), foot = head("foot");
     return [side, { upper: knee.map((v, i) => v - hip[i]), lower: foot.map((v, i) => v - knee[i]), y: foot[1] - hip[1], z: foot[2] - hip[2] }];
   }));
-  return { root, mesh, joints, skeleton, legRest, kitPalette, phase: (seed % 997) / 997,
+  // The source mesh already spreads the arms. Animation angles are relative
+  // to that rest pose, not an assumed pair of vertical upper arms.
+  const armRest = Object.fromEntries([["L",1],["R",-1]].map(([side,sign]) => {
+    const arm = data.bones.find(b => b.name === `upperarm01.${side}`).head;
+    const elbow = data.bones.find(b => b.name === `lowerarm01.${side}`).head;
+    return [side, Math.atan2(sign * (elbow[0] - arm[0]), arm[1] - elbow[1])];
+  }));
+  return { root, mesh, joints, skeleton, legRest, armRest, kitPalette, phase: (seed % 997) / 997,
     dispose() { bodyMaterial.dispose(); skeleton.dispose(); numberTexture?.dispose(); numberMaterial?.dispose(); numberGeometry?.dispose(); } };
 }
 
@@ -115,7 +122,7 @@ export class DetailedFootballers {
         actor.joints[`upperleg01.${side}`].rotation.set(leg.hip, 0, 0);
         actor.joints[`lowerleg01.${side}`].rotation.x = leg.knee;
         actor.joints[`foot.${side}`].rotation.x = leg.ankle;
-        actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, -sign * gait.armSpread);
+        actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, sign * (gait.armSpread - actor.armRest[side]));
         actor.joints[`lowerarm01.${side}`].rotation.x = gait.elbow;
       }
       actor.joints.spine03.rotation.x = gait.lean;
