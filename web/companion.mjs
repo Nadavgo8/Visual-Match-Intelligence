@@ -61,7 +61,10 @@ export class CatchUpCheckpoints {
   }
 
   all() {
-    try { return JSON.parse(this.storage?.getItem(this.key)) || {}; } catch { return {}; }
+    try {
+      const value = JSON.parse(this.storage?.getItem(this.key));
+      return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+    } catch { return {}; }
   }
 
   get(scope) {

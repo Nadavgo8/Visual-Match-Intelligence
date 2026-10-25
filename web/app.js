@@ -1,7 +1,7 @@
 import { FEED_ICONS } from "./icons.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
-import { openSession } from "./session.mjs";
-import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile, scopeOf } from "./companion.mjs";
+import { openSession } from "./session.mjs?v=1.1";
+import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile, scopeOf } from "./companion.mjs?v=1.1";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -126,7 +126,7 @@ function receiptsHtml(sentences, facts, r) {
     `<code title="${esc(JSON.stringify(byId[e] ?? (e === "state" ? "score and clock" : e)))}">${esc(e)}</code>`).join(" ")}</li>`).join("");
   const src = r.source === "agent" ? `Explainer agent on ${esc(r.model)}` : "template (deterministic)";
   const rej = r.rejected ? ` · agent draft rejected: ${esc(r.rejected.join("; "))}` : "";
-  return `<details class="receipts"><summary>Receipts · ${src} · validator ${r.validation === "passed" ? "✓ passed" : "✗"} · ${r.latency_ms} ms${rej}</summary><ul>${rows}</ul></details>`;
+  return `<details class="receipts"><summary>Receipts · ${src} · validator ${r.validation === "passed" ? "✓ passed" : "✗"} · ${esc(r.latency_ms)} ms${rej}</summary><ul>${rows}</ul></details>`;
 }
 
 function onAnalysis(a) {
@@ -160,9 +160,9 @@ function onAnswer(a) {
   if (!answers.accept(a.id)) return;
   const el = document.getElementById(a.id) || bubble("bot", "");
   const who = { match_analyst: "Match analyst", rules_expert: "Rules expert", router: "Router", both: "Analyst + rules" }[a.agent] ?? a.agent;
-  const src = a.source === "agent" ? `${who} agent on ${esc(a.model)}` : `${who} (local)`;
+  const src = a.source === "agent" ? `${esc(who)} agent on ${esc(a.model)}` : `${esc(who)} (local)`;
   const ev = (a.evidence || []).map((e) => `<code>${esc(e)}</code>`).join(" ");
-  el.innerHTML = `${esc(a.text)}<details class="receipts"><summary>Receipts · ${src} · ${a.latency_ms} ms</summary>
+  el.innerHTML = `${esc(a.text)}<details class="receipts"><summary>Receipts · ${src} · ${esc(a.latency_ms)} ms</summary>
     <ul><li>Tools: ${esc((a.tool_calls || []).join(", ") || "none")}</li><li>Evidence: ${ev || "none"}</li>${a.fallback_reason ? `<li>Fallback: ${esc(a.fallback_reason)}</li>` : ""}</ul></details>`;
 }
 function onAnswerDiscarded(a) {
