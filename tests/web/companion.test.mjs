@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { AnswerLog, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile } from "../../web/companion.mjs";
 
 test("skipping onboarding gives the documented defaults", () => {
@@ -71,4 +72,64 @@ test("catch-up checkpoints stay bounded and survive blocked storage", async () =
   const blocked = new CatchUpCheckpoints({ getItem() { throw new Error("no"); }, setItem() { throw new Error("no"); } });
   assert.equal(blocked.get("x"), null);
   assert.equal(blocked.advance("x", 5), true); // doesn't throw; simply not remembered
+});
+
+test("valid JSON with the wrong storage shape is discarded and replaced by durable checkpoints", async () => {
+  const { CatchUpCheckpoints, scopeOf } = await import("../../web/companion.mjs");
+  const scope = scopeOf("demo", 12, "r1");
+  for (const raw of ["42", "true", '"text"', "[]", '[{"old":1}]', "null", "{broken"]) {
+    const storage = memoryStorage(); storage.setItem("k", raw);
+    const cp = new CatchUpCheckpoints(storage, "k");
+    assert.equal(cp.get(scope), null, raw);
+    assert.equal(cp.advance(scope, 300), true, raw);
+    assert.equal(new CatchUpCheckpoints(storage, "k").get(scope), 300, raw);
+    assert.deepEqual(JSON.parse(storage.getItem("k")), { [scope]: 300 }, raw);
+  }
+});
+
+// Run the real app entrypoint with controlled DOM/transport boundaries. Rendering
+// and escaping are not reimplemented by this harness; the received HTML is asserted.
+async function appHarness() {
+  const companion = await import("../../web/companion.mjs");
+  const nodes = new Map(); let receive;
+  const element = () => ({ innerHTML: "", addEventListener() {}, scrollIntoView() {},
+    appendChild() {}, style: { setProperty() {} }, classList: { toggle() {} } });
+  const doc = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); },
+    addEventListener() {}, createElement: element, documentElement: element(), querySelector: element };
+  const src = readFileSync(new URL("../../web/app.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
+  const context = { ...companion, FEED_ICONS: {}, atmospherePresentation() {}, URLSearchParams,
+    location: { search: "?room=qa" }, localStorage: memoryStorage(), document: doc,
+    window: { addEventListener() {} }, openSession(options) { receive = options.onMessage; return { send() { return true; } }; } };
+  runInNewContext(src, context);
+  return { receive, html: id => nodes.get(id).innerHTML, receipts: context.receiptsHtml };
+}
+
+test("answer metadata from a model is literal text, including unknown agent names", async () => {
+  const app = await appHarness();
+  const payload = '<img src=x onerror="bad()"> &';
+  app.receive({ type: "answer", id: "q1", agent: payload, source: "agent", model: payload,
+    text: payload, evidence: [payload], tool_calls: [payload], fallback_reason: payload, latency_ms: payload });
+  const html = app.html("q1");
+  assert.equal(html.includes("<img"), false);
+  assert.ok(html.includes("&lt;img src=x onerror=&quot;bad()&quot;&gt; &amp;"));
+  assert.ok(html.includes("<details")); // receipts remain structured and usable
+});
+
+test("known agent labels and answer deduplication remain intact", async () => {
+  const app = await appHarness();
+  app.receive({ type: "answer", id: "q1", agent: "match_analyst", source: "local", text: "First", latency_ms: 12 });
+  const html = app.html("q1");
+  assert.ok(html.includes("Match analyst (local) · 12 ms"));
+  app.receive({ type: "answer", id: "q1", agent: "router", text: "Replacement" });
+  assert.equal(app.html("q1"), html);
+});
+
+test("analysis receipt metadata and attribute values cannot introduce HTML", async () => {
+  const app = await appHarness();
+  const payload = '<svg onload="bad()"> &';
+  const html = app.receipts([{ s: payload, evidence: [payload] }], [{ id: payload, text: payload }],
+    { source: "agent", model: payload, validation: "passed", rejected: [payload], latency_ms: payload });
+  assert.equal(html.includes("<svg"), false);
+  assert.ok(html.includes("&lt;svg"));
+  assert.ok(html.includes("✓ passed"));
 });
