@@ -66,8 +66,10 @@ test("broadcast framing keeps the ball clear of the screen edges throughout the 
   for (const x of [0, 26.25, 52.5, 78.75, 105]) for (const y of [0, 34, 68]) {
     const view = cameraView(16 / 9, false, [x, y]), camera = new T.PerspectiveCamera(view.fov, 16 / 9, 0.1, 500);
     camera.position.set(...view.position); camera.lookAt(...view.target); camera.updateMatrixWorld();
-    const projected = new T.Vector3(...worldPosition(x, y)).project(camera);
-    assert.ok(Math.abs(projected.x) < 0.85 && Math.abs(projected.y) < 0.85, JSON.stringify({ x, y, projected }));
+    for (const height of [0, 3]) {
+      const projected = new T.Vector3(...worldPosition(x, y, height)).project(camera);
+      assert.ok(Math.abs(projected.x) < 0.85 && Math.abs(projected.y) < 0.85, JSON.stringify({ x, y, height, projected }));
+    }
   }
 });
 
@@ -84,4 +86,22 @@ test("reduced motion fixes camera; low power reduces GPU cost without changing s
   assert.deepEqual(cameraView(16 / 9, true, [0, 0]), cameraView(16 / 9, true, [105, 68]));
   assert.deepEqual(qualitySettings("low", 3), { pixelRatio: 1, shadows: false, shadowSize: 0 });
   assert.deepEqual(qualitySettings("high", 3), { pixelRatio: 1.5, shadows: true, shadowSize: 2048 });
+});
+
+test("broadcast retains a forty-metre action span with crowd context behind the play", () => {
+  for (const y of [0, 34, 68]) {
+    const view = cameraView(16 / 9, false, [52.5, y]);
+    const camera = new T.PerspectiveCamera(view.fov, 16 / 9, .1, 500);
+    camera.position.set(...view.position); camera.lookAt(...view.target); camera.updateMatrixWorld();
+    // Two receivers twenty metres either side of the ball must fit in the
+    // active view. The far-side case previously showed mostly spectators.
+    for (const x of [32.5, 72.5]) {
+      const point = new T.Vector3(...worldPosition(x, y)).project(camera);
+      assert.ok(Math.abs(point.x) < .85 && Math.abs(point.y) < .85, `action cropped at ${x},${y}: ${point.toArray()}`);
+    }
+    // A spectator-height landmark at the front of the far stand stays in the
+    // background band. This does not measure the bounding box of every seat.
+    const crowdFront = new T.Vector3(0, 1.8, -43).project(camera);
+    assert.ok(crowdFront.y > .3, `crowd front drops into the action at ball y=${y}: ${crowdFront.y}`);
+  }
 });

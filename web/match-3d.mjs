@@ -3,7 +3,7 @@ import { buildStadium } from "./stadium.mjs?v=3.4";
 import { DetailedFootballers, loadAthlete } from "./athlete.mjs";
 import { updateCrowd } from "./crowd.mjs?v=3.4";
 import { loadAtlasMetadata } from "./crowd-atlas.mjs";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.5";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.7";
 
 export async function prepareAssets() {
   const loader = new T.TextureLoader();
