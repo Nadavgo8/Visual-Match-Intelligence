@@ -4,7 +4,7 @@
 
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
-| סקירה חוזרת D1 — שעון הסימולציה בתוצאה | MERGED_PENDING_VERIFICATION | [PR #21](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/21), main ‏9c8ee83; ‏357 Python ב־262.762s, ‏29 Node, ארבעת checks וכיסוי שינוי 100% לפני מיזוג. [אבחון ורגרסיות](D1-CLOCK-PROGRESSION.md). B4 ו־smoke התצוגה המשולבת ממתינים |
+| סקירה חוזרת D1 — שעון הסימולציה בתוצאה | DONE | [PR #21](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/21), main ‏9c8ee83; ‏B4: ‏357 Python ב־363.893s, ‏29 Node וכל ארבעת checks. ‏21 בדיקות ממוקדות עברו על אותו main ב־18.08s; smoke תלת־ממד אימת play/pause/seek ושעון. [אבחון ורגרסיות](D1-CLOCK-PROGRESSION.md) |
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
 | סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |
@@ -12,7 +12,7 @@
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
-| D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — VISUAL_GATE | codex/d1-match-3d, [Draft PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12); main ‏7074cf5 שולב ב־f96b599. ביקורת 25.10 תיקנה כיוון קהל, מדדים/סרגל/trace ישנים ואבחוני גיבוי; 78 Node, ‏100 seeds ו־20 תרחישים בתצוגה עברו. High ‏39–41FPS ו־Low ‏49–51FPS ב־1280×850. עדיין אין PASS לרמת תמונת הייחוס; SHA ותוצאות Python/כיסוי סופיות ב־PR. [דוח הביקורת](D1-AUDIT-2026-10-25.md) |
+| D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — VISUAL_GATE | codex/d1-match-3d, [Draft PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12); main ‏9c8ee83 ותיקון השעון שולבו. כל ששת עמודי החזון הושוו למימוש; 83 Node ו־smoke play/pause/seek עברו אחרי השילוב. נשמרות ראיות 100 seeds ו־20 תרחישים. עדיין נדרש ליטוש אצטדיון, חזרתיות קהל ואנימציית כדורגל לרמת הייחוס; SHA ותוצאות החבילה המשולבת הסופית ב־PR. [דוח הביקורת](D1-AUDIT-2026-10-25.md) |
 | D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8), main ‏56732ff; שכבת ה־PDF מוזגה ואומתה. תצוגת התלת־ממד משמרת אותה |
 | D2-00 | BLOCKED (הכרעה) | הכלים מוזגו ב־[PR #16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ל־bf9152c (שכבת ספק ניטרלית, סט 30 שאלות, כלי הערכה; CI ירוק). לא נבחר מודל. חסום: מקום בדיסק ל־Ollama, זכאות Azure for Students, וביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
