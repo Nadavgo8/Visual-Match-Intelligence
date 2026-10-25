@@ -19,6 +19,15 @@ ENVNAME=${ENVNAME:-vmi-env}
 : "${FOUNDRY_MODEL:?set FOUNDRY_MODEL}"
 : "${FOUNDRY_RESOURCE_ID:?set FOUNDRY_RESOURCE_ID}"
 
+# Zero cost: only deploy to a subscription whose spending limit is On (Free Trial). Usage then
+# stops at the free credit instead of billing a card.
+LIMIT=$(az rest --method get --url "https://management.azure.com/subscriptions/{subscriptionId}?api-version=2022-12-01" \
+  --query subscriptionPolicies.spendingLimit -o tsv)
+if [ "$LIMIT" != "On" ]; then
+  echo "!! spending limit is '$LIMIT', not On: this subscription could bill a card. Stopping."
+  exit 1
+fi
+
 az extension add --name containerapp --upgrade -y >/dev/null
 az extension add --name application-insights --upgrade -y >/dev/null
 
@@ -34,9 +43,12 @@ az containerapp up -n "$APP" -g "$RG" -l "$LOC" --environment "$ENVNAME" \
 
 echo "== Managed identity -> Foundry (no keys)"
 PRINCIPAL=$(az containerapp identity assign -n "$APP" -g "$RG" --system-assigned --query principalId -o tsv)
-az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal-type ServicePrincipal \
-  --role "Azure AI User" --scope "$FOUNDRY_RESOURCE_ID" -o none || \
-  echo "!! role assignment failed: grant 'Azure AI User' on the Foundry resource to $PRINCIPAL by hand"
+# "Cognitive Services User" calls the model deployment; "Azure AI Developer" uses the Foundry project.
+for ROLE in "Cognitive Services User" "Azure AI Developer"; do
+  az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal-type ServicePrincipal \
+    --role "$ROLE" --scope "$FOUNDRY_RESOURCE_ID" -o none || \
+    echo "!! role assignment failed: grant '$ROLE' on the Foundry resource to $PRINCIPAL by hand"
+done
 
 echo "== Settings"
 # One replica: rooms (a TV and its phones) live in memory, and min 1 avoids a 15-25 s cold start for judges.
