@@ -4,6 +4,7 @@
 
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
+| סקירה חוזרת D1 — שעון הסימולציה בתוצאה | MERGED_PENDING_VERIFICATION | [PR #21](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/21), main ‏9c8ee83; ‏357 Python ב־262.762s, ‏29 Node, ארבעת checks וכיסוי שינוי 100% לפני מיזוג. [אבחון ורגרסיות](D1-CLOCK-PROGRESSION.md). B4 ו־smoke התצוגה המשולבת ממתינים |
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
 | סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |

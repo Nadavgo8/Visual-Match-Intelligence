@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "coverage-baseline.json"
-CRITICAL = {"vmi/contracts.py", "vmi/engine/model.py", "vmi/engine/replay.py", "vmi/agents/explainer.py",
+CRITICAL = {"vmi/contracts.py", "vmi/engine/model.py", "vmi/engine/match_clock.py", "vmi/engine/replay.py", "vmi/agents/explainer.py",
             "vmi/agents/providers.py", "vmi/api/server.py"}
 CHANGED_MIN = {"lines": 90.0, "branches": 85.0}
 CRITICAL_MIN = {"lines": 95.0, "branches": 90.0}
