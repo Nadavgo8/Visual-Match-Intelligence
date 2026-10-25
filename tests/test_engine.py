@@ -85,6 +85,20 @@ def test_profile_filter():
     assert visible_to({"kind": "banner"}, "big")
 
 
+def test_replay_meters_clock_advances_between_events_and_rebuilds_on_seek():
+    from vmi.engine.replay import Replay
+
+    match = generate_match(12)
+    replay = Replay(match)
+    for target, expected in [(12, "0:12"), (20, "0:20"), (21, "0:21")]:
+        meters = [o for o in replay.advance(target) if o["kind"] == "meters"]
+        assert meters[-1]["clock"] == expected
+        assert replay.model.clock == expected
+    rebuilt = Replay(match)
+    rebuilt.advance(21)
+    assert rebuilt.model.clock == replay.model.clock
+
+
 def test_atmosphere_reports_components_and_availability_without_emotion(demo):
     _, outs = demo
     meters = [o["atmosphere"] for o in outs if o["kind"] == "meters"]
