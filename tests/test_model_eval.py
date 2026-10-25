@@ -171,3 +171,40 @@ def test_local_adapter_sends_the_eval_prompt_and_reads_json_replies():
 def test_parse_answer_keeps_raw_text_when_the_reply_is_not_json():
     assert me.parse_answer("  It is 1-0.  ") == ("It is 1-0.", [])
     assert me.parse_answer('{"answer": 3}') == ('{"answer": 3}', [])
+
+
+SUB_ON = {"subscriptionPolicies": {"spendingLimit": "On"}}
+
+
+@pytest.mark.parametrize("sub,expected", [
+    (SUB_ON, True),
+    ({"subscriptionPolicies": {"spendingLimit": "Off"}}, False),
+    ({"subscriptionPolicies": {"spendingLimit": "CurrentPeriodOff"}}, False),
+    ({}, False),
+    (None, False),
+])
+def test_spending_limit_must_be_reported_on(sub, expected):
+    assert me.spending_limit_on(lambda: sub) is expected
+
+
+def test_spending_limit_lookup_failure_counts_as_a_cost_risk():
+    def broken():
+        raise RuntimeError("az not logged in")
+    assert me.spending_limit_on(broken) is False
+
+
+def test_foundry_candidate_refuses_a_subscription_that_could_charge():
+    made = []
+    with pytest.raises(CostRiskError):
+        me.FoundryCandidate("https://x.services.ai.azure.com/api/projects/p", "gpt-5-mini",
+                            read_subscription=lambda: {"subscriptionPolicies": {"spendingLimit": "Off"}},
+                            client_factory=lambda e, m: made.append((e, m)))
+    assert made == []  # no client is even created
+
+
+def test_foundry_candidate_with_the_limit_on_is_a_zero_cost_provider():
+    c = me.FoundryCandidate("https://x.services.ai.azure.com/api/projects/p", "gpt-5-mini",
+                            read_subscription=lambda: SUB_ON, client_factory=lambda e, m: ("client", e, m))
+    assert c.may_charge is False and c.model == "gpt-5-mini" and c.name == "microsoft-foundry"
+    assert c._client == ("client", "https://x.services.ai.azure.com/api/projects/p", "gpt-5-mini")
+
