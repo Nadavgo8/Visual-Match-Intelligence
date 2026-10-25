@@ -1,6 +1,6 @@
 import { FEED_ICONS } from "./icons.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
-import { openSession } from "./session.mjs";
+import { openSession } from "./session.mjs?v=1.1";
 import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile, scopeOf } from "./companion.mjs?v=1.1";
 
 const params = new URLSearchParams(location.search);
