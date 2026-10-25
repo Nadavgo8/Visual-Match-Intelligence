@@ -49,7 +49,27 @@ Every server message carries:
 
 ## Tests
 
-`tests/test_realtime_session.py` (17) and the updated `tests/test_api.py`; `tests/web/session.test.mjs` (6). Multi-connection tests use `with TestClient(app)` so that every connection shares one event loop, as under uvicorn. Without it, Starlette runs each connection on its own loop.
+### Browser lifecycle review, 25 October 2026
+
+Repository-wide review reproduced five failing cases in the browser session:
+an old socket could publish after replacement, pre-snapshot messages could
+poison the replacement sequence gate, a timer could reconnect after disposal,
+malformed JSON threw, and rejected snapshots could overwrite the host token.
+The session now owns one current socket, rejects callbacks from earlier sockets,
+requires a fresh snapshot on every connection, updates tokens only after gate
+acceptance, ignores malformed data and makes close final even during backoff.
+The wire contract, server host authority and backoff schedule are unchanged.
+
+The same session test file produced 5 pass / 5 fail before the fix and 10 pass /
+0 fail after it. Full Node: 33 pass, no skips. Focused `session.mjs` coverage:
+100% lines / 96.43% branches. Callbacks, time and WebSocket transport are
+controlled boundary fakes; the actual gate and session code execute. Full-suite
+CI and the tested SHA are recorded on the fix PR, with post-merge verification
+required before DONE. Author/reviewer: Codex in separate self-review steps.
+Bootstrap/import URLs were refreshed so existing browsers load the corrected
+module. No model, provider, product contract or paid service was selected.
+
+Original D2-02 test inventory: `tests/test_realtime_session.py` (17), the updated `tests/test_api.py` and the original six browser session tests. Current counts and the later lifecycle regressions are recorded above. Multi-connection tests use `with TestClient(app)` so that every connection shares one event loop, as under uvicorn. Without it, Starlette runs each connection on its own loop.
 
 Not covered here: linking events that arrive before their source, and duplicate or reverse-order feed records. The engine handles those (D1-01/D1-02 contract tests).
 

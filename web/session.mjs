@@ -15,11 +15,14 @@ export function backoffDelay(attempt) {
 export class MessageGate {
   constructor() { this.runId = null; this.lastSeq = 0; }
 
-  // A new connection: the server's sequence numbers start again.
-  connectionOpened() { this.lastSeq = 0; }
+  // Every connection needs a fresh snapshot; the previous run is not a grant
+  // to accept messages arriving before the replacement snapshot.
+  connectionOpened() { this.lastSeq = 0; this.runId = null; }
 
   accept(m) {
-    if (!Number.isInteger(m?.seq) || m.seq <= this.lastSeq) return false;
+    if (!m || typeof m.type !== "string" || typeof m.run_id !== "string" || !m.run_id
+      || !Number.isSafeInteger(m.seq) || m.seq <= this.lastSeq) return false;
+    if (this.runId === null && m.type !== "snapshot") return false;
     this.lastSeq = m.seq;
     if (m.type === "snapshot") { this.runId = m.run_id; return true; }
     return this.runId !== null && m.run_id === this.runId;
@@ -46,18 +49,25 @@ export function openSession({ room, role, onMessage, onStatus, hostToken = null,
   let ws = null, attempt = 0, closed = false;
 
   function connect() {
-    ws = new WebSocketImpl(sessionUrl(loc, room, role, hostToken?.get()));
+    if (closed) return;
+    const socket = new WebSocketImpl(sessionUrl(loc, room, role, hostToken?.get()));
+    ws = socket;
     gate.connectionOpened();
-    ws.onopen = () => { attempt = 0; onStatus?.("connected"); };
-    ws.onmessage = (ev) => {
-      const m = JSON.parse(ev.data);
+    const current = () => !closed && ws === socket;
+    socket.onopen = () => { if (current()) { attempt = 0; onStatus?.("connected"); } };
+    socket.onmessage = (ev) => {
+      if (!current()) return;
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (!gate.accept(m)) return;
       if (m.type === "snapshot" && m.host_token) hostToken?.set(m.host_token);
-      if (gate.accept(m)) onMessage(m);
+      onMessage(m);
     };
-    ws.onclose = () => {
-      if (closed) return;
+    socket.onclose = () => {
+      if (!current()) return;
+      ws = null;
       onStatus?.("disconnected");
-      schedule(connect, backoffDelay(attempt++));
+      schedule(() => { if (!closed && ws === null) connect(); }, backoffDelay(attempt++));
     };
   }
 
@@ -68,6 +78,6 @@ export function openSession({ room, role, onMessage, onStatus, hostToken = null,
       ws.send(JSON.stringify(m));
       return true;
     },
-    close() { closed = true; ws?.close(); },
+    close() { closed = true; const socket = ws; ws = null; socket?.close(); },
   };
 }
