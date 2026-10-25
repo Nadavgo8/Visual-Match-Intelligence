@@ -207,3 +207,72 @@ def test_foundry_candidate_with_the_limit_on_is_a_zero_cost_provider():
                             read_subscription=lambda: SUB_ON, client_factory=lambda e, m: ("client", e, m))
     assert c.may_charge is False and c.model == "gpt-5-mini" and c.name == "microsoft-foundry"
     assert c._client == ("client", "https://x.services.ai.azure.com/api/projects/p", "gpt-5-mini")
+
+
+def test_az_subscription_reads_the_current_subscription_through_az(monkeypatch):
+    seen = {}
+
+    class Done:
+        stdout = json.dumps(SUB_ON)
+
+    def fake_run(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return Done()
+    monkeypatch.setattr(me.subprocess, "run", fake_run)
+    assert me.az_subscription() == SUB_ON
+    assert seen["cmd"][:3] == ["az", "rest", "--method"] and "{subscriptionId}" in seen["cmd"][-1]
+    assert seen["kw"]["check"] is True
+
+
+def test_foundry_candidate_sends_the_eval_prompt_and_parses_the_reply(monkeypatch):
+    import agent_framework
+    calls = {}
+
+    class FakeAgent:
+        def __init__(self, client, instructions, name):
+            calls.update(client=client, instructions=instructions, name=name)
+
+        async def run(self, prompt):
+            calls["prompt"] = prompt
+            return type("R", (), {"text": 'ok {"answer": "It is 1-0.", "evidence": ["state"]}'})()
+    monkeypatch.setattr(agent_framework, "Agent", FakeAgent)
+    c = me.FoundryCandidate("https://x/api/projects/p", "gpt-5-mini", read_subscription=lambda: SUB_ON,
+                            client_factory=lambda e, m: "client")
+    req = ModelRequest(kind="answer", prompt='{"question": "Score?"}', snapshot={}, snapshot_t=1.0)
+    assert asyncio.run(c.complete(req)) == ("It is 1-0.", ["state"])
+    assert calls == {"client": "client", "instructions": me.PROMPT, "name": "eval_candidate",
+                     "prompt": '{"question": "Score?"}'}
+
+
+def test_default_foundry_client_is_keyless(monkeypatch):
+    import agent_framework.foundry as af
+    import azure.identity.aio as aio
+    made = {}
+    monkeypatch.setattr(aio, "DefaultAzureCredential", lambda: "entra-id")
+    monkeypatch.setattr(af, "FoundryChatClient", lambda **kw: made.update(kw) or "client")
+    assert me._foundry_client("https://x/api/projects/p", "gpt-5-mini") == "client"
+    assert made == {"project_endpoint": "https://x/api/projects/p", "model": "gpt-5-mini", "credential": "entra-id"}
+
+
+def test_cli_foundry_needs_model_and_endpoint(monkeypatch):
+    monkeypatch.delenv("FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    with pytest.raises(SystemExit):
+        me.main(["--provider", "foundry", "--model", "gpt-5-mini"])
+
+
+def test_cli_foundry_builds_the_guarded_candidate_and_writes_the_report(monkeypatch, tmp_path):
+    built = {}
+
+    class Fake:
+        def __init__(self, endpoint, model):
+            built.update(endpoint=endpoint, model=model)
+
+    async def fake_run(provider, runs):
+        built.update(provider=provider, runs=runs)
+        return {"rows": [], "summary": {"requests": 0}}
+    monkeypatch.setattr(me, "FoundryCandidate", Fake)
+    monkeypatch.setattr(me, "run", fake_run)
+    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://x/api/projects/p")
+    assert me.main(["--provider", "foundry", "--model", "gpt-5-mini", "--runs", "1", "--output", str(tmp_path)]) == 0
+    assert built["endpoint"] == "https://x/api/projects/p" and built["model"] == "gpt-5-mini" and built["runs"] == 1
+    assert isinstance(built["provider"], Fake) and (tmp_path / "gpt-5-mini" / "review.csv").exists()
