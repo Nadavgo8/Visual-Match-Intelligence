@@ -9,6 +9,7 @@ import bisect
 import math
 
 from .match import PITCH_X, PITCH_Y, Match
+from .motion import formation_position
 
 
 class Tracker:
@@ -111,21 +112,10 @@ class Tracker:
         players = []
         for side in ("home", "away"):
             right = self.attacks_right(side, t)
-            # ball position in this team's attack frame
-            bax = bx if right else PITCH_X - bx
-            bay = by if right else PITCH_Y - by
             for pid in self.lineup(side, t):
                 p = self.players[pid]
                 ox, oy = self.base[pid]
-                if self.role_at(pid, t) == "GK":
-                    ax, ay = ox + max(0, (bax - 30) * 0.05), oy + (bay - 34) * 0.12
-                else:
-                    ax = ox + (bax - 52.5) * 0.45
-                    ay = oy + (bay - oy) * 0.25
-                    seed = sum(map(ord, pid))
-                    ax += 1.2 * math.sin(t / 3.1 + seed)
-                    ay += 1.2 * math.cos(t / 2.7 + seed * 0.7)
-                x, y = (ax, ay) if right else (PITCH_X - ax, PITCH_Y - ay)
+                x, y = formation_position(ox, oy, self.role_at(pid, t), pid, right, bx, by, t)
                 pa = a.player_positions.get(pid, (x, y))
                 pb = b.player_positions.get(pid, (x, y))
                 x, y = pa[0] + (pb[0] - pa[0]) * alpha, pa[1] + (pb[1] - pa[1]) * alpha

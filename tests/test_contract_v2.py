@@ -188,9 +188,11 @@ def test_replay_score_matches_delivered_results_and_has_no_future_metadata(match
     r = Replay(match)
     assert "final_score" not in r.model.meta and "end_t" not in r.model.meta
     goal = next(e for e in match.events if e["type"] == "shot_result" and e["outcome"] == "goal")
-    r.advance(goal["delivered_t"] - 0.01)
+    parent = next(e for e in match.events if e["id"] == goal["shot_id"])
+    ready_at = max(parent["delivered_t"], goal["delivered_t"])
+    r.advance(ready_at - 0.01)
     assert sum(r.model.score.values()) == 0
-    r.advance(goal["delivered_t"])
+    r.advance(ready_at)
     assert sum(r.model.score.values()) == 1
     r.advance(match.duration)
     assert r.model.score == match.meta["final_score"] and not r.model.pending_links

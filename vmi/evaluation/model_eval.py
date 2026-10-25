@@ -32,6 +32,7 @@ from ..agents.tools import MatchTools
 from ..engine.replay import Replay
 from ..generator.match import generate_match
 from .question_set import ITEMS, SEED, Item
+from .benchmark import benchmark_match
 
 PROMPT = (Path(__file__).resolve().parents[2] / "prompts" / "model_eval.md").read_text(encoding="utf-8")
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -45,13 +46,22 @@ def _score(s: dict) -> str:
 
 def _future(match, t: float, pack_blob: str, roster: dict[str, str]) -> dict:
     """Scores and player names that only become true after t, for leak detection."""
-    scores, names = set(), set()
+    scores, names, goals = set(), set(), {}
     running = {"home": 0, "away": 0}
+    current = _score(running)
     for e in sorted(match.events, key=lambda e: e["t"]):
-        if e["type"] == "shot_result" and e.get("outcome") == "goal":
+        changed = False
+        if e["type"] == "shot_result" and e.get("outcome") == "goal" and e["id"] not in goals:
+            goals[e["id"]] = e["team"]
             running[e["team"]] += 1
-            if e["t"] > t:
-                scores.add(_score(running))
+            changed = True
+        if e["type"] == "goal_cancelled" and e.get("result_id") in goals:
+            running[goals.pop(e["result_id"])] -= 1
+            changed = True
+        if changed and e["t"] > t:
+            scores.add(_score(running))
+        if e["t"] <= t:
+            current = _score(running)
         if e["t"] > t and e["type"] in {"shot_result", "card", "substitution"}:
             ids = [e.get("player_id")]
             if e["type"] == "substitution":
@@ -60,7 +70,7 @@ def _future(match, t: float, pack_blob: str, roster: dict[str, str]) -> dict:
                 name = roster.get(pid)
                 if name and name.lower() not in pack_blob:
                     names.add(name)
-    return {"scores": sorted(scores), "names": sorted(names)}
+    return {"scores": sorted(scores - {current}), "names": sorted(names)}
 
 
 def _pack(model, item: Item) -> dict:
@@ -81,7 +91,7 @@ def _pack(model, item: Item) -> dict:
 
 async def build_snapshots(items=ITEMS, seed: int = SEED):
     """Replay once in time order; freeze a pack, future facts and a template answer per item."""
-    match = generate_match(seed)
+    match = benchmark_match() if seed == SEED else generate_match(seed)
     roster = {p["id"]: p["name"] for side in match.meta["teams"].values() for p in side["players"]}
     replay = Replay(match)
     packs, futures, templates, delivered = {}, {}, {}, {}

@@ -60,7 +60,7 @@ def test_all_restarts_link_to_stop_award_and_execution(match):
             assert action["restart_id"] == award["id"]
             assert action["team"] == award["team"] == ev["team"]
         elif ev["type"] == "referee_decision" and ev["decision"] == "penalty":
-            assert by[ev["trigger_event_id"]]["type"] == "foul"
+            assert by[ev["trigger_event_id"]]["type"] in {"foul", "handball"}
     for ev in match.events:
         if ev["type"] == "shot":
             assert ev["play_context"] in {"open_play", "corner", "penalty", "free_kick", "kick_off", "throw_in", "goal_kick"}
