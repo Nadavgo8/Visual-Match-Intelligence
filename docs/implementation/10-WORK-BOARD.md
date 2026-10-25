@@ -2,24 +2,30 @@
 
 עודכן: 25.10.2026. מקור האמת למצב הוא Git והראיות המקושרות, לא עצם הופעת משימה ברשימה.
 
+**סקירת הריפו וסידור הענפים:** [דוח 25.10](REPOSITORY-AUDIT-2026-10-25.md).
+נוקו 11 ענפים משולבים בשרת ו־10 מקומיים; שני ענפים שלא מוזגו נשמרו לבחירת
+ארכוב. PR #12 הוא משימת תלת־ממד פתוחה, ולא ענף מיותר. ריצות מלאות חדשות
+עברו על main ועל התלת־ממד; תיקוני הביקורת והראיות הסופיות בדוח ובהעברה.
+
 | משימה | מצב | תלות / הצעד הבא |
 |---|---|---|
-| סקירה חוזרת D1 — שעון הסימולציה בתוצאה | DONE | [PR #21](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/21), main ‏9c8ee83; ‏B4: ‏357 Python ב־363.893s, ‏29 Node וכל ארבעת checks. ‏21 בדיקות ממוקדות עברו על אותו main ב־18.08s; smoke תלת־ממד אימת play/pause/seek ושעון. [אבחון ורגרסיות](D1-CLOCK-PROGRESSION.md) |
+| סקירת ריפו — session, קלט וניקוי | DONE — תיקונים וניקוי; סנכרון 3D בבדיקה | [PR #22](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/22) מוזג ואומת על main; [PR #23](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/23) מוזג אחרי 357 Python ו־37 Node ב־CI. B4 עבר על שני המיזוגים; PR #24 לסיכום מוזג ל־92b5ecf. אימות הסיכום והסנכרון הסופי ב־PRs |
+| סקירה חוזרת D1 — שעון הסימולציה בתוצאה | DONE | [PR #21](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/21) מוזג ל־9c8ee83; אימות חוזר על main: ‏357 Python ו־29 Node עברו, שער כיסוי PASS; [אבחון ורגרסיות](D1-CLOCK-PROGRESSION.md) |
 | נוהל איכות ו־Git | DONE | PR #1 מוזג ל־b5fe932; 33 בדיקות עברו גם לאחר המיזוג |
 | סקירה חוזרת D1 — סדר מסירה | DONE | [PR #9](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/9), main ‏37fe99e; ‏199 Python ב־130.54s, ‏12 Node ו־smoke אחרי מיזוג; שישה ממצאים תוקנו |
 | סקירה חוזרת D1-03 — חלון מומנטום | DONE | [PR #10](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/10), main ‏e8eb619; ‏202 Python ב־132.30s, ‏12 Node ו־smoke של meters וכלי המומנטום אחרי מיזוג |
-| סקירה חוזרת D1-05 — טקסט המציג | DONE | [PR #11](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/11), main ‏cbbc511; ‏202 Python ב־126.03s ו־15 Node עברו אחרי המיזוג; DOM אמיתי אימת טקסט מילולי וגבול 40 רשומות |
+| סקירה חוזרת D1-05 — טקסט המציג | DONE | [PR #11](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/11) מוזג ל־cbbc511; בדיקות טקסט/סדר/גבול נכללות בריצה המלאה המחודשת על main |
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
-| D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — VISUAL_GATE | codex/d1-match-3d, [PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12); main ‏9c8ee83 משולב. עדכון נוכחי: 12 זהויות, קהל שקט/חצי־חצי/שיא, מעברי תנוחות לפי מקור, תגובות מגע וכדור קרוב, פרטי חולצות וקומפוזיציה ללא עמוד קדמי. 20 תרחישי תצוגה עברו בדפדפן; חמש בדיקות API ב־36.55s ושלושה mutations נתפסו. SHA, חבילות סופיות, CI וביצועים ב־PR. אין טענת שוויון פוטוריאליסטי או DONE לפני השער. [מפרט וממצאים](D1-CROWD-EXPERIENCE.md) |
-| D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8), main ‏56732ff; שכבת ה־PDF מוזגה ואומתה. תצוגת התלת־ממד משמרת אותה |
+| D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — VISUAL_GATE | [Draft PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12), `codex/d1-match-3d`; main ‏92b5ecf משולב. 12 זהויות, קהל שקט/מעורב/שיא, מעבר תנוחות לפי מקור, תגובות מגע וכדור קרוב ופרטי חולצות נשמרו. Baseline ‏bd2c694: ‏358 Python ו־110 Node; אחרי שילוב התיקונים 118 Node עברו. חבילה מלאה/כיסוי על HEAD הסופי ב־PR. [מפרט וממצאים](D1-CROWD-EXPERIENCE.md); PR #7 נסגר והוחלף. אין DONE או טענת שוויון פוטוריאליסטי לפני הקבלה החזותית |
+| D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8) מוזג ל־56732ff; שני פסים זהים, סמל יחיד, תזמון ונגישות נכללים בבדיקות main המעודכנות |
 | D2-00 | BLOCKED (הכרעה) | הכלים מוזגו ב־[PR #16](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/16) ל־bf9152c (שכבת ספק ניטרלית, סט 30 שאלות, כלי הערכה; CI ירוק). לא נבחר מודל. חסום: מקום בדיסק ל־Ollama, זכאות Azure for Students, וביקורת שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
 | D2-02 | DONE | [PR #15](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/15) מוזג ל־9063ca5; ארבעת ה־checks עברו (הריצה הראשונה נכשלה בשער הכיסוי ונוספו 5 בדיקות; שורות קריטיות שהשתנו 100%, ענפים 97.14%); אחרי המיזוג: 285 Python ו־21 Node עברו על main. [חוזה](D2-02-SESSION.md) |
 | D2-03 | DONE | [PR #18](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/18) מוזג ל־8924791; ארבעת ה־checks עברו; אחרי המיזוג 311 Python ו־27 Node עברו על main |
 | D2-04 | DONE | [PR #19](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/19) מוזג ל־5414521; ארבעת ה־checks עברו (שורות קריטיות שהשתנו 96.30%, ענפים 100%) |
-| D2-05 | IN_REVIEW (שלד) | `codex/d2-commentary-agents`: תשובת Ask מול snapshot קפוא, מגבלת 20s לנתיב הסוכנים, תוויות live/template, תווית Interpretation, הסבר אוטומטי שהושלם במשחק פעיל ממתין לעצירה, תיקון ערך האווירה במאגר החוקים. חיבור מודל קבוע, אנליסט משמעות וכותב כסוכני מודל — ממתינים להכרעת D2-00 |
+| D2-05 | MERGED_CORE / WAITING_D2-00 | השלד מוזג ב־[PR #20](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/20) ל־7074cf5: snapshot קפוא, מגבלת 20s, תוויות מקור והמתנת הסבר לעצירה. חיבור מודל קבוע, אנליסט משמעות וכותב כסוכני מודל עדיין ממתינים להכרעת D2-00; אין PR שלד פתוח |
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
 
 ## הרשאות ורצף העבודה
