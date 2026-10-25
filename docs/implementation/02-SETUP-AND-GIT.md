@@ -1,6 +1,6 @@
 # VMI — הקמה, בדיקות ו־CI
 
-עודכן: 23.10.2026 (D2-01). הנחיות משותפות לשני המפתחים ולכל כלי בינה. נוהל השערים המלא: [12-QUALITY-AND-GIT-GATES](12-QUALITY-AND-GIT-GATES.md). הנחיות ייעודיות לכלי נמצאות ב־`AGENTS.md` (Codex) וב־`CLAUDE.md` (Claude Code), ושתיהן מפנות לכאן.
+עודכן: 25.10.2026 (אימות מצב D2-01). הנחיות משותפות לשני המפתחים ולכל כלי בינה. נוהל השערים המלא: [12-QUALITY-AND-GIT-GATES](12-QUALITY-AND-GIT-GATES.md). הנחיות ייעודיות לכלי נמצאות ב־`AGENTS.md` (Codex) וב־`CLAUDE.md` (Claude Code), ושתיהן מפנות לכאן.
 
 ## התקנה נקייה
 
@@ -43,7 +43,12 @@ python -m tools.coverage_gate --coverage out/coverage.json --base origin/main
 
 `.github/workflows/ci.yml` רץ על כל PR ל־`main` ועל כל push ל־`main`, ללא סינון נתיבים. ארבע בדיקות: `python-tests` (חבילה מלאה, כיסוי, JUnit ו־artifact), `coverage-gate`, `web-tests`, `static-checks` (ruff וגם `diff --check`). ה־actions נעולים ל־SHA מלא; ההרשאות לקריאה בלבד.
 
-**מצב אכיפה: לא מאומת.** הריפו פרטי, ולכן Actions צורך מהמכסה החינמית של החשבון. הוא נשאר חינמי רק אם תקציב Actions הוא $0 (ברירת המחדל). הגנת `main`, required checks ובדיקת "CI כושל חוסם מיזוג" דורשות הרשאת admin דרך `gh`, ועדיין לא הוגדרו.
+**אימות 25.10.2026:** workflow פעיל, `main` מוגן וארבעת ה־checks לעיל נדרשים
+בשרת. PR #14 ההיסטורי עם כשל מכוון נחסם ונסגר בלי מיזוג, לפי ראיות D2-01.
+בסקירה הנוכחית אומתו שוב מצב ההגנה ושמות הבדיקות; לחשבון יש push ללא admin,
+ולכן קריאת כל ההגדרות המנהליות החזירה 404. אין להסיק מכך שההגנה אינה קיימת.
+לא שונו כללים. הריפו פרטי ומשתמש במכסת Actions הקיימת; אין להפעיל תקציב,
+runner בתשלום או overage. פירוט עדכני: [דוח הסקירה](REPOSITORY-AUDIT-2026-10-25.md).
 
 ## Git
 

@@ -4,7 +4,7 @@ Read [CLAUDE.md](CLAUDE.md) for shared project context, then the documents relev
 
 ## Active plan and scope
 
-- The active plan is [VMI-FINAL-PLAN-F.md](docs/implementation/VMI-FINAL-PLAN-F.md). Its explicit decisions take precedence over older product summaries: 2D demo, delayed linked generator xG, and no permanent model/runtime choice before D2-00.
+- The active plan is [VMI-FINAL-PLAN-F.md](docs/implementation/VMI-FINAL-PLAN-F.md). The user subsequently authorized the 3D route in PR #12; main still has the 2D renderer until that Draft passes visual acceptance and merges. Preserve delayed linked generator xG and no permanent model/runtime choice before D2-00. Consult the current work board rather than restarting merged D1 tasks.
 - Execute only the authorized task. Writing or updating the plan does not authorize implementing the entire product.
 - Keep implementation, meaningful tests, fixes and review for one task in the same PR. A separate tests-only PR needs an independently useful scope, not merely a failing test. Diagnose routine failures before escalating a purported product decision.
 - Each new task branch starts from updated `main`; wait for dependent PRs to merge. Commit bodies explain what changed, why, validation and remaining limits. Consult the work board and handoff for the latest authorized next step.
@@ -22,6 +22,6 @@ Follow [12-QUALITY-AND-GIT-GATES.md](docs/implementation/12-QUALITY-AND-GIT-GATE
 - Rerun after fixes or synchronization. After squash merge, verify the integrated `main` before marking a task DONE. Between stages, require technical review of accumulated changes and tests on the same integrated SHA.
 - Never invent a PASS, reviewer, approval, coverage percentage or CI state. A blocked or unrun test remains explicit and blocks the corresponding gate; independent work may continue.
 - After a finding, record its cause, a regression test and a focused improvement to the next review. Do not weaken assertions or thresholds to obtain green checks.
-- CI, coverage gates, frontend test tooling and branch protections are D2-01 implementation requirements until actual configuration and verification exist. A Markdown policy does not activate them.
+- CI, coverage gates, frontend test tooling and main protection are implemented. The 25 October audit verified four required checks; full administrative protection details require admin permission. Consult the setup document and audit evidence, and verify actual current checks on each PR. A Markdown policy alone is not enforcement.
 
 - Follow policy section 7.3: fix the tested HEAD and base, run actual required tests, review the full diff and evidence, resolve blocking findings and discussions, recheck HEAD/base, merge with matching HEAD without bypasses, and test merged main. This is active-session automation, not an unattended background service. An empty CI list is not a PASS.
