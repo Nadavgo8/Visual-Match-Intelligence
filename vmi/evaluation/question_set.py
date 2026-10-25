@@ -1,11 +1,13 @@
-"""The shared D2-00 question set: 30 English questions on demo seed 12.
+"""The shared D2-00 question set: 30 English questions on frozen v2.2 seed 12.
 
 Each question is asked at a snapshot time. The fact pack a model receives is built
 from the engine after replaying only what was delivered by that time, so a correct
 answer never needs the future. Future-only facts (later scores, players who only
 appear later) are listed per item so the scorer can flag a leak.
 
-Seed 12 timeline, for reading the items: 18:22 home goal (1-0); 38:37 VAR penalty
+The benchmark input is pinned in fixtures/demo-v2.2.json.gz. This timeline is
+not a promise about a later generator version's demo. For reading the items:
+18:22 home goal (1-0); 38:37 VAR penalty
 check, overturned to a penalty for the away team at 39:32; 40:40 away goal (1-1);
 VAR goal check stands; half-time; 52:06 home winner (2-1); subs from 56:43.
 """
