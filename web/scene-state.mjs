@@ -46,15 +46,21 @@ export function cameraView(aspect, reducedMotion = false, ball = [52.5, 34], mod
   // Keep the complete metric pitch in frame at narrow sizes as well as 16:9.
   const distance = Math.max(1, (16 / 9) / safeAspect);
   if (!reducedMotion && mode === "broadcast") {
-    const x = Math.max(-47, Math.min(47, (ball[0] - 52.5) * 0.9));
-    const near = Math.max(0, Math.min(1, (68 - ball[1]) / 68));
-    // Keep the camera beyond the near touchline rather than crossing the pitch
-    // behind a far-side ball. Zoom compensates for distance so the action stays
-    // readable, with receivers visible and the crowd confined to the backdrop.
-    // A broadcast head pans from a central gantry. Following the ball all the
-    // way behind either goal puts the end-stand canopy across the upper image.
-    return { position: [x * 0.42, 22 * distance, (60 + 20 * near) * distance],
-      target: [x, -2 + 8 * near, 34 - ball[1]], fov: (18 + 16 * near) * 0.9 };
+    // A central broadcast gantry looks INTO the playing area at either end.
+    // Centring the goal-line ball itself wasted half the frame on end stands.
+    const x = Math.max(-35, Math.min(35, (ball[0] - 52.5) * 0.85));
+    const far = Math.max(0, Math.min(1, (ball[1] - 34) / 34));
+    // Near-side action otherwise pushes the opposite stand above the frame.
+    // Tilt up without widening the action or changing any delivered position.
+    const near = Math.max(0, Math.min(1, (34 - ball[1]) / 34));
+    const target = [x, 3.8 + Math.min(4, 12 * near) - 7.8 * far, 34 - ball[1]];
+    const position = [x * 0.38, 30 * distance, 70 * distance];
+    // Metric framing: approximately 44m across the action plane. This gives
+    // human silhouettes room to read, while retaining receivers 20m either
+    // side. The elevated view separates the ball from overlapping bodies.
+    const depth = Math.hypot(...position.map((value, i) => value - target[i]));
+    const fov = 2 * Math.atan(22 * distance / (safeAspect * depth)) * 180 / Math.PI;
+    return { position, target, fov };
   }
   const targetX = reducedMotion ? 0 : Math.max(-5, Math.min(5, (ball[0] - 52.5) * 0.1));
   return { position: [targetX, 72 * distance, 84 * distance], target: [targetX, 0, 0], fov: 46 };

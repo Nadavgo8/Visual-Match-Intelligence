@@ -130,12 +130,28 @@ test("broadcast retains a forty-metre action span with crowd context behind the 
     // active view. The far-side case previously showed mostly spectators.
     for (const x of [32.5, 72.5]) {
       const point = new T.Vector3(...worldPosition(x, y)).project(camera);
-      assert.ok(Math.abs(point.x) < .85 && Math.abs(point.y) < .85, `action cropped at ${x},${y}: ${point.toArray()}`);
+      // 40m remains in shot with a 2.5% screen-edge margin. The old 7.5%
+      // margin widened the entire scene until players lost readable detail.
+      assert.ok(Math.abs(point.x) < .95 && Math.abs(point.y) < .85, `action cropped at ${x},${y}: ${point.toArray()}`);
     }
     // A spectator-height landmark at the front of the far stand stays in the
     // background band. This does not measure the bounding box of every seat.
     const crowdFront = new T.Vector3(0, 1.8, -43).project(camera);
     assert.ok(crowdFront.y > .3, `crowd front drops into the action at ball y=${y}: ${crowdFront.y}`);
+  }
+});
+
+test('broadcast action has readable human scale and a shallow stadium backdrop at midfield and either box',()=>{
+  // Delivered source locations from the rejected reference-review frames,
+  // mirrored for the other goal. Assert screen geometry, not camera constants.
+  for(const ball of [[39.92,23.92],[5.94,31.3],[99.06,31.3]]){
+    const view=cameraView(1337/752,false,ball),camera=new T.PerspectiveCamera(view.fov,1337/752,.1,500);
+    camera.position.set(...view.position);camera.lookAt(...view.target);camera.updateMatrixWorld();
+    const project=height=>new T.Vector3(...worldPosition(...ball,height)).project(camera);
+    assert.ok((project(1.8).y-project(0).y)*752/2>47,'footballers at the action must exceed 47 CSS pixels in a 752px-high view');
+    const front=new T.Vector3(view.target[0],1.8,-43).project(camera);
+    assert.ok(front.y>.50,'the front of the far stand must remain in the upper quarter');
+    assert.ok(front.y<.8,'retain at least a tenth-frame occupied stadium backdrop for peripheral crowd poses');
   }
 });
 

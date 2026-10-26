@@ -111,7 +111,9 @@ export function createAtlasCrowd(seats, uniforms, atlas) {
   for (const [index, seat] of seats.entries()) {
     dummy.position.set(seat.x, seat.y, seat.z); dummy.rotation.y = Math.PI + (seat.seed - 0.5) * 0.3;
     dummy.scale.set(0.94 + seat.shape * 0.14, 0.9 + seat.seed * 0.2, 1); dummy.updateMatrix();
-    mesh.setMatrixAt(index, dummy.matrix); mesh.setColorAt(index, color.setScalar(0.68 + seat.shape * 0.3));
+    // The occupied stand is a shaded backdrop, not a wall of equally bright
+    // portraits. Keep every spectator and pose; preserve clothing/skin hue.
+    mesh.setMatrixAt(index, dummy.matrix); mesh.setColorAt(index, color.setScalar(0.49 + seat.shape * 0.25));
   }
   mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; mesh.frustumCulled = false;
   mesh.name = "Delivered-amplitude crowd"; return mesh;

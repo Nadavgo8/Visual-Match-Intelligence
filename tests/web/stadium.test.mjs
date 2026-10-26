@@ -5,7 +5,8 @@ import { buildStadium } from "../../web/stadium.mjs";
 import { cameraView, worldPosition } from "../../web/scene-state.mjs";
 
 // The 2D texture API is the boundary fake. Actual geometry, transforms and raycasts run.
-const context = new Proxy({}, { get: () => () => {} });
+const context = new Proxy({}, { get: (_target,key) => key === 'createRadialGradient'
+  ? () => ({addColorStop(){}}) : () => {} });
 const document = { createElement: () => ({ width: 0, height: 0, getContext: () => context }) };
 test("stadium batches static detail and leaves the broadcast line of sight open", () => {
   const stadium = buildStadium(document); stadium.updateMatrixWorld(true);

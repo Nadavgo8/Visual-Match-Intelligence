@@ -16,21 +16,29 @@ export function legAngles(upper, lower, targetY, targetZ) {
   return { hip, knee: relativeKnee, ankle: -hip - relativeKnee };
 }
 
-export function footballGait(speed, cycle, keeper = false) {
+export function gaitCycleLength(speed) { return clamp(0.8 + 0.5 * Math.max(0, speed), 0.8, 4.4); }
+
+export function footballGait(speed, cycle, keeper = false, cycleLength = 2.2) {
   const pace = clamp(speed, 0, 9) / 9, moving = pace > 0.006;
   const phase = clamp(cycle, 0, Number.MAX_SAFE_INTEGER) % 1;
-  const stride = moving ? 0.12 + pace * 0.26 : 0;
+  const length = clamp(cycleLength, 0.8, 4.4), duty = Math.min(0.60, 0.65 / length);
+  const span = length * duty;
   const step = offset => {
     const p = (phase + offset) % 1;
-    // A level support phase, then a bent-knee return. Unlike a sinusoidal
-    // marching leg, the foot clears the grass instead of swinging through it.
-    const lift = p < 0.5 ? 0 : Math.sin((p - 0.5) * Math.PI * 2) * (0.05 + pace * 0.18);
-    return { z: moving ? Math.cos(p * Math.PI * 2) * stride : 0, lift: moving ? lift : 0 };
+    // During contact, linear retraction cancels source travel exactly at a
+    // constant speed. Short running stance keeps the reach within the leg.
+    const airborne = p >= duty, u = airborne ? (p - duty) / (1 - duty) : p / duty;
+    const z = airborne ? span * (-0.5 + u * u * (3 - 2 * u)) : span * (0.5 - u);
+    const lift = airborne ? Math.sin(u * Math.PI) * (0.05 + pace * 0.18) : 0;
+    return { z: moving ? z : 0, lift: moving ? lift : 0, planted: !moving || !airborne };
   };
   return { left: step(0), right: step(0.5),
     pelvis: -(keeper && !moving ? 0.085 : 0.055) + (moving ? Math.abs(Math.sin(phase * Math.PI * 2)) * 0.014 : 0),
     lean: pace * 0.16, twist: Math.sin(phase * Math.PI * 2) * pace * 0.06,
-    armSwing: Math.sin(phase * Math.PI * 2) * pace * 0.48,
-    armSpread: keeper && !moving ? 0.86 : 0.22,
-    elbow: -0.32 - pace * 0.7 };
+    // Opposite arm travels back while the foot travels forward. A relaxed
+    // elbow is a small anatomical flexion, not an extra bend on the mesh's
+    // already-bent rest forearm (the rig converts this to a relative angle).
+    armSwing: Math.cos(phase * Math.PI * 2) * pace * 0.68,
+    armSpread: keeper && !moving ? 0.72 : 0.12 + pace * 0.07,
+    elbow: keeper && !moving ? 0.45 : 0.12 + pace * 1.05 };
 }

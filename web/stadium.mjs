@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createCrowd, createCrowdUniforms, crowdLayout, standAisles } from "./crowd.mjs?v=3.15";
+import { createCrowd, createCrowdUniforms, crowdLayout, standAisles } from "./crowd.mjs?v=3.22";
 
 const boxGeometry = new T.BoxGeometry(1, 1, 1);
 const materials = new Map();
@@ -25,6 +25,14 @@ function paintPitch(document) {
   for (let i = 0; i < 12000; i++) {
     const x = ((i * 7919) % 12007) / 12007 * 105, y = ((i * 3571) % 12011) / 12011 * 68;
     c.fillStyle = i % 3 ? "#11291804" : "#ab996606"; c.fillRect(x, y, 0.3, 0.14);
+  }
+  // Larger, soft wear variations remain visible at broadcast distance. They
+  // are fixed artwork in the marking texture, never source-dependent effects.
+  for(let i=0;i<180;i++){
+    const x=(i*7919%12007)/12007*105,y=(i*3571%12011)/12011*68;
+    const r=.7+(i%7)*.16,g=c.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,i%3===0?'#c6b7860b':'#173a2709');g.addColorStop(1,'#173a2700');
+    c.fillStyle=g;c.fillRect(x-r,y-r,r*2,r*2);
   }
   c.strokeStyle = "#e7eee1"; c.fillStyle = "#e7eee1"; c.lineWidth = 0.12;
   c.strokeRect(0, 0, 105, 68); c.beginPath(); c.moveTo(52.5, 0); c.lineTo(52.5, 68); c.stroke();
@@ -173,7 +181,7 @@ export function buildStadium(document, turfMaps = {}, crowdAtlas = null) {
   const concrete = structuralSurface(document);
   const uniforms = createCrowdUniforms(); group.userData.crowdUniforms = uniforms;
   const pitchTexture = paintPitch(document);
-  const turf = new T.Mesh(new T.PlaneGeometry(114, 76), new T.MeshStandardMaterial({ color: turfMaps.color ? 0xb5d9bd : 0x476343,
+  const turf = new T.Mesh(new T.PlaneGeometry(114, 76), new T.MeshStandardMaterial({ color: turfMaps.color ? 0x9cceae : 0x476343,
     map: turfMaps.color ?? null, normalMap: turfMaps.normal ?? null, normalScale: new T.Vector2(0.22, 0.22), roughness: 1 }));
   turf.rotation.x = -Math.PI / 2; turf.receiveShadow = true; group.add(turf);
   const markings = new T.Mesh(new T.PlaneGeometry(114, 76), new T.MeshBasicMaterial({ map: pitchTexture, transparent: true, depthWrite: false }));

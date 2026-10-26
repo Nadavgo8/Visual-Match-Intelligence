@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.15";
+import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.22";
 
 const smooth = (a,b,x) => {const u=Math.max(0,Math.min(1,(x-a)/(b-a)));return u*u*(3-2*u);};
 

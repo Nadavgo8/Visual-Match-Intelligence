@@ -9,6 +9,23 @@ const bytes = await readFile(new URL("../../web/assets/athlete/athlete.json", im
 const data = JSON.parse(bytes), teams = { home: { colour: "#2678b9" }, away: { colour: "#e9e4d6" } };
 const p = { id: "h1", x: 40, y: 34, n: 7, role: "FW", team: "home" };
 
+test("the actual rig support foot stays stationary in world space during straight constant-speed stance", () => {
+  const actors = new DetailedFootballers(new T.Scene(), data);
+  const positions = [];
+  for (let i = 0; i <= 10; i++) {
+    const distance = i * .05, player = {...p, x:40+distance};
+    const frame = {t:distance/6, players:[player], ball:[80,34]};
+    const poses = new Map([[p.id,{speed:6,distance,heading:Math.PI/2}]]);
+    actors.update(frame,poses,teams);
+    const actor=actors.actors.get(p.id); actor.phase=0;
+    actors.update(frame,poses,teams);
+    positions.push(actor.joints['foot.L'].getWorldPosition(new T.Vector3()));
+  }
+  for (const position of positions) assert.ok(position.distanceTo(positions[0])<.015,
+    `planted foot slides ${position.distanceTo(positions[0])}m`);
+  actors.dispose();
+});
+
 test("local athlete loading validates the response and fails closed on missing or corrupt assets",async()=>{
   const oldFetch=globalThis.fetch;
   try {
@@ -136,6 +153,21 @@ test("field players lower their arms from the mesh rest pose while keepers keep 
   for (const side of ["L","R"]) {
     assert.ok(spread(p.id,side)<0.36,`field-player arms remain in a spread rest pose: ${spread(p.id,side)}`);
     assert.ok(spread("gk",side)>spread(p.id,side)+0.12,"keeper readiness must remain visibly distinct");
+  }
+  actors.dispose();
+});
+
+test('idle forearms relax below the elbows instead of adding flexion to the imported rest pose',()=>{
+  const actors=new DetailedFootballers(new T.Scene(),data),motion=new SceneMotion();
+  const frame={match_id:'relaxed',t:1,players:[p],ball:[45,34]};
+  actors.update(frame,motion.update(frame),teams);
+  const actor=actors.actors.get(p.id);
+  for(const side of ['L','R']){
+    const local=name=>actor.root.worldToLocal(actor.joints[`${name}.${side}`].getWorldPosition(new T.Vector3()));
+    const elbow=local('lowerarm01'),wrist=local('wrist');
+    assert.ok(elbow.y-wrist.y>.20,'relaxed forearm hangs down rather than pointing forward');
+    assert.ok(Math.abs(wrist.z-elbow.z)<.075,'idle hands must not be held in front of the chest');
+    assert.ok(Math.abs(wrist.x)<.31,'silhouette stays narrow without clipping the body');
   }
   actors.dispose();
 });

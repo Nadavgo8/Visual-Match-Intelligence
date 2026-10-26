@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { footballGait, legAngles } from "./football-gait.mjs?v=3.11";
+import { footballGait, legAngles } from "./football-gait.mjs?v=3.22";
 import { FootballActions, nearbyBallPose } from "./football-actions.mjs?v=3.11";
 
 export function validateAthlete(data) {
@@ -77,7 +77,7 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
   };
   // One geometry owner for the entire squad: disposing a substitute cannot
   // delete GPU attribute buffers that the other 21 players still reference.
-  const mesh = new T.SkinnedMesh(baseGeometry, bodyMaterial); mesh.castShadow = true; mesh.frustumCulled = false;
+  const mesh = new T.SkinnedMesh(baseGeometry, bodyMaterial); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;
   for (let i = 0; i < bones.length; i++) if (data.bones[i].parent === -1) mesh.add(bones[i]);
   root.add(mesh); root.updateMatrixWorld(true); const skeleton = new T.Skeleton(bones); mesh.bind(skeleton);
   const joints = Object.fromEntries(bones.map(b => [b.name, b]));
@@ -105,7 +105,12 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
     const elbow = data.bones.find(b => b.name === `lowerarm01.${side}`).head;
     return [side, Math.atan2(sign * (elbow[0] - arm[0]), arm[1] - elbow[1])];
   }));
-  return { root, mesh, joints, skeleton, legRest, armRest, kitPalette, phase: (seed % 997) / 997,
+  const forearmRest = Object.fromEntries(["L","R"].map(side => {
+    const elbow=data.bones.find(b=>b.name===`lowerarm01.${side}`).head;
+    const wrist=data.bones.find(b=>b.name===`wrist.${side}`).head;
+    return [side,Math.atan2(wrist[2]-elbow[2],elbow[1]-wrist[1])];
+  }));
+  return { root, mesh, joints, skeleton, legRest, armRest, forearmRest, kitPalette, phase: (seed % 997) / 997,
     dispose() { bodyMaterial.dispose(); skeleton.dispose(); numberTexture?.dispose(); numberMaterial?.dispose(); numberGeometry?.dispose(); } };
 }
 
@@ -124,6 +129,8 @@ export class DetailedFootballers {
         actor = Object.assign(createAthlete(this.data, this.base, p, teams, this.document), { role: p.role, team: p.team, n: p.n });
         this.actors.set(p.id, actor); this.scene.add(actor.root);
       }
+      // Legacy source has distance only; keep a fixed metric cycle until the
+      // cumulative source gait phase is available (never divide by current speed).
       const pose = poses.get(p.id), gait = footballGait(pose.speed, pose.distance / 2.2 + actor.phase, p.role === "GK");
       const ball = frame.ball ?? [52.5, 34], look = Math.atan2(ball[0] - p.x, p.y - ball[1]);
       const holder = frame.possession?.holder_id === p.id;
@@ -142,7 +149,7 @@ export class DetailedFootballers {
         actor.joints[`lowerleg01.${side}`].rotation.x = leg.knee;
         actor.joints[`foot.${side}`].rotation.x = leg.ankle;
         actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, sign * (gait.armSpread - actor.armRest[side]));
-        actor.joints[`lowerarm01.${side}`].rotation.set(gait.elbow,0,0);
+        actor.joints[`lowerarm01.${side}`].rotation.set(actor.forearmRest[side]-gait.elbow,0,0);
       }
       actor.joints.spine03.rotation.x = gait.lean + strength*.12;
       actor.joints.spine03.rotation.y = gait.twist;
