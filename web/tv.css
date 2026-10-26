@@ -14,13 +14,13 @@ canvas { position:absolute; inset:0; width:100%; height:100%; }
 #sb-score { font-size:1.05em; } #sb-clock { margin-left:auto; color:#c5d4df; }
 .momentum-row { display:flex; align-items:center; gap:.5em; margin-top:.3em; }
 #mom-label { font-size:.47em; text-transform:uppercase; letter-spacing:.05em; }
-.momentum { position:relative; flex:1; height:.25em; background:var(--away); border-radius:2px; overflow:hidden; }
+.momentum { position:relative; flex:1; height:.36em; min-height:4px; background:var(--away); border:1px solid #d9e4e74d; box-shadow:0 0 0 1px #061018a6; border-radius:3px; overflow:hidden; }
 .mom-fill { position:absolute; inset:0 auto 0 0; width:50%; background:var(--home); transition:width .4s linear; }
 .mom-mid { position:absolute; left:50%; top:0; bottom:0; width:1px; background:#101b29; }
 .momentum[data-available="false"],.momentum[data-available="false"] .mom-fill { background:#83939b; }
-.edge-bar { position:absolute; top:3%; bottom:3%; width:clamp(3px,.34vw,6px); border-radius:6px; background:#c0dce51f; opacity:var(--signal-intensity); }
+.edge-bar { position:absolute; top:3%; bottom:3%; width:clamp(4px,.42vw,7px); border-radius:6px; background:#0b152494; outline:1px solid #dbeef252; box-shadow:0 0 0 1px #071116a6; opacity:var(--signal-intensity); }
 .edge-bar.left { left:.45%; } .edge-bar.right { right:.45%; }
-.edge-bar i { position:absolute; bottom:0; width:100%; height:var(--edge-fill,100%); border-radius:inherit; background:linear-gradient(to top,#20bec4,var(--edge-color,#83939b)); filter:brightness(var(--edge-brightness,.4)); box-shadow:0 0 8px var(--edge-color,#83939b); transition:height .35s linear,filter .35s linear,box-shadow .35s linear; }
+.edge-bar i { position:absolute; bottom:0; width:100%; height:var(--edge-fill,100%); border-radius:inherit; background:linear-gradient(to top,#20bec4,var(--edge-color,#83939b)); filter:brightness(var(--edge-brightness,.4)); box-shadow:inset 0 0 0 1px #e0ffff38; transition:height .35s linear,filter .35s linear; }
 #atmosphere-edges[data-available="false"] .edge-bar { background:transparent; border:1px dashed #83939b; }
 #atmosphere-edges[data-available="false"] i { background:#83939b; box-shadow:none; opacity:.35; }
 .event-marker { position:absolute; top:3%; right:4.6%; width:7em; text-align:center; font-size:calc(1em * var(--symbol-size)); color:#f2f7f8; }

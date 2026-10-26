@@ -2,13 +2,15 @@ import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
 import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.3";
 import { MatchScreen } from "./match-screen.mjs?v=3.2";
-import { createRenderer } from "./renderer-host.mjs?v=3.14";
+import { createRenderer } from "./renderer-host.mjs?v=3.15";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
 import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
+import {MeterTimeline} from "./meter-timeline.mjs?v=3.15";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
+const meterTimeline=new MeterTimeline();let appliedMeters=null;
 const screen = new MatchScreen(resetVisualState);
 const renderer = await createRenderer($("pitch"), $("renderer-note"));
 let state = null, teams = null;
@@ -25,7 +27,7 @@ function onMessage(m) {
     isHost = m.host;
     $("connection-note").textContent = "";
     onState({ ...m.state, run_id: m.run_id }, true);
-    if (m.meters) onMeters(m.meters);
+    if (m.meters) onMeters({...m.meters,run_id:m.run_id});
   }
   else if (m.type === "state") onState(m);
   else if (m.type === "frame" && screen.frame(m, performance.now())) renderMarker();
@@ -80,6 +82,9 @@ function scoreBug(score, clock) {
 }
 
 function onMeters(m) {
+  meterTimeline.push(m,state?.run_id);
+}
+function applyMeters(m) {
   scoreBug(m.score, m.clock);
   renderReplayTime($("scrub"), m.t, scrubbing);
   renderMomentum($("mom-fill"), m.momentum?.home_index);
@@ -108,6 +113,7 @@ function clearMarkerElement() {
   $("event-marker").removeAttribute("data-cue");
 }
 function resetVisualState() {
+  meterTimeline.reset();appliedMeters=null;
   scrubbing = false;
   clearTrace($("trace-list"), $("trace-sum"));
   clearMarkerElement();
@@ -121,6 +127,12 @@ function jump(command) { screen.beginJump(); send(command); }
 let fpsStart = 0, fpsCount = 0, drawMs = 0;
 function render(now) {
   const frame = screen.sample(now);
+  const meters=frame ? meterTimeline.sample(frame.t,frame.run_id) : null;
+  if(meters!==appliedMeters){
+    if(meters)applyMeters(meters);
+    else {renderAtmosphere($("atmosphere-edges"),$("atmo-label"),null);renderer.setAtmosphere(null);audio.crowd(0);}
+    appliedMeters=meters;
+  }
   const drawStart = performance.now();
   renderer.draw(frame, teams);
   const canvas = renderer.canvas;
@@ -130,6 +142,10 @@ function render(now) {
   fpsCount++;
   if (now - fpsStart >= 2000) {
     $("render-status").textContent = `${Math.round(fpsCount * 1000 / (now - fpsStart))} FPS | ${(drawMs / fpsCount).toFixed(1)} ms draw | ${renderer.mode}`;
+    const pct=value=>Number.isFinite(value) ? `${Math.round(value*100)}%` : "unavailable";
+    const a=meters?.atmosphere,available=canvas.dataset.crowdAvailable==="true";
+    $("scene-diagnostics").textContent=`Source ${frame?.t?.toFixed(2) ?? "—"}s · run ${frame?.run_id ?? "—"} · C ${pct(a?.crowd)} · T ${pct(a?.attack)} · A ${pct(a?.level)} · pose targets (seated / seated raised / standing raised): `
+      +(available ? [canvas.dataset.crowdSeated,canvas.dataset.crowdSeatedRaised,canvas.dataset.crowdStanding].map(v=>pct(Number(v))).join(" / ") : "unavailable");
     fpsCount = 0; drawMs = 0; fpsStart = now;
   }
   requestAnimationFrame(render);

@@ -105,6 +105,8 @@ test("reduced motion fixes camera; low power reduces GPU cost without changing s
   assert.deepEqual(cameraView(16 / 9, true, [0, 0]), cameraView(16 / 9, true, [105, 68]));
   assert.deepEqual(qualitySettings("low", 3), { pixelRatio: 1, shadows: false, shadowSize: 0 });
   assert.deepEqual(qualitySettings("high", 3), { pixelRatio: 1.5, shadows: true, shadowSize: 2048 });
+  assert.equal(qualitySettings("high",.9375).pixelRatio,1,"standard quality must not enlarge a below-CSS-resolution canvas");
+  for(const ratio of [NaN,Infinity,0,-1])assert.equal(qualitySettings("high",ratio).pixelRatio,1);
 });
 
 test("broadcast retains a forty-metre action span with crowd context behind the play", () => {

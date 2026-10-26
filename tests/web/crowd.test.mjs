@@ -28,7 +28,8 @@ test("missing crowd stays unavailable instead of becoming silence or synthetic c
 test("source time freezes crowd; reduced motion suppresses sway and arm animation", () => {
   const uniforms = createCrowdUniforms(); updateCrowd(uniforms, { crowd: 1 }, 10, false);
   const old = structuredClone(uniforms); updateCrowd(uniforms, { crowd: 1 }, 10, false); assert.deepEqual(uniforms, old);
-  updateCrowd(uniforms, { crowd: 1 }, 10, true); assert.equal(uniforms.crowdArms.value, 0); assert.equal(uniforms.crowdSway.value, 0);
+  updateCrowd(uniforms, { crowd: 1 }, 10, true); assert.equal(uniforms.crowdArms.value, 2.35); assert.equal(uniforms.crowdSway.value, 0);
+  assert.equal(uniforms.crowdTime.value,0,"reduced motion retains a static raised-arm pose");
   updateCrowd(uniforms, null, 0, false); assert.equal(uniforms.crowdStanding.value, 0);
 });
 test("dense crowd uses one bounded instanced draw and source-driven shader uniforms", () => {

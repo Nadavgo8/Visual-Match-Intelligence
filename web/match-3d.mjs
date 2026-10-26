@@ -1,14 +1,15 @@
 import * as T from "./vendor/three/three.module.js";
-import { buildStadium } from "./stadium.mjs?v=3.14";
+import { buildStadium } from "./stadium.mjs?v=3.15";
 import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.11";
-import { updateCrowd, CrowdDynamics } from "./crowd.mjs?v=3.11";
-import { loadAtlasMetadata } from "./crowd-atlas.mjs?v=3.11";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.14";
+import { updateCrowd, CrowdDynamics } from "./crowd.mjs?v=3.15";
+import { loadAtlasMetadata } from "./crowd-atlas.mjs?v=3.15";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.15";
+import {createBall,ballDrawScale} from "./ball-view.mjs?v=3.15";
 
 export async function prepareAssets() {
   const loader = new T.TextureLoader();
   const results = await Promise.allSettled([loadAthlete(), ...["color", "normal"].map(name => loader.loadAsync(new URL(`./assets/turf/${name}.jpg`, import.meta.url).href)),
-    ...["a","b"].map(group=>loader.loadAsync(new URL(`./assets/crowd/spectators-${group}-v2.png`,import.meta.url).href)),
+    ...["a","b"].map(group=>loader.loadAsync(new URL(`./assets/crowd/spectators-${group}-v3.png`,import.meta.url).href)),
     loadAtlasMetadata("a"),loadAtlasMetadata("b")]);
   if (results.some(result => result.status === "rejected")) {
     for (const result of results) if (result.status === "fulfilled" && result.value?.isTexture) result.value.dispose();
@@ -41,10 +42,7 @@ export class Match3D {
     const fill = new T.DirectionalLight(0xc5d7df, 0.65); fill.position.set(40, 35, -50); this.scene.add(fill);
     this.stadium = buildStadium(canvas.ownerDocument, assets.turfMaps, assets.crowdAtlas); this.scene.add(this.stadium);
     this.footballers = new DetailedFootballers(this.scene, assets.athlete, canvas.ownerDocument);
-    this.ball = new T.Mesh(new T.IcosahedronGeometry(0.16, 2), new T.MeshStandardMaterial({ color: 0xf9f4e6, roughness: 0.45, flatShading: true }));
-    this.ball.castShadow = true; this.ball.visible = false; this.scene.add(this.ball);
-    // Dark panels stay on the ball surface and roll with delivered displacement.
-    const panel = new T.Mesh(new T.IcosahedronGeometry(0.162, 0), new T.MeshStandardMaterial({ color: 0x172330, wireframe: true })); this.ball.add(panel);
+    this.ball = createBall();this.scene.add(this.ball);
     this.lost = event => { event.preventDefault(); onLost(); };
     canvas.addEventListener("webglcontextlost", this.lost);
     this.setQuality("high"); this.resize(); this.mode = "3D stadium";
@@ -74,6 +72,9 @@ export class Match3D {
       this.footballers.update(frame, this.motion.update(frame), teams);
       this.ball.visible = true; this.ball.position.set(...worldPosition(...frame.ball, frame.ball_height + 0.16));
       this.ball.rotation.set(this.motion.ballRoll.x, 0, this.motion.ballRoll.z);
+      this.camera.updateMatrixWorld();
+      const depth=-this.ball.position.clone().applyMatrix4(this.camera.matrixWorldInverse).z;
+      this.ball.scale.setScalar(ballDrawScale(depth,this.camera.fov,this.height));
     } else { this.footballers.hide(); this.motion.reset(); this.ball.visible = false; }
     this.gpu.render(this.scene, this.camera);
     this.canvas.dataset.renderer = "3d";
@@ -85,6 +86,9 @@ export class Match3D {
     this.canvas.dataset.crowdLevel = crowd.available ? String(crowd.level) : "unavailable";
     this.canvas.dataset.crowdStanding = String(crowd.standing);
     this.canvas.dataset.crowdRaised=String(crowd.raised);
+    this.canvas.dataset.crowdSeated=String(1-crowd.raised);
+    this.canvas.dataset.crowdSeatedRaised=String(crowd.raised-crowd.standing);
+    this.canvas.dataset.crowdAvailable=String(crowd.available);
   }
   dispose() {
     this.footballers.dispose();

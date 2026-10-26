@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.11";
+import { createAtlasCrowd } from "./crowd-atlas.mjs?v=3.15";
 
 const smooth = (a,b,x) => {const u=Math.max(0,Math.min(1,(x-a)/(b-a)));return u*u*(3-2*u);};
 
@@ -10,23 +10,26 @@ export function crowdPresentation(atmosphere, reducedMotion = false) {
   const available = typeof level === "number" && Number.isFinite(level) && level >= 0 && level <= 1;
   const amount = available ? level : 0;
   return { available, level: available ? level : null,
-    standing: available ? smooth(0,1,amount) : 0,
-    raised: reducedMotion || !available ? 0 : smooth(.3,1,amount)*.88,
-    arms: reducedMotion || !available ? 0 : amount * 2.35,
+    standing: available ? smooth(.55,1,amount) : 0,
+    raised: available ? smooth(.15,.65,amount) : 0,
+    // Pose conveys amplitude even with reduced motion. Only oscillation stops.
+    arms: available && amount > .15 ? 2.35 : 0,
     sway: reducedMotion || !available ? 0 : .002*amount+.026*amount*amount,
     pulse: reducedMotion || !available ? 0 : .055*smooth(.6,1,amount) };
 }
 
 export class CrowdDynamics {
   constructor(){this.reset();}
-  reset(){this.t=null;this.identity=null;this.level=null;this.target=null;}
+  reset(){this.t=null;this.identity=null;}
   sample(atmosphere,t,identity,reducedMotion=false){
-    const raw=crowdPresentation(atmosphere,reducedMotion),dt=this.t===null?0:t-this.t;
+    const raw=crowdPresentation(atmosphere,reducedMotion);
     if(!raw.available || !Number.isFinite(t)){this.reset();return {...crowdPresentation(null,reducedMotion),renderLevel:null};}
-    if(this.level===null || identity!==this.identity || dt<0 || dt>2 || reducedMotion || (dt===0 && raw.level!==this.target)) this.level=raw.level;
-    else if(dt>0) this.level=raw.level+(this.level-raw.level)*Math.exp(-dt/.18);
-    this.t=t;this.identity=identity;this.target=raw.level;
-    return {...crowdPresentation({crowd:this.level},reducedMotion),level:raw.level,renderLevel:this.level};
+    // C is already the engine's average of up to three delivered samples. An
+    // extra renderer IIR depended on the frames visited before a seek, and
+    // could disagree with the meter at the same source time. Soft population
+    // thresholds blend postures without adding another history-dependent C.
+    this.t=t;this.identity=identity;
+    return {...raw,renderLevel:raw.level};
   }
 }
 
@@ -62,7 +65,7 @@ export function createCrowdUniforms() {
 }
 export function updateCrowd(uniforms, atmosphere, t, reducedMotion, dynamics=null, identity="") {
   const view = dynamics ? dynamics.sample(atmosphere,t,identity,reducedMotion) : crowdPresentation(atmosphere, reducedMotion);
-  uniforms.crowdTime.value = Number.isFinite(t) ? t : 0;
+  uniforms.crowdTime.value = reducedMotion ? 0 : Number.isFinite(t) ? t : 0;
   uniforms.crowdStanding.value = view.standing; uniforms.crowdArms.value = view.arms; uniforms.crowdSway.value = view.sway;
   uniforms.crowdRaised.value=view.raised;uniforms.crowdPulse.value=view.pulse;
   return view;
@@ -119,7 +122,7 @@ export function createCrowd(length, rows, uniforms, standSeed = 0, atlas = null)
     shader.vertexShader = shader.vertexShader.replace("#include <color_vertex>", T.ShaderChunk.color_vertex.replace(
       "vColor.rgb *= instanceColor.rgb;", `vColor.rgb *= crowdTint < 0.5 ? vec3(1.0) :
         (crowdTint < 1.5 ? instanceColor.rgb : mix(vec3(0.48, 0.34, 0.25), vec3(1.1, 1.04, 0.96), crowdSeed));`));
-    const angle = "crowdPart * step(crowdSeed, crowdStanding) * step(crowdGesture,crowdRaised) * crowdArms * (0.9 + 0.1 * sin(crowdTime * 2.1 + crowdSeed * 71.0))";
+    const angle = "crowdPart * step(crowdSeed,crowdRaised) * crowdArms";
     shader.vertexShader = shader.vertexShader.replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>
       if (abs(crowdPart) > 0.5) {
         float normalAngle = ${angle};

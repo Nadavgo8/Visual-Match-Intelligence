@@ -3,9 +3,12 @@ export const worldPosition = (x, y, height = 0) => [x - 52.5, height, 34 - y];
 // A 20 Hz transport at 32x delivers 1.6 source seconds between packets.
 // Match the sampler's two-second source-discontinuity boundary, not wall time.
 const MAX_POSE_INTERVAL = 2;
-export const qualitySettings = (quality, dpr = 1) => quality === "low"
-  ? { pixelRatio: Math.min(1, dpr), shadows: false, shadowSize: 0 }
-  : { pixelRatio: Math.min(1.5, dpr), shadows: true, shadowSize: 2048 };
+export function qualitySettings(quality,dpr=1) {
+  const ratio=Number.isFinite(dpr) && dpr>0 ? dpr : 1;
+  return quality === "low"
+    ? {pixelRatio:Math.min(1,ratio),shadows:false,shadowSize:0}
+    : {pixelRatio:Math.min(1.5,Math.max(1,ratio)),shadows:true,shadowSize:2048};
+}
 
 export function playerPose(previous, player, t) {
   const dt = previous ? t - previous.t : 0;
