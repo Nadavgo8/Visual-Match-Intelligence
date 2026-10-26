@@ -70,7 +70,7 @@ def test_phone_cannot_control_playback():
                 phone.send_text(json.dumps(cmd))
                 assert until(phone, "error")["code"] == "not_host"
             room = server.rooms["s2"]
-            assert (room.playing, room.speed, room.seed, room.replay.now, room.run) == (False, 4, 12, 0.0, 1)
+            assert (room.playing, room.speed, room.seed, room.replay.now, room.run) == (False, 4, server.DEMO_SEED, 0.0, 1)
 
 
 def test_only_the_token_holder_or_the_first_screen_is_host():
@@ -130,7 +130,7 @@ def test_malformed_transport_data_does_not_disconnect_or_change_the_room():
                 tv.send_text(raw)
                 error = until(tv, "error")
                 assert error["code"] == "bad_command" and error["run_id"] == first["run_id"]
-                assert (room.run, room.replay.now, room.seed, room.speed) == (1, 0, 12, 4)
+                assert (room.run, room.replay.now, room.seed, room.speed) == (1, 0, server.DEMO_SEED, 4)
                 assert room.host_token == token and room.clients[0].profile == server.DEFAULT_PROFILE
             tv.send_text('{"cmd":"pause"}')
             assert until(tv, "state")["playing"] is False
@@ -369,15 +369,15 @@ def test_catch_up_covers_delivered_items_up_to_the_press_and_is_per_run():
             recv(phone)
             phone.send_text(json.dumps({"cmd": "profile", "profile": {"depth": "basic", "amount": "everything"}}))
             until(phone, "backlog")
-            tv.send_text(json.dumps({"cmd": "seek", "t": 1200}))
+            tv.send_text(json.dumps({"cmd": "seek", "t": 2400}))
             snap = until(phone, "snapshot")
             room = server.rooms["cu"]
             phone.send_text(json.dumps({"cmd": "catch_up", "id": "c1", "since_t": None}))
             first = until(phone, "catch_up")
             assert first["id"] == "c1" and first["run_id"] == snap["run_id"]
-            assert (first["from_t"], first["to_t"]) == (900.0, 1200.0) and first["first_use"] is True
+            assert (first["from_t"], first["to_t"]) == (2100.0, 2400.0) and first["first_use"] is True
             delivered = {o["cue_id"]: o["delivered"] for o in room.feed}
-            assert first["items"] and all(900.0 < delivered[i] <= 1200.0 for i in first["items"])
+            assert first["items"] and all(2100.0 < delivered[i] <= 2400.0 for i in first["items"])
             assert "Score:" in first["text"] and first["text"].startswith(f"From {first['from_clock']} to ")
             phone.send_text(json.dumps({"cmd": "catch_up", "id": "c2", "since_t": first["to_t"]}))
             again = until(phone, "catch_up")
