@@ -91,18 +91,52 @@ test("valid JSON with the wrong storage shape is discarded and replaced by durab
 // and escaping are not reimplemented by this harness; the received HTML is asserted.
 async function appHarness() {
   const companion = await import("../../web/companion.mjs");
+  const {atmospherePresentation} = await import("../../web/atmosphere.mjs");
   const nodes = new Map(); let receive;
   const element = () => ({ innerHTML: "", addEventListener() {}, scrollIntoView() {},
+    attributes: {}, setAttribute(k,v) { this.attributes[k]=v; },
     appendChild() {}, style: { setProperty() {} }, classList: { toggle() {} } });
+  const node = id => { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); };
   const doc = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); },
-    addEventListener() {}, createElement: element, documentElement: element(), querySelector: element };
+    addEventListener() {}, createElement: element, documentElement: element(), querySelector: selector => node(selector) };
   const src = readFileSync(new URL("../../web/app.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
-  const context = { ...companion, FEED_ICONS: {}, atmospherePresentation() {}, URLSearchParams,
+  const context = { ...companion, FEED_ICONS: {}, atmospherePresentation, URLSearchParams,
     location: { search: "?room=qa" }, localStorage: memoryStorage(), document: doc,
     window: { addEventListener() {} }, openSession(options) { receive = options.onMessage; return { send() { return true; } }; } };
   runInNewContext(src, context);
-  return { receive, html: id => nodes.get(id).innerHTML, receipts: context.receiptsHtml };
+  return { receive, node, html: id => nodes.get(id).innerHTML, receipts: context.receiptsHtml };
 }
+
+const meterSample = { type:'meters', score:{home:1,away:0}, clock:'2:09',
+  atmosphere:{available:true,level:.38,why:'Prior run pressure'},momentum:{home_index:.73} };
+const emptySnapshot = (run_id='new') => ({type:'snapshot',run_id,state:{seed:13,score:{home:0,away:0},clock:'0:00',
+  teams:{home:{name:'Home',colour:'#123'},away:{name:'Away',colour:'#eee'}}},meters:null,feed:[]});
+
+test('a replacement snapshot without measurements clears prior atmosphere and momentum', async () => {
+  const app=await appHarness(); app.receive(meterSample);
+  assert.equal(app.node('atmo-chip').textContent,'Atmosphere 38%');
+  assert.equal(app.node('mom').style.width,'73%');
+  app.receive(emptySnapshot());
+  assert.equal(app.node('atmo-chip').textContent,'Atmosphere unavailable');
+  assert.equal(app.node('atmo-chip').title,'');
+  assert.equal(app.node('.mom').attributes['aria-label'],'Momentum unavailable');
+  assert.equal(app.node('score').textContent,'0–0'); assert.equal(app.node('clock').textContent,'0:00');
+});
+test('same-run reconnect clears absent data and a complete snapshot restores its own measurements', async () => {
+  const app=await appHarness(); app.receive({...emptySnapshot('same'),meters:meterSample});
+  assert.equal(app.node('atmo-chip').textContent,'Atmosphere 38%');
+  app.receive(emptySnapshot('same'));
+  assert.equal(app.node('atmo-chip').textContent,'Atmosphere unavailable');
+  app.receive({...emptySnapshot('next'),meters:{...meterSample,atmosphere:{available:true,level:.8},momentum:{home_index:.2}}});
+  assert.equal(app.node('atmo-chip').textContent,'Atmosphere 80%');
+  assert.equal(app.node('mom').style.width,'20%');
+});
+test('missing meter components are unavailable rather than stale values or exceptions', async () => {
+  const app=await appHarness(); app.receive(meterSample);
+  assert.doesNotThrow(()=>app.receive({...meterSample,atmosphere:null,momentum:null}));
+  assert.equal(app.node('atmo-chip').textContent,'Atmosphere unavailable');
+  assert.equal(app.node('.mom').attributes['aria-label'],'Momentum unavailable');
+});
 
 test("answer metadata from a model is literal text, including unknown agent names", async () => {
   const app = await appHarness();
