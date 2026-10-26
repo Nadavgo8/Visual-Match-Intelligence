@@ -231,3 +231,29 @@ and do not count as PASS. Fresh full CI and integrated-main B4 remain required.
 
 Future tests with independently annotated score/name facts must use a pinned or
 explicit fixture; seed reproducibility is versioned, not an unchanging narrative.
+
+## Verified main synchronization (26 October)
+
+Merged main `8df01f18cb9c8e28dd1c91f002f85959ec25c5fd` after parent confirmed
+its B4 run `40299302501`; merge tree `b4e1e9cbe8713fc6bc938f7f17082a3ba7b4e983`
+had no conflicts. The incoming change fixes companion measurement reset behavior;
+it does not change generator source or the pinned benchmark.
+
+Post-sync validation used one local Python process, with the same offline
+environment and authorized Windows sandbox escalation described above:
+
+```text
+python -B -u -m pytest tests/test_agents.py::test_workflow_uses_a_valid_agent_draft tests/test_commentary_agents.py::test_answer_is_built_from_the_moment_the_question_was_asked tests/test_engine.py::test_overturned_penalty_is_detected_from_the_feed tests/test_generator_motion_v2.py tests/test_full_match_actions.py -q -ra --strict-markers --strict-config -p no:cacheprovider -W error --tb=short
+77 passed in 12.80 s
+node --test tests/web/*.test.mjs
+40 passed, 0 failed
+python -B -m ruff check vmi tests tools
+All checks passed!
+git diff --check
+PASS
+```
+
+No local full-suite or 100-seed rerun was requested for this synchronization.
+Fresh full CI, parent technical review and post-merge B4 remain pending; these
+focused checks do not establish complete motion acceptance. Local test processes
+ended before the user's pending manual performance benchmark.
