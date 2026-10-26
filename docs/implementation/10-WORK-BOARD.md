@@ -21,8 +21,9 @@
   ממתינים וסמל סיום. [אבחון, בדיקות ולמידה](D1-FULL-MATCH-EVENTS.md).
 
 ראיות תיקון הקלט: [SESSION-INPUT-REVIEW](SESSION-INPUT-REVIEW.md); מצב B4 העדכני לעיל מחליף את רשומת ההמתנה הישנה.
-- המשתמש בחר להשלים את רמת צילום החזון לפני המיזוג הראשון של PR #12.
-  בדיקות ירוקות אינן משנות את תנאי הקבלה הזה.
+- החלטת המשתמש האחרונה מ־26.10 מחליפה את דרישת הייחוס לפני המיזוג הראשון:
+  מותר למזג גרסה תפקודית תקינה אחרי שערי האיכות הרלוונטיים, ולהמשיך
+  ליטוש חזותי ב־PRים נוספים. בדיקות שלא עברו וכשלים תפקודיים עדיין חוסמים.
 - PR #12 שולב עם main המאומת. נוספו מצלמה מעמדה מרכזית, חיתוך גגות קצה
   וסיבוב שחקנים לפי זמן מקור. 120 Node עברו לפני השילוב; נדרשים CI חדש,
   בדיקת התצוגה המשולבת והשלמת שער החזון. דף בסיס ב־Chrome הראה גם הוא
@@ -53,7 +54,7 @@
 | D1-01 | DONE | [PR #4](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/4) מוזג ל־3baa62d; 85 בדיקות עברו אחרי המיזוג ב־17.10 שניות; smoke משחק מלא עבר |
 | D1-02 | DONE | [PR #5](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/5) מוזג ל־12adc05; 135 בדיקות עברו ב־17.90 שניות לאחר המיזוג ו־20 fixtures נוצרו מחדש ללא כשל איכות |
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
-| D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — VISUAL_GATE | [Draft PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12), `codex/d1-match-3d`; main ‏92b5ecf משולב. 12 זהויות, קהל שקט/מעורב/שיא, מעבר תנוחות לפי מקור, תגובות מגע וכדור קרוב ופרטי חולצות נשמרו. Baseline ‏bd2c694: ‏358 Python ו־110 Node; אחרי שילוב התיקונים 118 Node עברו. חבילה מלאה/כיסוי על HEAD הסופי ב־PR. [מפרט וממצאים](D1-CROWD-EXPERIENCE.md); PR #7 נסגר והוחלף. אין DONE או טענת שוויון פוטוריאליסטי לפני הקבלה החזותית |
+| D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — FUNCTIONAL_GATES | [PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12), `codex/d1-match-3d`; main המאומת fb61a8e משולב. CI על 88a3133 עבר בארבעת ה־checks; יש תוספת מדידת cadence ועדכון היקף המחייבים בדיקה על HEAD חדש. 30FPS וקבלת תנועה משולבת עדיין פתוחים. החלטת המשתמש מ־26.10 מאפשרת מיזוג תפקודי אחרי השערים וליטוש חזותי בהמשך; אין טענת השלמת חזון |
 | D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8) מוזג ל־56732ff; שני פסים זהים, סמל יחיד, תזמון ונגישות נכללים בבדיקות main המעודכנות |
 | D2-00 | IN_REVIEW (הכרעה) | נבחר מסלול Azure Free Trial (spending limit On). Foundry `gpt-5-mini`: 60/60 תשובות מודל, p95 חם 11.9s, 59/59 תוך 20s, שני דגלים שגויים. ממתין לביקורת `review.csv` של שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |

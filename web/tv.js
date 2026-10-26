@@ -6,6 +6,7 @@ import { createRenderer } from "./renderer-host.mjs?v=3.15";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
 import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
 import {MeterTimeline} from "./meter-timeline.mjs?v=3.15";
+import {FrameMetrics} from "./frame-metrics.mjs?v=3.16";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -125,6 +126,7 @@ function jump(command) { screen.beginJump(); send(command); }
 
 // Football rendering and accessibility overlays have independent lifecycles.
 let fpsStart = 0, fpsCount = 0, drawMs = 0;
+const frameMetrics = new FrameMetrics();
 function render(now) {
   const frame = screen.sample(now);
   const meters=frame ? meterTimeline.sample(frame.t,frame.run_id) : null;
@@ -136,12 +138,18 @@ function render(now) {
   const drawStart = performance.now();
   renderer.draw(frame, teams);
   const canvas = renderer.canvas;
+  frameMetrics.observe(now, !!frame && !!state?.playing && document.visibilityState === "visible" && document.hasFocus(),
+    `${frame?.run_id}/${renderer.mode}/${canvas.dataset.quality}/${canvas.dataset.camera}/${canvas.width}x${canvas.height}`);
   drawMs += performance.now() - drawStart;
   if (frame) canvas.dataset.simTime = frame.t.toFixed(3);
   else delete canvas.dataset.simTime;
   fpsCount++;
   if (now - fpsStart >= 2000) {
     $("render-status").textContent = `${Math.round(fpsCount * 1000 / (now - fpsStart))} FPS | ${(drawMs / fpsCount).toFixed(1)} ms draw | ${renderer.mode}`;
+    const cadence = frameMetrics.report();
+    $("frame-metrics").textContent = cadence
+      ? `${(cadence.durationMs / 1000).toFixed(1)}s active visible window: ${cadence.fps.toFixed(1)} FPS · frame p50 ${cadence.p50Ms.toFixed(1)} / p95 ${cadence.p95Ms.toFixed(1)} / max ${cadence.maxMs.toFixed(1)} ms`
+      : "Cadence: need 10 seconds playing in a visible, focused tab with unchanged display settings.";
     const pct=value=>Number.isFinite(value) ? `${Math.round(value*100)}%` : "unavailable";
     const a=meters?.atmosphere,available=canvas.dataset.crowdAvailable==="true";
     $("scene-diagnostics").textContent=`Source ${frame?.t?.toFixed(2) ?? "—"}s · run ${frame?.run_id ?? "—"} · C ${pct(a?.crowd)} · T ${pct(a?.attack)} · A ${pct(a?.level)} · pose targets (seated / seated raised / standing raised): `
