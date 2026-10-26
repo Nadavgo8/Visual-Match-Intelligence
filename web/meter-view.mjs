@@ -2,8 +2,12 @@ import { edgePresentation } from "./overlay-state.mjs";
 
 // Both edge bars inherit this one measured value. Missing data is explicitly
 // unavailable, including after a source reset with no replacement meters.
-export function renderAtmosphere(edges, label, atmosphere) {
+export function renderAtmosphere(edges, label, atmosphere, {animate = true} = {}) {
   const view = edgePresentation(atmosphere);
+  // CSS interpolation is only decoration between continuous live samples.
+  // Missing/replacement data and paused source time must settle immediately.
+  const continuous = animate && view.available && edges.dataset.available === "true";
+  edges.style.setProperty("--edge-transition", continuous ? "height .35s linear,filter .35s linear" : "none");
   edges.style.setProperty("--edge-color", view.color);
   edges.style.setProperty("--edge-fill", `${view.height}%`);
   edges.style.setProperty("--edge-brightness", String(view.brightness));

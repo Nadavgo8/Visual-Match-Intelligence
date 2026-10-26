@@ -20,7 +20,7 @@ canvas { position:absolute; inset:0; width:100%; height:100%; }
 .momentum[data-available="false"],.momentum[data-available="false"] .mom-fill { background:#83939b; }
 .edge-bar { position:absolute; top:3%; bottom:3%; width:clamp(4px,.42vw,7px); border-radius:6px; background:#0b152494; outline:1px solid #dbeef252; box-shadow:0 0 0 1px #071116a6; opacity:var(--signal-intensity); }
 .edge-bar.left { left:.45%; } .edge-bar.right { right:.45%; }
-.edge-bar i { position:absolute; bottom:0; width:100%; height:var(--edge-fill,100%); border-radius:inherit; background:linear-gradient(to top,#20bec4,var(--edge-color,#83939b)); filter:brightness(var(--edge-brightness,.4)); box-shadow:inset 0 0 0 1px #e0ffff38; transition:height .35s linear,filter .35s linear; }
+.edge-bar i { position:absolute; bottom:0; width:100%; height:var(--edge-fill,100%); border-radius:inherit; background:linear-gradient(to top,#20bec4,var(--edge-color,#83939b)); filter:brightness(var(--edge-brightness,.4)); box-shadow:inset 0 0 0 1px #e0ffff38; transition:var(--edge-transition,none); }
 #atmosphere-edges[data-available="false"] .edge-bar { background:transparent; border:1px dashed #83939b; }
 #atmosphere-edges[data-available="false"] i { background:#83939b; box-shadow:none; opacity:.35; }
 .event-marker { position:absolute; top:3%; right:4.6%; width:7em; text-align:center; font-size:calc(1em * var(--symbol-size)); color:#f2f7f8; }

@@ -1,6 +1,6 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.3";
+import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.24";
 import { MatchScreen } from "./match-screen.mjs?v=3.18";
 import { createRenderer } from "./renderer-host.mjs?v=3.23";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
@@ -48,6 +48,7 @@ function onStatus(s) {
   if (s === "disconnected") {
     livePerformance.invalidate("WebSocket disconnected during the measurement.");
     screen.freeze(performance.now());
+    stopMeterAnimation();
     isHost = false; hostControls();
     $("connection-note").textContent = "Connection lost. Replay paused; reconnecting…";
     $("agents").textContent = "disconnected, reconnecting…";
@@ -61,6 +62,7 @@ function onState(s, snapshot = false) {
   const now = performance.now();
   if (snapshot) screen.snapshot(s, now); else screen.sync(s, now);
   state = s;
+  if (!s.playing) stopMeterAnimation();
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
   document.documentElement.style.setProperty("--away", teams.away.colour);
@@ -99,7 +101,8 @@ function applyMeters(m) {
   renderReplayTime($("scrub"), m.t, scrubbing);
   renderMomentum($("mom-fill"), m.momentum?.home_index);
   const a = m.atmosphere;
-  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), a);
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), a,
+    {animate:screen.timeline.playing && !screen.waiting});
   audio.crowd(a?.crowd ?? 0);
   renderer.setAtmosphere(a);
 }
@@ -121,6 +124,10 @@ function renderMarker() {
 function clearMarkerElement() {
   $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
+}
+function stopMeterAnimation() {
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), appliedMeters?.atmosphere,
+    {animate:false});
 }
 function resetVisualState() {
   meterTimeline.reset();appliedMeters=null;
