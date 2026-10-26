@@ -79,6 +79,7 @@ Open: see `docs/context/decisions.md`, "Still open".
 | `docs/implementation/VMI-FINAL-PLAN-F.md` | Work plan (Hebrew, Oct 22): goals, zero-cost rule, split, contracts, generator, tasks D1-01…05 and D2-00…06, gates, git, AI prompts, tests, demo. **Start here for "what next".** |
 | `docs/implementation/12-QUALITY-AND-GIT-GATES.md` | Mandatory review and unit-test gates per branch and stage; two-developer Git workflow, CI setup requirements, evidence templates and improvement log. Read before executing a task. |
 | `docs/implementation/02-SETUP-AND-GIT.md` | Shared setup (locked install), test layers, coverage gate, v2 JSON Schemas, CI checks and their enforcement status |
+| `docs/implementation/DEPLOY-VERCEL.md` | Vercel deploy runbook: Foundry login via a service principal, the shared-room risk, 2-minute tests, and the Azure Container Apps fallback |
 | `docs/context/product-doc-2026-10-21.pdf` | Six-page product doc (Hebrew) with design illustrations: edge bars, markers, app, engine, research basis |
 | `docs/spec.md` | Build spec v2: behaviour, formulas, data realism, sync, targets |
 | `docs/context/decisions.md` | Every decision, the 4-round interview, the Oct 21–22 changes, open items. **Start here for "why".** |
