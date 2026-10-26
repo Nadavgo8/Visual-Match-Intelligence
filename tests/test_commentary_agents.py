@@ -186,3 +186,71 @@ def test_playback_loop_publishes_held_explanations_at_a_stoppage():
         return [m["type"] for m in phone.outbox], room.held, room.replay.model.ball_in_play
     kinds, held, in_play = asyncio.run(scenario())
     assert in_play is False and held == [] and kinds.count("analysis") == 1
+
+
+OUTPUTS = [{"momentum": {"home_index": 0.62}, "shots": {"home": 4, "away": 1}, "evidence": ["stat:momentum"]}]
+
+
+def test_grounded_agent_answer_passes_the_check():
+    assert qa.check_agent_answer("Harbour City have 4 shots to 1. Interpretation: they look slightly on top.",
+                                 ["stat:momentum"], "several", {"stat:momentum"}, OUTPUTS) == []
+
+
+@pytest.mark.parametrize("answer,cited,agent,problem", [
+    ("They have 9 shots.", [], "match_analyst", "number 9 not in tool results"),
+    ("They have 4 shots.", ["evt_9999"], "match_analyst", "unknown evidence evt_9999"),
+    ("Harbour City are clearly dominating.", ["stat:momentum"], "meaning_analyst", "interpretation is not labelled"),
+    ("Harbour City are clearly dominating.", ["stat:momentum"], "several", "interpretation is not labelled"),
+    ("", [], "match_analyst", "empty answer"),
+])
+def test_agent_answer_check_rejects_ungrounded_or_unlabelled_answers(answer, cited, agent, problem):
+    assert problem in qa.check_agent_answer(answer, cited, agent, {"stat:momentum"}, OUTPUTS)
+
+
+def test_facts_only_answers_need_no_interpretation_label():
+    assert qa.check_agent_answer("It's 4 shots to 1.", [], "match_analyst", set(), OUTPUTS) == []
+
+
+def test_meaning_analyst_prompt_forbids_new_facts_predictions_and_crowd_motives():
+    text = (qa.PROMPTS / "meaning_analyst.md").read_text(encoding="utf-8")
+    assert 'Start your answer with "Interpretation:"' in text
+    assert "Never predict" in text and "why the crowd reacted" in text and "never gather new facts" in text
+
+
+
+@pytest.mark.parametrize("question,path", [
+    ("Who's on top right now?", "_meaning"), ("Is Harbour City dominating?", "_meaning"),
+    ("What changed in the last few minutes?", "_meaning"), ("What's the score?", "_agents"),
+    ("Why was that offside?", "_agents"), ("Who scored for Harbour City?", "_agents"),
+])
+def test_meaning_questions_take_the_one_hop_path(match, monkeypatch, question, path):
+    replay = Replay(match)
+    replay.advance(600)
+    taken = []
+
+    async def meaning(self, q, profile):
+        taken.append("_meaning")
+        return {"text": "Interpretation: x", "evidence": [], "agent": "meaning_analyst", "source": "agent"}
+
+    async def agents(self, q, profile):
+        taken.append("_agents")
+        return {"text": "y", "evidence": [], "agent": "router", "source": "agent"}
+    monkeypatch.setattr(Assistant, "_meaning", meaning)
+    monkeypatch.setattr(Assistant, "_agents", agents)
+    res = asyncio.run(Assistant(replay.model, client=object(), model_name="fake").answer(question))
+    assert taken == [path] and res["answer_kind"] == "live"
+
+
+def test_meaning_facts_come_from_the_data_tools_with_their_evidence(match):
+    replay = Replay(match)
+    replay.advance(1500)
+    facts = Assistant(replay.model).meaning_facts()
+    assert {"score_and_clock", "momentum", "last_15_minutes", "attack_patterns", "recent_events"} <= set(facts)
+    assert "state" in facts["evidence"] and "stat:momentum" in facts["evidence"]
+    assert set(facts["recent_events"]["evidence"]) <= set(facts["evidence"])
+
+
+def test_every_ask_agent_uses_low_reasoning_effort_by_default():
+    assert qa.AGENT_OPTIONS == {"reasoning": {"effort": "low"}}
+    src = (qa.PROMPTS.parent / "vmi" / "agents" / "qa.py").read_text(encoding="utf-8")
+    assert src.count("Agent(self.client, ") == src.count("default_options=AGENT_OPTIONS")
