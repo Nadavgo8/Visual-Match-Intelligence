@@ -1,5 +1,9 @@
 // Presentation only: sample delivered positions; never infer a football outcome.
 const finite = Number.isFinite;
+export function validMotion(m){
+  return !!m && finite(m.heading) && Math.abs(m.heading)<=Math.PI && finite(m.speed) && m.speed>=0
+    && finite(m.distance) && m.distance>=0;
+}
 export function validFrame(f) {
   return !!f && finite(f.t) && f.t >= 0 && typeof f.match_id === "string"
     && Array.isArray(f.ball) && f.ball.length === 2 && f.ball.every(finite)
@@ -9,7 +13,8 @@ export function validFrame(f) {
     && f.players.every(p => p && typeof p === "object")
     && new Set(f.players.map(p => p.id)).size === f.players.length
     && f.players.every(p => typeof p.id === "string" && ["home", "away"].includes(p.team)
-      && finite(p.x) && p.x >= 0 && p.x <= 105 && finite(p.y) && p.y >= 0 && p.y <= 68);
+      && finite(p.x) && p.x >= 0 && p.x <= 105 && finite(p.y) && p.y >= 0 && p.y <= 68
+      && (p.motion===undefined||validMotion(p.motion)));
 }
 
 export function interpolate(a, b, t) {
@@ -25,7 +30,16 @@ export function interpolate(a, b, t) {
     ball_height: blend(a.ball_height, b.ball_height),
     players: a.players.map(p => {
       const q = next.get(p.id);
-      return q ? { ...p, x: blend(p.x, q.x), y: blend(p.y, q.y) } : p;
+      if(!q)return p;
+      const {motion,...base}=p;
+      const result={...base,x:blend(p.x,q.x),y:blend(p.y,q.y)};
+      if(validMotion(motion)&&validMotion(q.motion)){
+        const turn=Math.atan2(Math.sin(q.motion.heading-motion.heading),Math.cos(q.motion.heading-motion.heading));
+        const heading=motion.heading+turn*u;
+        result.motion={heading:Math.atan2(Math.sin(heading),Math.cos(heading)),
+          speed:blend(motion.speed,q.motion.speed),distance:blend(motion.distance,q.motion.distance)};
+      }
+      return result;
     }) };
 }
 

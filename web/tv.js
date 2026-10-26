@@ -1,8 +1,8 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
 import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.3";
-import { MatchScreen } from "./match-screen.mjs?v=3.2";
-import { createRenderer } from "./renderer-host.mjs?v=3.15";
+import { MatchScreen } from "./match-screen.mjs?v=3.18";
+import { createRenderer } from "./renderer-host.mjs?v=3.18";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
 import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
 import {MeterTimeline} from "./meter-timeline.mjs?v=3.15";

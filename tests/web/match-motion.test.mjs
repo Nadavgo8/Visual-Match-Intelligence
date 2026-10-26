@@ -16,6 +16,20 @@ test("pass and airborne shot sample source midpoints and clamp endpoints", () =>
   assert.equal(mid.players[0].x, 40); assert.equal(a.players[0].x, 20);
   assert.equal(interpolate(a, b, 9), a); assert.equal(interpolate(a, b, 13), b);
 });
+
+test('optional source motion interpolates distance and crosses the angle seam by the short arc',()=>{
+  const a=f(10,20),b=f(12,26);
+  a.players[0].motion={heading:Math.PI-.1,speed:3,distance:120};
+  b.players[0].motion={heading:-Math.PI+.1,speed:3,distance:126};
+  const p=interpolate(a,b,11).players[0];
+  assert.equal(p.x,23);assert.equal(p.motion.distance,123);assert.equal(p.motion.speed,3);
+  assert.ok(Math.abs(Math.abs(p.motion.heading)-Math.PI)<1e-10);
+  for(const bad of [{heading:NaN,speed:3,distance:0},{heading:0,speed:-1,distance:0},{heading:0,speed:3,distance:-1}]){
+    assert.equal(validFrame({...a,players:[{...a.players[0],motion:bad}]}),false);
+  }
+  delete b.players[0].motion;
+  assert.equal(interpolate(a,b,11).players[0].motion,undefined,'mixed legacy metadata cannot freeze an old source gait');
+});
 test("substitution and discontinuous or foreign frames never blend rosters or games", () => {
   const a = f(1, 10), b = f(2, 20); b.players[0].id = "h2";
   assert.equal(interpolate(a, b, 1.5).players[0].id, "h1");

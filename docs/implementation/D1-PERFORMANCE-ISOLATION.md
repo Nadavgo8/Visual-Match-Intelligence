@@ -56,6 +56,26 @@ chain, seek/speed/play ordering, old-run rejection, same-window counts, copyable
 failure and retry. These are measurement fixes; no actors, crowd states,
 resolution or rendering quality were removed or reduced.
 
+Live integration smoke on generator2.4 / PR30-verified source: same Chrome
+viewport2048×852, CSS/buffer1337×752, High/Broadcast,22actors,87calls and
+1,469,498triangles. A quiet20.316s controlled capture recorded0.98445FPS,
+source604.68→623.98, rendered-source drift12.4ms, accepted tracking16.76Hz,
+p95receipt68.1ms /max85ms, callback CPU mean.228ms and render-submit CPU
+mean10.37ms. This is a valid measurement of LOW controlled cadence, not30FPS
+acceptance. It is not compared as an optimization with the smaller local
+benchmark. Raw receipt: `out/visual-reference-review/performance-live-controlled-20261026.json`.
+After automatic pause, TV and companion both showed10:24,0–1, atmosphere29%
+and home momentum41%. This confirms the replacement snapshot agrees; it does
+not prove ongoing companion latency throughout capture. One separate manual
+live capture has been requested in room`quality-live-final`, with its companion
+already connected. Local heavy tests remain stopped during that user window.
+
+Source-consumer integration now reads generator2.4's optional heading, speed
+and cumulative distance; source gait matches direct/reverse seek and20/60Hz
+sampling. This does not yet make the entire rig pose seek-identical: legacy
+contact poses still depend on adjacent observations, and source acceleration
+and foot/ball contact geometry remain a separate physical-motion phase.
+
 ## Protocol and one-page manual fallback
 
 Open **http://127.0.0.1:17761/static/performance.html** and press

@@ -5,6 +5,18 @@ import { worldPosition, playerPose, cameraView, qualitySettings, SceneMotion } f
 const player = (x = 10, y = 34, id = "h1", team = "home") => ({ id, x, y, n: 7, team, role: "FW" });
 const frame = (t, players = [player()], match_id = "m1", extra = {}) => ({ t, players, match_id, ...extra });
 
+test('source motion gives the same gait pose after direct seek, reverse seek and different render rates',()=>{
+  const source=t=>frame(t,[{...player(10+t*3),motion:{heading:Math.PI/2,speed:3,distance:120+t*3}}]);
+  const expected=new SceneMotion().update(source(8)).get('h1');
+  assert.equal(expected.distance,144);assert.equal(expected.speed,3);assert.equal(expected.heading,Math.PI/2);
+  for(const hz of [20,60]){
+    const motion=new SceneMotion();for(let i=0;i<=8*hz;i++)motion.update(source(i/hz));
+    assert.deepEqual(motion.players.get('h1'),expected);
+    motion.update(source(12));assert.deepEqual(motion.update(source(8)).get('h1'),expected);
+    assert.deepEqual(motion.update(source(8)).get('h1'),expected);
+  }
+});
+
 test("world uses exact metric axes and source ball height", () => {
   assert.deepEqual(worldPosition(52.5, 34), [0, 0, 0]);
   assert.deepEqual(worldPosition(0, 0, 3.2), [-52.5, 3.2, 34]);

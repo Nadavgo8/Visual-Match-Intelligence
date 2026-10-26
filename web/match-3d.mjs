@@ -3,7 +3,7 @@ import { buildStadium } from "./stadium.mjs?v=3.15";
 import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.11";
 import { updateCrowd, CrowdDynamics } from "./crowd.mjs?v=3.15";
 import { loadAtlasMetadata } from "./crowd-atlas.mjs?v=3.15";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.15";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.18";
 import {createBall,ballDrawScale} from "./ball-view.mjs?v=3.15";
 
 export async function prepareAssets() {
