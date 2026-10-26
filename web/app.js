@@ -1,7 +1,7 @@
 import { FEED_ICONS } from "./icons.js";
 import { atmospherePresentation } from "./atmosphere.mjs";
 import { openSession } from "./session.mjs?v=1.1";
-import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, itemLabel, normaliseProfile, scopeOf } from "./companion.mjs?v=1.1";
+import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, insertIndex, isNearBottom, normaliseProfile, scopeOf, speakerOf, suggestionsFor } from "./companion.mjs?v=1.2";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -9,16 +9,17 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const MOMENT = { goal: "After the goal", var_check: "While VAR checks", var_decision: "VAR decision",
   half_time: "Half-time", full_time: "Full-time", substitution: "Substitution", injury: "Injury stoppage" };
+const AGENT = { match_analyst: "match analyst", rules_expert: "rules expert", router: "router",
+  both: "analyst + rules", meaning_analyst: "meaning analyst" };
 const KEY = "vmi.profile.v1";
 
 let teams = null;
 let profile = load();
-const items = new Map(); // cue_id -> {t, el}
 const feedStore = new FeedStore();
 const answers = new AnswerLog();
 const checkpoints = new CatchUpCheckpoints();
-let scope = null, newestDelivered = null, catchUps = 0;
-const catchUpWhere = new Map(); // request id -> "feed" | chat bubble element
+let scope = null, runId = null, newestDelivered = null, catchUps = 0;
+const catchUpWhere = new Map(); // request id -> chat bubble element
 
 function load() {
   try { const p = JSON.parse(localStorage.getItem(KEY)); return p ? normaliseProfile(p) : null; } catch { return null; }
@@ -49,6 +50,12 @@ const send = (m) => session.send(m);
 function onSnapshot(s) {
   scope = scopeOf(room, s.state.seed, s.run_id);  // a seek or a new match starts a new checkpoint
   newestDelivered = null;
+  if (runId !== null && s.run_id !== runId) {
+    // The match jumped: everything said so far belongs to another moment, so the chat restarts.
+    clearChat();
+    addNotice("The match jumped to a new point, so the chat started again from here.");
+  }
+  runId = s.run_id;
   onState(s.state);
   // A snapshot replaces the prior run's evidence, including a same-run
   // reconnect whose replacement snapshot has no measurements yet.
@@ -91,44 +98,109 @@ function renderMeters(atmosphere, momentum) {
   bar.setAttribute("aria-label", available ? `Seven-minute momentum: home ${Math.round(value * 100)} percent` : "Momentum unavailable");
 }
 
-// ---------- feed ----------
-function place(id, t, el) {
-  const old = items.get(id);
-  if (old && Number(old.el.dataset.t) === t) {  // same item, same moment: replace in place, don't move it
+// ---------- the chat timeline ----------
+// One list, oldest first. Agent messages are ordered by when they reached the room; a question
+// goes after the newest message the fan had seen. Live messages never replace or move the fan's
+// own questions and answers.
+const entries = new Map(); // key -> {order, el, agent}
+let lastOrder = 0, userSeq = 0, unread = 0;
+
+function following() {
+  const doc = document.documentElement;
+  return isNearBottom((window.scrollY || 0) + (window.innerHeight || 0), doc.scrollHeight || 0);
+}
+function toBottom() {
+  const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  window.scrollTo?.({ top: document.documentElement.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  unread = 0;
+  $("jump").hidden = true;
+}
+
+function put(key, order, el, { agent = false, fresh = false, follow = false } = {}) {
+  const wasFollowing = following();
+  const old = entries.get(key);
+  el.id = `m-${key}`;
+  if (old && old.order === order) {  // same message, same moment: replace in place (late xG, a re-sent analysis)
     old.el.replaceWith(el);
-    el.dataset.t = t;
-    items.set(id, { t, el });
+    entries.set(key, { order, el, agent });
     return;
   }
-  if (old) old.el.remove();
-  items.set(id, { t, el });
-  const list = $("feed");
-  // newest first; analysis cards sit just above the item they explain
-  const after = [...list.children].find((c) => Number(c.dataset.t) < t);
-  el.dataset.t = t;
-  list.insertBefore(el, after || null);
-  $("feed-empty").hidden = true;
+  if (old) { old.el.remove(); entries.delete(key); }
+  const list = $("chat");
+  const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
+  const at = insertIndex(sorted.map((e) => e.order), order);
+  list.insertBefore(el, sorted[at]?.el || null);
+  entries.set(key, { order, el, agent });
+  lastOrder = Math.max(lastOrder, order);
+  $("chat-empty").hidden = true;
+  if (!fresh) return;
+  if (follow || wasFollowing) toBottom();
+  else { unread += 1; $("jump").textContent = `${unread} new message${unread > 1 ? "s" : ""} ↓`; $("jump").hidden = false; }
+}
+
+function clearChat() {
+  entries.clear();
+  $("chat").innerHTML = "";
+  lastOrder = 0;
+  unread = 0;
+  $("jump").hidden = true;
+  $("chat-empty").hidden = false;
+}
+function dropAgentMessages() {
+  for (const [key, e] of entries) if (e.agent) { e.el.remove(); entries.delete(key); }
+}
+function addNotice(text) {
+  const li = document.createElement("li");
+  li.className = "notice";
+  li.textContent = text;
+  put(`n${++userSeq}`, lastOrder + 0.0001, li);
+}
+function announce(text) { $("announce").textContent = text; }
+
+function header(speakerKey, clock, label) {
+  const s = speakerOf(speakerKey);
+  return `<div class="who"><span class="avatar" aria-hidden="true">${s.avatar}</span><b>${esc(s.name)}</b>`
+    + ` <span class="role">${esc(s.role)}</span>${clock ? ` <span class="clk">${esc(clock)}</span>` : ""}`
+    + ` <span class="kind">${esc(label ?? s.label)}</span></div>`;
+}
+// A reply quotes what it answers, linked to it, so the thread reads like a conversation.
+function replyQuote(replyTo) {
+  const target = replyTo && entries.get(replyTo);
+  if (!target) return "";
+  const who = target.el.querySelector?.(".who b")?.textContent ?? "";
+  const said = (target.el.querySelector?.(".txt")?.textContent ?? "").trim().slice(0, 80);
+  return `<a class="reply" href="#m-${esc(replyTo)}">↳ ${esc(who)}${who ? ": " : ""}${esc(said)}</a>`;
+}
+function agentItem(speakerKey, extra) {
+  const li = document.createElement("li");
+  li.className = `msg agent ${speakerKey === "analyst" ? "ada" : "kai"}${extra ? ` ${extra}` : ""}`;
+  return li;
 }
 
 function addFeed(f, fresh) {
-  // Late information (such as xG) updates the same item quietly: no highlight, no new message.
+  // Late information (such as xG) updates the same message quietly: no highlight, no new message.
   const isNew = feedStore.upsert(f) === "insert" && fresh;
-  const li = document.createElement("li");
-  li.className = `item tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
+  const speaker = f.speaker === "analyst" ? "analyst" : "commentator";
+  const li = agentItem(speaker, `tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`);
   const sources = (f.evidence || []).map((e) => `<code>${esc(e)}</code>`).join(" ");
-  li.innerHTML = `<span class="clk">${esc(f.clock)}</span><span aria-hidden="true">${FEED_ICONS[f.icon] ?? "•"}</span><span class="txt">${esc(f.text)}</span>`
-    + `<details class="sources"><summary><span class="kind">${itemLabel("feed")}</span></summary>Logged events: ${sources || "none"}</details>`;
-  place(f.cue_id, f.t, li);
+  li.innerHTML = header(speaker, f.clock, speaker === "analyst" ? "Interpretation · from logged events" : "Fact · from logged events")
+    + replyQuote(f.reply_to)
+    + `<p class="txt"><span class="ev" aria-hidden="true">${FEED_ICONS[f.icon] ?? "•"}</span> ${esc(f.text)}</p>`
+    + `<details class="sources"><summary>Logged events</summary>${sources || "none"}</details>`;
+  put(f.cue_id, Number.isFinite(f.delivered) ? f.delivered : f.t, li, { agent: true, fresh: isNew });
+  if (isNew && f.tier <= 2) renderSuggestions(f.icon);
+  if (isNew && f.tier === 1) announce(`${speakerOf(speaker).name}, ${f.clock}: ${f.text}`);
   if (Number.isFinite(f.delivered)) newestDelivered = Math.max(newestDelivered ?? 0, f.delivered);
   markSeen();
 }
 
 function onBacklog(m) {
-  items.clear();
+  dropAgentMessages();
   feedStore.reset(m.feed);
-  $("feed").innerHTML = "";
-  $("feed-empty").hidden = m.feed.length > 0;
-  for (const f of m.feed) addFeed(f, false);
+  for (const f of [...m.feed].sort((a, b) => (a.delivered ?? a.t) - (b.delivered ?? b.t))) addFeed(f, false);
+  $("chat-empty").hidden = entries.size > 0;
+  const big = [...m.feed].reverse().find((f) => f.tier <= 2);
+  renderSuggestions(big?.icon);
 }
 
 function receiptsHtml(sentences, facts, r) {
@@ -141,63 +213,74 @@ function receiptsHtml(sentences, facts, r) {
 }
 
 function onAnalysis(a) {
-  const li = document.createElement("li");
-  li.className = "card new";
-  li.innerHTML = `<h3>${esc(MOMENT[a.moment] ?? "Analysis")} · ${esc(a.clock)} <span class="kind">${itemLabel("analysis")}</span></h3><p>${esc(a.text)}</p>${receiptsHtml(a.sentences, a.facts, a.receipts)}`;
-  place(a.cue_id, a.t + 0.01, li);
+  const fresh = !entries.has(a.cue_id);
+  const li = agentItem("analyst", fresh ? "new" : "");
+  li.innerHTML = header("analyst", a.clock, `${MOMENT[a.moment] ?? "Analysis"} · interpretation`)
+    + replyQuote(a.reply_to) + `<p class="txt">${esc(a.text)}</p>${receiptsHtml(a.sentences, a.facts, a.receipts)}`;
+  put(a.cue_id, a.t + 0.01, li, { agent: true, fresh });
 }
 
-// ---------- ask ----------
+// ---------- asking ----------
 let qid = 0;
-function bubble(cls, html) {
+function userBubble(text) {
   const li = document.createElement("li");
-  li.className = `msg ${cls}`;
-  li.innerHTML = html;
-  $("chat").appendChild(li);
-  li.scrollIntoView({ block: "end", behavior: "smooth" });
-  return li;
+  li.className = "msg me";
+  li.innerHTML = `<span class="sr-only">You asked: </span>${esc(text)}`;
+  const order = lastOrder + 0.0001;
+  put(`u${++userSeq}`, order, li, { fresh: true, follow: true });
+  return order;
+}
+function pendingBubble(order, text) {
+  const li = document.createElement("li");
+  li.className = "msg agent pending";
+  li.innerHTML = `<span class="muted">${esc(text)}</span>`;
+  const key = `q${++qid}`;
+  put(key, order + 0.00001, li, { fresh: true, follow: true });
+  return key;
 }
 function ask(q) {
   q = q.trim();
   if (!q) return;
-  bubble("me", esc(q));
-  const pending = bubble("bot", "<span class='muted'>Thinking…</span>");
-  pending.id = `q${++qid}`;
-  if (!send({ cmd: "ask", q, id: pending.id })) {
-    pending.innerHTML = "<span class='muted'>Not connected right now, so the question wasn't sent. Try again when the app reconnects.</span>";
+  const key = pendingBubble(userBubble(q), "Kai and Ada are checking the match…");
+  if (!send({ cmd: "ask", q, id: key })) {
+    $(`m-${key}`).innerHTML = "<span class='muted'>Not connected right now, so the question wasn't sent. Try again when the app reconnects.</span>";
   }
 }
 function onAnswer(a) {
   if (!answers.accept(a.id)) return;
-  const el = document.getElementById(a.id) || bubble("bot", "");
-  const who = { match_analyst: "Match analyst", rules_expert: "Rules expert", router: "Router", both: "Analyst + rules" }[a.agent] ?? a.agent;
-  const src = a.source === "agent" ? `${esc(who)} agent on ${esc(a.model)}` : `${esc(who)} (local)`;
+  const el = document.getElementById(`m-${a.id}`);
+  if (!el) return;  // asked before the chat restarted
+  const speaker = a.speaker === "analyst" ? "analyst" : "commentator";
+  const s = speakerOf(speaker);
+  const via = AGENT[a.agent] ?? a.agent;
+  const src = a.source === "agent" ? `${esc(s.name)} via ${esc(via)} agent on ${esc(a.model)}` : `${esc(s.name)} via ${esc(via)} (local)`;
   const ev = (a.evidence || []).map((e) => `<code>${esc(e)}</code>`).join(" ");
-  el.innerHTML = `${esc(a.text)}<details class="receipts"><summary>Receipts · ${src} · ${esc(a.latency_ms)} ms</summary>
+  el.className = `msg agent ${speaker === "analyst" ? "ada" : "kai"} answer`;
+  const label = a.agent === "rules_expert" ? "Rules" : s.label;  // the Laws of the Game are not interpretation
+  el.innerHTML = header(speaker, a.clock, a.source === "agent" ? `${label} · live answer` : `${label} · written by code`)
+    + `<p class="txt">${esc(a.text)}</p><details class="receipts"><summary>Receipts · ${src} · ${esc(a.latency_ms)} ms</summary>
     <ul><li>Tools: ${esc((a.tool_calls || []).join(", ") || "none")}</li><li>Evidence: ${ev || "none"}</li>${a.fallback_reason ? `<li>Fallback: ${esc(a.fallback_reason)}</li>` : ""}</ul></details>`;
+  announce(`${s.name} answered: ${a.text}`);
+  if (following()) toBottom();
 }
 function onAnswerDiscarded(a) {
-  const el = document.getElementById(a.id);
+  const el = document.getElementById(`m-${a.id}`);
   if (el) el.innerHTML = "<span class='muted'>The match jumped before this answer was ready, so it was dropped. Ask again.</span>";
 }
-$("ask-form").onsubmit =(e) => { e.preventDefault(); ask($("q").value); $("q").value = ""; };
+$("ask-form").onsubmit = (e) => { e.preventDefault(); ask($("q").value); $("q").value = ""; };
+
+function renderSuggestions(icon) {
+  const chips = [`<button type="button" data-catch-up>What did I miss?</button>`,
+    ...suggestionsFor(icon).map((q) => `<button type="button">${esc(q)}</button>`)];
+  $("suggest").innerHTML = chips.join("");
+}
+renderSuggestions(null);
 $("suggest").onclick = (e) => {
   if (e.target.tagName !== "BUTTON") return;
-  if (e.target.dataset.catchUp !== undefined) { bubble("me", "What did I miss?"); catchUp(bubble("bot", "")); }
+  if (e.target.dataset.catchUp !== undefined) catchUp(pendingBubble(userBubble("What did I miss?"), "Catching up…"));
   else ask(e.target.textContent);
 };
-
-// ---------- tabs ----------
-function tab(which) {
-  const feed = which === "feed";
-  queueMicrotask(markSeen);
-  $("feed-view").hidden = !feed; $("ask-view").hidden = feed;
-  $("tab-feed").classList.toggle("on", feed); $("tab-ask").classList.toggle("on", !feed);
-  $("tab-feed").setAttribute("aria-selected", feed); $("tab-ask").setAttribute("aria-selected", !feed);
-  if (!feed) $("q").focus();
-}
-$("tab-feed").onclick = () => tab("feed");
-$("tab-ask").onclick = () => tab("ask");
+$("jump").onclick = toBottom;
 
 // ---------- onboarding / settings ----------
 function openOnboarding() {
@@ -220,41 +303,39 @@ $("onboard").addEventListener("close", () => {
 $("settings-btn").onclick = openOnboarding;
 
 // ---------- what did I miss? ----------
-// The viewer has seen the feed when the Feed tab is on screen, scrolled to the top.
+// The viewer has seen the chat when it is on screen with the newest message in view.
 function markSeen() {
-  if (!scope || newestDelivered === null || $("feed-view").hidden || document.visibilityState !== "visible") return;
-  if (window.scrollY > 40) return;
+  if (!scope || newestDelivered === null || document.visibilityState !== "visible") return;
+  if (!following()) return;
   checkpoints.advance(scope, newestDelivered);
 }
-window.addEventListener("scroll", markSeen, { passive: true });
+window.addEventListener("scroll", () => {
+  if (following()) { unread = 0; $("jump").hidden = true; }
+  markSeen();
+}, { passive: true });
 document.addEventListener("visibilitychange", markSeen);
 
-function catchUp(where) {
+function catchUp(key) {
   const id = `c${++catchUps}`;
+  const where = $(`m-${key}`);
   catchUpWhere.set(id, where);
-  const show = (html) => (where === "feed" ? ($("catch-up-result").hidden = false, $("catch-up-result").innerHTML = html)
-    : (where.innerHTML = html));
   if (!send({ cmd: "catch_up", id, since_t: scope ? checkpoints.get(scope) : null })) {
     catchUpWhere.delete(id);
-    show("<span class='muted'>Not connected right now, so there's no summary. Try again when the app reconnects.</span>");
-    return;
+    where.innerHTML = "<span class='muted'>Not connected right now, so there's no summary. Try again when the app reconnects.</span>";
   }
-  show("<span class='muted'>Catching up…</span>");
 }
 function onCatchUp(c) {
   const where = catchUpWhere.get(c.id);
   if (!where) return;
   catchUpWhere.delete(c.id);
-  const html = `<h3>${esc(c.from_clock)}–${esc(c.to_clock)} <span class="kind">Summary · written by code from logged events</span></h3><p>${esc(c.text)}</p>`;
-  if (where === "feed") { $("catch-up-result").hidden = false; $("catch-up-result").innerHTML = html; }
-  else where.innerHTML = html;
+  where.className = "msg agent kai answer";
+  where.innerHTML = header("commentator", null, "Summary · written by code from logged events")
+    + `<p class="txt"><b>${esc(c.from_clock)}–${esc(c.to_clock)}:</b> ${esc(c.text)}</p>`;
   if (scope) checkpoints.advance(scope, c.to_t);  // only a received summary moves the checkpoint
 }
 function onError(e) {
   for (const [id, where] of catchUpWhere) {  // a refused summary leaves the checkpoint where it was
     catchUpWhere.delete(id);
-    const html = `<span class='muted'>${esc(e.message || "That didn't work.")}</span>`;
-    if (where === "feed") $("catch-up-result").innerHTML = html; else where.innerHTML = html;
+    where.innerHTML = `<span class='muted'>${esc(e.message || "That didn't work.")}</span>`;
   }
 }
-$("catch-up").onclick = () => catchUp("feed");

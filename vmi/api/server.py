@@ -45,7 +45,7 @@ log = logging.getLogger("vmi")
 WEB = Path(__file__).resolve().parents[2] / "web"
 # Browsers only run ES modules served as JavaScript; some OS registries map .mjs to text/plain.
 mimetypes.add_type("text/javascript", ".mjs")
-DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "12"))
+DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "2"))
 TICK_HZ = 20
 SPEEDS = [1, 2, 4, 8, 16, 32]
 DEFAULT_PROFILE = {"depth": "basic", "team": None, "amount": "balanced"}
@@ -343,7 +343,8 @@ class Room:
         return {"type": "feed", "cue_id": o["cue_id"], "clock": o["clock"], "t": o["t"], "icon": o["icon"],
                 "team": o["team"], "mine": bool(profile.get("team") and o["team"] == profile["team"]),
                 "text": o["text"][profile["depth"]], "evidence": o["evidence"], "tier": o["tier"],
-                "update": o.get("update", False), "delivered": o["delivered"]}
+                "update": o.get("update", False), "delivered": o["delivered"],
+                "speaker": o.get("speaker", "commentator"), "reply_to": o.get("reply_to")}
 
     def request_text(self, a: dict, profile: dict, notify: bool = True):
         key = (a["cue_id"], profile["depth"], profile.get("team"))
@@ -385,6 +386,7 @@ class Room:
             return
         res = self.texts[key]
         msg = {"type": "analysis", "cue_id": a["cue_id"], "clock": a["clock"], "t": a["t"], "moment": a["moment"],
+               "speaker": "analyst", "reply_to": a.get("reply_to"),
                "text": res["text"], "sentences": res["sentences"], "receipts": {
                    "source": res["source"], "model": res["model"], "latency_ms": res["latency_ms"],
                    "validation": res["validation"], "rejected": res.get("rejected")},

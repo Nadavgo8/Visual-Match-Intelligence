@@ -54,7 +54,7 @@ echo "== Settings"
 # One replica: rooms (a TV and its phones) live in memory, and min 1 avoids a 15-25 s cold start for judges.
 az containerapp update -n "$APP" -g "$RG" --min-replicas 1 --max-replicas 1 --cpu 0.5 --memory 1Gi \
   --set-env-vars FOUNDRY_PROJECT_ENDPOINT="$FOUNDRY_PROJECT_ENDPOINT" FOUNDRY_MODEL="$FOUNDRY_MODEL" \
-                 APPLICATIONINSIGHTS_CONNECTION_STRING="$AI_CONN" VMI_DEMO_SEED=12 -o none
+                 APPLICATIONINSIGHTS_CONNECTION_STRING="$AI_CONN" VMI_DEMO_SEED=2 -o none
 
 URL=$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
 echo "Live at https://$URL  (health: https://$URL/api/health should say agents: foundry)"

@@ -37,6 +37,7 @@ BANNERS = {
 }
 
 WHISTLE_WAIT_S = 2.0  # wait this long for the feed to explain a whistle, then show it generic
+MOMENTUM_REPLY_S = 600.0  # a goal links to the analyst's momentum call made this recently
 TIER_BIG, TIER_BALANCED, TIER_ALL = 1, 2, 3
 AMOUNT_MAX_TIER = {"big": TIER_BIG, "balanced": TIER_BALANCED, "everything": TIER_ALL}
 
@@ -75,6 +76,8 @@ class AttentionEngine:
     n_cue: int = 0
     n_in: int = 0  # feed and whistle records received
     shot_feeds: dict = field(default_factory=dict)
+    cue_by_event: dict = field(default_factory=dict)  # event id -> feed cue_id, so analysis can reply to it
+    last_momentum: dict | None = None  # the analyst's latest "on top" call: team, t, cue_id
     atmosphere: Atmosphere = field(default_factory=Atmosphere)
     last_atmosphere: dict | None = None
 
@@ -91,10 +94,14 @@ class AttentionEngine:
                 "t_start": round(t, 2), "t_end": round(t + b["secs"], 2), "why": why,
                 "evidence": evidence}
 
-    def _feed(self, ev: dict, tier: int, icon: str, basic: str, deep: str, team: str | None = None) -> dict:
-        return {"kind": "feed", "cue_id": self._cue_id(), "t": ev["t"], "clock": ev.get("clock"),
+    def _feed(self, ev: dict, tier: int, icon: str, basic: str, deep: str, team: str | None = None,
+              speaker: str = "commentator") -> dict:
+        cue = self._cue_id()
+        self.cue_by_event[ev["id"]] = cue
+        return {"kind": "feed", "cue_id": cue, "t": ev["t"], "clock": ev.get("clock"),
                 "tier": tier, "icon": icon, "team": team if team is not None else ev.get("team"),
-                "text": {"basic": basic, "deep": deep}, "evidence": [ev["id"]]}
+                "text": {"basic": basic, "deep": deep}, "evidence": [ev["id"]], "speaker": speaker,
+                "reply_to": None}
 
     # ---------- main entry points ----------
     def ingest(self, rec: dict, now: float) -> list[dict]:
@@ -169,8 +176,11 @@ class AttentionEngine:
                 out.append({"kind": "skip", "t": now, "what": f"analysis:{sa.kind}",
                             "why": "play restarted before there was time to read it"})
                 continue
+            # The analyst replies to the commentator's item for the event it explains: one reply,
+            # written once per scheduled moment, so the two voices can't trigger each other.
             out.append({"kind": "analysis", "cue_id": self._cue_id(), "t": round(now, 2),
                         "clock": self.model.clock, "moment": sa.kind, "tier": sa.tier,
+                        "reply_to": self.cue_by_event.get(sa.trigger.get("id")),
                         "factpack": build_factpack(self.model, sa.kind, sa.trigger)})
         return out
 
@@ -390,10 +400,22 @@ class AttentionEngine:
                           "goal" if outcome == "goal" else "chance", text, deep)
         if old:
             feed["cue_id"] = old["cue_id"]
+            feed["reply_to"] = old["reply_to"]
+        elif outcome == "goal":
+            feed["reply_to"] = self._momentum_reply(shot)
+        self.cue_by_event[shot["id"]] = feed["cue_id"]
         feed.update(shot_id=shot["id"], update=bool(old), xg=d.get("xg"))
         feed["evidence"] += [d[k] for k in ("result_id", "xg_id") if d.get(k)]
         self.shot_feeds[shot["id"]] = deepcopy(feed)
         return feed
+
+    def _momentum_reply(self, shot: dict) -> str | None:
+        """A goal builds on the analyst's "on top" call when it came from the same team within
+        the last 10 minutes. Only a link: the text claims nothing about cause."""
+        lm = self.last_momentum
+        if lm and lm["team"] == shot["team"] and 0 <= shot["t"] - lm["t"] <= MOMENTUM_REPLY_S:
+            return lm["cue_id"]
+        return None
 
     def _schedule(self, due: float, kind: str, trigger: dict, tier: int, needs_dead_ball: bool = True):
         self.scheduled.append(ScheduledAnalysis(due, kind, trigger, tier, needs_dead_ball))
@@ -430,9 +452,12 @@ class AttentionEngine:
         pseudo = {"id": f"momentum@{int(self.now)}", "t": self.now, "clock": self.model.clock, "team": zone}
         poss = mom.possession_home if zone == "home" else 1 - mom.possession_home
         possession_text = f"{round(poss * 100)}% possession" if mom.possession_available else "possession unavailable"
-        return [self._feed(pseudo, TIER_ALL, "momentum", f"{tn} are on top right now.",
-                           f"Momentum {tn}: {possession_text}, "
-                           f"{mom.key_passes[zone]} key passes and {mom.shots[zone]} shots in the last 7 min.")]
+        feed = self._feed(pseudo, TIER_ALL, "momentum", f"{tn} are on top right now.",
+                          f"Momentum {tn}: {possession_text}, "
+                          f"{mom.key_passes[zone]} key passes and {mom.shots[zone]} shots in the last 7 min.",
+                          speaker="analyst")
+        self.last_momentum = {"team": zone, "t": self.now, "cue_id": feed["cue_id"]}
+        return [feed]
 
 
 def _opp(side: str) -> str:
