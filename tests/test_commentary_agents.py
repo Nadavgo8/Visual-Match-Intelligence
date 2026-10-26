@@ -16,7 +16,7 @@ from vmi.agents.tools import MatchTools  # noqa: E402
 from vmi.api import server  # noqa: E402
 from vmi.api.server import Client, Room  # noqa: E402
 from vmi.engine.replay import Replay  # noqa: E402
-from vmi.generator.match import generate_match  # noqa: E402
+from vmi.evaluation.benchmark import benchmark_match  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +31,9 @@ def isolated_text_cache():
 
 @pytest.fixture(scope="module")
 def match():
-    return generate_match(12)
+    # Snapshot/injection expectations refer to the annotated 1-0 -> 2-1 match,
+    # not to whichever narrative the current demo generator emits for seed 12.
+    return benchmark_match()
 
 
 class SlowAgents(Assistant):

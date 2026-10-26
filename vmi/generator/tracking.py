@@ -17,6 +17,25 @@ class Tracker:
         self.m = match
         self.kf = sorted(match.keyframes, key=lambda k: k.t)
         self.kt = [k.t for k in self.kf]
+        self.source_paths = match.meta.get("motion_model") == "source-paths-1"
+        self.distances = []
+        self.headings = []
+        totals = {}
+        headings = {}
+        previous = None
+        for k in self.kf:
+            for pid, position in k.player_positions.items():
+                if previous and pid in previous.player_positions:
+                    before = previous.player_positions[pid]
+                    distance = math.dist(before, position)
+                    totals[pid] = totals.get(pid, 0) + distance
+                    if distance > 1e-8:
+                        headings[pid] = math.atan2(position[0] - before[0], before[1] - position[1])
+                else:
+                    totals.setdefault(pid, 0)
+            self.distances.append(dict(totals))
+            self.headings.append(dict(headings))
+            previous = k
         teams = match.meta["teams"]
         self.players = {p["id"]: p for side in teams.values() for p in side["players"]}
         # lineup changes over time: (t, team, off, on)
@@ -120,7 +139,9 @@ class Tracker:
                 pb = b.player_positions.get(pid, (x, y))
                 x, y = pa[0] + (pb[0] - pa[0]) * alpha, pa[1] + (pb[1] - pa[1]) * alpha
                 # the player on the ball moves to it
-                if holder == pid:
+                if self.source_paths:
+                    pass
+                elif holder == pid:
                     x, y = bx, by
                 elif b.holder == pid:
                     w = alpha
@@ -128,9 +149,19 @@ class Tracker:
                 elif a.holder == pid:
                     w = 1 - alpha
                     x, y = x + (a.x - x) * w, y + (a.y - y) * w
-                players.append({"id": pid, "team": side, "n": p["number"],
+                record = {"id": pid, "team": side, "n": p["number"],
                                 "role": self.role_at(pid, t),
-                                "x": round(min(max(x, 0), PITCH_X), 2), "y": round(min(max(y, 0), PITCH_Y), 2)})
+                                "x": round(min(max(x, 0), PITCH_X), 2), "y": round(min(max(y, 0), PITCH_Y), 2)}
+                if self.source_paths:
+                    index = max(0, bisect.bisect_right(self.kt, t) - 1)
+                    span = b.t - a.t
+                    dx, dy = pb[0] - pa[0], pb[1] - pa[1]
+                    distance = math.hypot(dx, dy)
+                    record["motion"] = {"heading": math.atan2(dx, -dy) if distance > 1e-8 else
+                                        self.headings[index].get(pid, math.pi / 2 if right else -math.pi / 2),
+                                        "speed": distance / span if span > 0 else 0,
+                                        "distance": self.distances[index].get(pid, 0) + distance * alpha}
+                players.append(record)
         return self._record(t, a, bx, by, bz, holder, players)
 
     def _record(self, t, a, bx, by, bz, holder, players):
