@@ -34,6 +34,16 @@ def validate_record(rec: dict, match_id: str) -> None:
             raise ValueError("invalid measurement quality")
         if "confidence" in quality and (not _number(quality["confidence"]) or not 0 <= quality["confidence"] <= 1):
             raise ValueError("invalid measurement confidence")
+        if stream == "tracking":
+            for player in rec.get("players", []):
+                if "motion" not in player:
+                    continue
+                motion = player["motion"]
+                if (not isinstance(motion, dict) or set(motion) != {"heading", "speed", "distance"}
+                        or not all(_number(value) for value in motion.values())
+                        or not -math.pi <= motion["heading"] <= math.pi
+                        or motion["speed"] < 0 or motion["distance"] < 0):
+                    raise ValueError("invalid source player motion")
         return
     if not isinstance(rec.get("id"), str) or not rec["id"]:
         raise ValueError("event id is required")

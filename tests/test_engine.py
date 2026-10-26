@@ -6,7 +6,8 @@ import random
 from vmi.engine.attention import visible_to
 from vmi.engine.model import momentum_from_counts
 from vmi.engine.replay import run_all
-from vmi.generator.match import generate_match, _Sim
+from vmi.generator.match import generate_match
+from vmi.generator.scenarios import _Segment
 
 
 @pytest.fixture(scope="module")
@@ -38,15 +39,15 @@ def test_overturned_penalty_is_detected_from_the_feed():
         def random(self):
             return .01
 
-    sim = _Sim(12, "reviewed-penalty-regression")
-    sim.emit("period_start", period_no=1)
-    sim.kick_off("home")
+    # This feed/VAR regression deliberately places a challenge in the box.
+    # Use the existing scripted setup-cut fixture, not a continuous full match.
+    sim = _Segment(12, "reviewed-penalty-regression")
     victim = next(p for p in sim.on_pitch["home"] if p.position == "ST")
     fouler = sim.opp_nearest("home", 94, 34)
     sim.key("home", 94, 34, victim)
     sim.rng = ReviewOverturns(0)
     assert sim.missed_box_foul("home", victim, fouler, 94, 34, "trip")
-    outs = list(run_all(sim.export_match()))
+    outs = list(run_all(sim.finish()))
     assert any(o["kind"] == "banner" and o["type"] == "penalty" for o in outs)
     a = next(o for o in outs if o["kind"] == "analysis" and o["moment"] == "var_check")
     chk = next(f for f in a["factpack"]["facts"] if f["type"] == "var_check")

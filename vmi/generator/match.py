@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 from .teams import Player, Team, make_teams
 from .analytics import chance_quality, delayed_xg
 from .export import finish_export
-from .motion import Keyframe, formation_position
+from .motion import Keyframe, PLAYER_SPEED, formation_position, stage_players
 from .state import PlayState
 
 PITCH_X, PITCH_Y = 105.0, 68.0
@@ -17,7 +17,7 @@ BOX_X = PITCH_X - 16.5
 BOX_Y = (13.84, 54.16)
 HT_GAP = 60.0  # half-time compressed to 60 s on the timeline
 SCHEMA_VERSION = "2.0"
-GENERATOR_VERSION = "2.3.0"
+GENERATOR_VERSION = "2.4.0"
 
 
 def _other(side: str) -> str:
@@ -55,6 +55,8 @@ class _Sim:
         self.match_id = match_id
         self.teams: dict[str, Team] = make_teams()
         self.initial_roles = {p.id: p.position for team in self.teams.values()
+                              for p in [*team.players, *team.bench]}
+        self.initial_bases = {p.id: (p.base_x, p.base_y) for team in self.teams.values()
                               for p in [*team.players, *team.bench]}
         self.on_pitch: dict[str, list[Player]] = {s: list(t.players) for s, t in self.teams.items()}
         self.bench: dict[str, list[Player]] = {s: list(t.bench) for s, t in self.teams.items()}
@@ -248,6 +250,7 @@ class _Sim:
         })
 
     def key(self, side: str, ax: float, ay: float, holder: Player | None, in_play: bool = True):
+        self.t = round(self.t, 2)
         x, y = self.to_pitch(side, ax, ay)
         self.keyframes.append(Keyframe(round(self.t, 2), round(x, 2), round(y, 2),
                                        holder.id if holder else None, in_play,
@@ -310,7 +313,8 @@ class _Sim:
             self.whistle(blasts=2 if period == 1 else 3, length="long")
             self.emit("period_end", period_no=period)
             self.state(ball_in_play=False)
-            self.key("home", 52.5, 34, None, in_play=False)
+            self.keyframes.append(replace(self.keyframes[-1], t=round(self.t, 2),
+                                          holder=None, in_play=False, flight_height=0))
             if period == 1:
                 self.t += HT_GAP
         self.t += 5
@@ -321,8 +325,9 @@ class _Sim:
         crowd = self.build_crowd()
         teams_meta = {
             s: {"name": tm.name, "short": tm.short, "colour": tm.colour,
-                "players": [vars(p) | {"starter": True, "position": self.initial_roles[p.id]} for p in tm.players]
-                + [vars(p) | {"starter": False, "position": self.initial_roles[p.id]} for p in tm.bench]}
+                "players": [vars(p) | {"starter": starter, "position": self.initial_roles[p.id],
+                                       "base_x": self.initial_bases[p.id][0], "base_y": self.initial_bases[p.id][1]}
+                            for starter, squad in ((True, tm.players), (False, tm.bench)) for p in squad]}
             for s, tm in self.teams.items()
         }
         meta = {
@@ -333,17 +338,31 @@ class _Sim:
             "home_attacks_right_in_period": {"1": True, "2": False},
         }
         finish_export(self.events, self.states, crowd)
-        return Match(meta, self.events, crowd, self.states, self.keyframes)
+        match = Match(meta, self.events, crowd, self.states, self.keyframes)
+        # Scripted fixtures deliberately retain their documented setup cuts;
+        # ordinary matches freeze full continuous player paths in source truth.
+        if not hasattr(self, "name"):
+            stage_players(match)
+            meta["motion_model"] = "source-paths-1"
+        return match
 
     def kick_off(self, side: str):
-        self.key(side, 52.5, 34, None, in_play=False)
+        if hasattr(self, "name"):
+            self.key(side, 52.5, 34, None, in_play=False)
+            self.t += self.rng.uniform(2, 4)
+            self.whistle(1, "short")
+            # These short event/latency fixtures have documented setup cuts;
+            # preserve their intentionally isolated parent-event ordering.
+            st = self.nearest(side, 52.5, 34)
+            self.emit("set_piece", side, st, 52.5, 34, kind="kick_off")
+            self.state(ball_in_play=True)
+            self.key(side, 52.5, 34, st)
+            self.carrier = (side, st, 52.5, 34.0)
+            return
+        self.set_restart_ball(side, 52.5, 34)
         self.t += self.rng.uniform(2, 4)
         self.whistle(1, "short")
-        st = self.nearest(side, 52.5, 34)
-        self.emit("set_piece", side, st, 52.5, 34, kind="kick_off")
-        self.state(ball_in_play=True)
-        self.key(side, 52.5, 34, st)
-        self.carrier = (side, st, 52.5, 34.0)
+        self.restart_pass(side, "kick_off", 52.5, 34, prepared=True)
 
     def stoppage(self, seconds: float):
         """Ball out of play; also the moment pending substitutions are made."""
@@ -402,9 +421,14 @@ class _Sim:
             # carry a little before acting
             start = self.keyframes[-1]
             hold = rng.uniform(0.6, 2.2)
+            old_ax, old_ay = ax, ay
             ax = min(ax + rng.uniform(0, 3.0), 101)
             ay = min(max(ay + rng.gauss(0, 1.5), 1), 67)
-            self.t += hold
+            distance = math.hypot(ax - old_ax, ay - old_ay)
+            if distance > PLAYER_SPEED * hold:
+                ratio = PLAYER_SPEED * hold / distance
+                ax, ay = old_ax + (ax - old_ax) * ratio, old_ay + (ay - old_ay) * ratio
+            self.t = math.ceil((self.t + hold) * 100) / 100
             self.key(side, ax, ay, holder)
             self.record_carry(side, holder, start, self.keyframes[-1])
             if ax > 70:
@@ -432,6 +456,8 @@ class _Sim:
             if r < tackle_p:
                 tackler = self.opp_nearest(side, ax, ay)
                 kind = rng.choice(["tackle", "tackle", "interception"])
+                self.t = self.contact_ready(tackler, self.to_pitch(side, ax, ay), self.t)
+                self.key(side, ax, ay, tackler)
                 self.emit(kind, _other(side), tackler, PITCH_X - ax, PITCH_Y - ay,
                           outcome="won")
                 self.carrier = (_other(side), tackler, PITCH_X - ax, PITCH_Y - ay)
@@ -475,6 +501,15 @@ class _Sim:
         position = entry.player_positions.get(defender.id, formation_position(
             defender.base_x, defender.base_y, defender.position, defender.id,
             self.attacks_right(opponent), entry.x, entry.y, entry.t))
+        for previous in reversed(self.keyframes[:-1]):
+            anchor = ((previous.x, previous.y) if previous.holder == defender.id else
+                      previous.player_positions.get(defender.id))
+            if anchor is not None:
+                distance = math.dist(anchor, position)
+                reach = max(0, PLAYER_SPEED * (entry.t - previous.t))
+                if distance > reach:
+                    position = tuple(a + (p - a) * reach / distance for a, p in zip(anchor, position))
+                break
         entry.player_positions[defender.id] = position
         target = self.to_pitch(side, min(ax + 1, 104), ay)
         # Give the defender time to close down, rather than teleporting into a duel.
@@ -589,11 +624,12 @@ class _Sim:
             return None
         target = self.nearest(side, tx, ty, exclude=holder)
         height = "high" if cross or dist > 35 else "ground"
-        self.t += 0.5 + dist / 16
+        departure = self.t
+        self.t = self.contact_ready(target, self.to_pitch(side, tx, ty), self.t + 0.5 + dist / 16)
         if rng.random() < p_ok:
             p = self.emit("pass", side, holder, ax, ay, outcome="complete",
                           recipient_id=target.id, height=height, cross=cross, through_ball=through,
-                          t=self.t - (0.5 + dist / 16))
+                          t=departure)
             if rng.random() < 0.03:  # missing qualifier, like a real feed
                 p["pass"].pop("recipient_id")
             self.set_pass_end(p, side, tx, ty)
@@ -601,7 +637,7 @@ class _Sim:
             return target, tx, ty, p, cross
         # failed pass
         p = self.emit("pass", side, holder, ax, ay, outcome="incomplete", height=height,
-                      cross=cross, through_ball=through, t=self.t - (0.5 + dist / 16))
+                      cross=cross, through_ball=through, t=departure)
         if tx > 98 or ty < 1.5 or ty > 66.5 or rng.random() < 0.3:
             # out of play
             if tx > 96:
@@ -626,6 +662,8 @@ class _Sim:
         opp = _other(side)
         cutter = self.nearest(opp, PITCH_X - ix, PITCH_Y - iy)
         if ix > 80 and rng.random() < 0.5:
+            self.t = self.contact_ready(cutter, self.to_pitch(side, ix, iy), self.t)
+            self.key(side, ix, iy, cutter)
             self.emit("clearance", opp, cutter, PITCH_X - ix, PITCH_Y - iy)
             nx = PITCH_X - ix + rng.uniform(20, 35)
             ny = min(max(PITCH_Y - iy + rng.gauss(0, 12), 2), 66)
@@ -635,12 +673,19 @@ class _Sim:
             win = opp if rng.random() < 0.55 else side
             if win == opp:
                 rec = self.nearest(opp, nx, ny)
+                self.t = self.contact_ready(rec, self.to_pitch(opp, nx, ny), self.t)
+                self.key(opp, nx, ny, rec)
+                self.emit("ball_recovery", opp, rec, nx, ny)
                 self.carrier = (opp, rec, nx, ny)
             else:
                 rec = self.nearest(side, PITCH_X - nx, PITCH_Y - ny)
+                self.t = self.contact_ready(rec, self.to_pitch(opp, nx, ny), self.t)
+                self.key(opp, nx, ny, rec)
                 self.emit("ball_recovery", side, rec, PITCH_X - nx, PITCH_Y - ny)
                 self.carrier = (side, rec, PITCH_X - nx, PITCH_Y - ny)
             return None
+        self.t = self.contact_ready(cutter, self.to_pitch(side, ix, iy), self.t)
+        self.key(side, ix, iy, cutter)
         self.emit("interception", opp, cutter, PITCH_X - ix, PITCH_Y - iy)
         self.carrier = (opp, cutter, PITCH_X - ix, PITCH_Y - iy)
         return None
@@ -650,54 +695,111 @@ class _Sim:
         p["pass"]["end_location"] = [round(x, 1), round(y, 1)]
 
     # ---------- restarts ----------
+    def contact_ready(self, player, point, earliest):
+        """A player's next source touch must be reachable from their last one."""
+        for k in reversed(self.keyframes):
+            previous = (k.x, k.y) if k.holder == player.id else k.player_positions.get(player.id)
+            if previous is not None:
+                return math.ceil(100 * max(earliest, k.t + math.dist(previous, point) / PLAYER_SPEED + .002)) / 100
+        return math.ceil(100 * earliest) / 100
+
+    def set_restart_ball(self, side, ax, ay):
+        """Explicit dead-ball retrieval followed by a stationary setup interval."""
+        x, y = self.to_pitch(side, ax, ay)
+        positions = dict(self.keyframes[-1].player_positions) if self.keyframes else {}
+        if self.keyframes:
+            last = self.keyframes[-1]
+            self.keyframes.append(replace(last, t=round(self.t, 2), holder=None, in_play=False,
+                                          z=0, flight_height=0, player_positions=dict(positions)))
+            ready = self.t + math.dist((last.x, last.y), (x, y)) / 12
+        else:
+            ready = self.t
+        self.t = ready
+        self.key(side, ax, ay, None, False)
+        self.keyframes[-1].player_positions.update(positions)
+        self.t += 1.2
+        self.key(side, ax, ay, None, False)
+        self.keyframes[-1].player_positions.update(positions)
+
+    def restart_pass(self, side, kind, ax, ay, prepared=False):
+        """Execution is a release, flight and another player's first touch."""
+        taker = self.keeper(side) if kind == "goal_kick" else self.nearest(side, ax, ay)
+        tx = ax + (9 if ax < 85 and kind != "kick_off" else -9)
+        ty = min(62, max(6, ay + (8 if ay < 34 else -8))) if kind == "throw_in" else ay + (6 if ay <= 34 else -6)
+        receiver = self.nearest(side, tx, ty, exclude=taker)
+        self.t = self.contact_ready(taker, self.to_pitch(side, ax, ay), self.t)
+        if not prepared:
+            self.set_restart_ball(side, ax, ay)
+        action = self.emit("set_piece", side, taker, ax, ay, kind=kind)
+        self.state(ball_in_play=True)
+        self.key(side, ax, ay, None)
+        positions = dict(self.keyframes[-2].player_positions)
+        self.keyframes[-1].player_positions.update(positions)
+        self.keyframes[-1].player_positions[taker.id] = self.to_pitch(side, ax, ay)
+        self.keyframes[-1].flight_height = 1.6 if kind == "throw_in" else .25
+        departure = self.t
+        earliest = departure + math.hypot(tx - ax, ty - ay) / (9 if kind == "throw_in" else 12)
+        self.t = self.contact_ready(receiver, self.to_pitch(side, tx, ty), earliest)
+        self.report("pass", t=departure, team=side, player_id=taker.id,
+                    location=list(self.to_pitch(side, ax, ay)), possession_id=self.play.possession_id,
+                    play_context=kind, restart_id=action["restart_id"],
+                    **{"pass": {"outcome": "complete", "recipient_id": receiver.id,
+                                 "height": "high" if kind == "throw_in" else "ground",
+                                 "end_location": list(self.to_pitch(side, tx, ty))}})
+        self.key(side, tx, ty, receiver)
+        self.keyframes[-1].player_positions.update(positions)
+        self.carrier = (side, receiver, tx, ty)
+
     def throw_in(self, side, ax, ay):
         self.maybe_drinks(side, "throw_in")
-        taker = self.nearest(side, ax, ay)
-        self.emit("set_piece", side, taker, ax, ay, kind="throw_in")
-        self.state(ball_in_play=True)
-        self.key(side, ax, ay, taker)
-        self.carrier = (side, taker, ax, min(max(ay, 3), 65))
+        self.restart_pass(side, "throw_in", ax, ay)
 
     def goal_kick(self, side):
         self.maybe_drinks(side, "goal_kick")
-        gk = self.keeper(side)
-        self.emit("set_piece", side, gk, 5.5, 34, kind="goal_kick")
-        self.state(ball_in_play=True)
-        self.key(side, 5.5, 34, gk)
-        self.carrier = (side, gk, 5.5, 34.0)
+        self.restart_pass(side, "goal_kick", 5.5, 34)
 
     def corner(self, side, ax, ay):
         self.maybe_drinks(side, "corner")
         taker = self.nearest(side, ax, ay)
-        self.emit("set_piece", side, taker, 104.5, ay, kind="corner")
+        sy = .5 if ay < 34 else 67.5
+        self.t = self.contact_ready(taker, self.to_pitch(side, 104.5, sy), self.t)
+        self.set_restart_ball(side, 104.5, sy)
+        self.emit("set_piece", side, taker, 104.5, sy, kind="corner")
         self.state(ball_in_play=True)
-        self.key(side, 104.5, 0.5 if ay < 34 else 67.5, taker)
+        self.key(side, 104.5, sy, None)
+        self.keyframes[-1].player_positions[taker.id] = self.to_pitch(side, 104.5, sy)
+        self.keyframes[-1].flight_height = 3
+        departure = self.t
         self.t += self.rng.uniform(1.2, 2.0)
         tx, ty = self.rng.uniform(93, 100), self.rng.uniform(28, 40)
         target = self.nearest(side, tx, ty, exclude=taker)
         if self.rng.random() < 0.3:
-            p = self.emit("pass", side, taker, 104.5, ay, outcome="complete", recipient_id=target.id,
+            self.t = self.contact_ready(target, self.to_pitch(side, tx, ty), self.t)
+            p = self.emit("pass", side, taker, 104.5, sy, t=departure, outcome="complete", recipient_id=target.id,
                           height="high", cross=True, through_ball=False)
             self.set_pass_end(p, side, tx, ty)
             self.key(side, tx, ty, target)
             self.shot(side, target, tx, ty, p, header=True)
             return
-        p = self.emit("pass", side, taker, 104.5, ay, outcome="incomplete", height="high",
+        p = self.emit("pass", side, taker, 104.5, sy, t=departure, outcome="incomplete", height="high",
                       cross=True, through_ball=False)
         self.set_pass_end(p, side, tx, ty)
         opp = _other(side)
         clr = self.nearest(opp, PITCH_X - tx, PITCH_Y - ty)
-        self.key(side, tx, ty, None)
+        self.t = self.contact_ready(clr, self.to_pitch(side, tx, ty), self.t)
+        self.key(side, tx, ty, clr)
         self.emit("clearance", opp, clr, PITCH_X - tx, PITCH_Y - ty)
-        self.carrier = (opp, clr, PITCH_X - tx + 25, PITCH_Y - ty)
+        self.keyframes[-1].flight_height = 2
+        nx, ny = PITCH_X - tx + 25, PITCH_Y - ty
+        receiver = self.nearest(opp, nx, ny, exclude=clr)
+        self.t = self.contact_ready(receiver, self.to_pitch(opp, nx, ny), self.t + 1.6)
+        self.key(opp, nx, ny, receiver)
+        self.emit("ball_recovery", opp, receiver, nx, ny)
+        self.carrier = (opp, receiver, nx, ny)
 
     def restart_free_kick(self, side, ax, ay):
         self.maybe_drinks(side, "free_kick")
-        taker = self.nearest(side, ax, ay)
-        self.emit("set_piece", side, taker, ax, ay, kind="free_kick")
-        self.state(ball_in_play=True)
-        self.key(side, ax, ay, taker)
-        self.carrier = (side, taker, ax, ay)
+        self.restart_pass(side, "free_kick", ax, ay)
 
     # ---------- shots ----------
     @staticmethod
@@ -764,7 +866,7 @@ class _Sim:
                 self.stoppage(rng.uniform(14, 22))
                 self.corner(side, 105, rng.choice([0, 68]))
             else:
-                self.carrier = (opp, gk, 4.0, 34.0)
+                self.carrier = (opp, gk, 3.0, PITCH_Y - ay)
             return
         if outcome == "blocked":
             blk = self.opp_nearest(side, ax + 2, ay)
@@ -777,7 +879,23 @@ class _Sim:
                 self.key(side, ax - 6, ay, None)
                 self.carrier = (opp, blk, PITCH_X - ax + 6, PITCH_Y - ay)
             return
-        # post or off target
+        if outcome == "post":
+            # A post/crossbar rebound which stays on the field is still live.
+            # The private trajectory chooses that concrete case; it is not an
+            # automatic goal-kick or an invented outcome in the renderer.
+            lateral = rng.choice([-1, 1])
+            self.key(side, 105, 34 + lateral * 3.66, None)
+            self.t += .45
+            self.key(side, 100, 34 + lateral * 2.5, None)
+            winner = rng.choice([side, opp])
+            wx, wy = (100, 34 + lateral * 2.5) if winner == side else (5, 34 - lateral * 2.5)
+            receiver = self.nearest(winner, wx, wy)
+            self.t = self.contact_ready(receiver, self.to_pitch(winner, wx, wy), self.t + .6)
+            self.key(winner, wx, wy, receiver)
+            self.emit("ball_recovery", winner, receiver, wx, wy, related=[s["id"]])
+            self.carrier = (winner, receiver, wx, wy)
+            return
+        # off target
         self.key(side, 106, 34 + rng.choice([-1, 1]) * rng.uniform(4, 10), None, in_play=False)
         self.stoppage(rng.uniform(12, 20))
         self.goal_kick(opp)

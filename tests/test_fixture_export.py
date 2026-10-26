@@ -24,7 +24,7 @@ def test_fixture_export_is_byte_reproducible_and_streams_20hz(tmp_path):
     with (a/"tracking-20hz.jsonl").open(encoding="utf-8") as handle:
         initial = [json.loads(next(handle)) for _ in range(3)]
     assert [f["t"] for f in initial] == [0, 0.05, 0.1]
-    assert json.loads((a/"meta.json").read_text())["generator_version"] == "2.3.0"
+    assert json.loads((a/"meta.json").read_text())["generator_version"] == "2.4.0"
 
 
 def test_quality_report_detects_unexpected_duplicate_or_score_corruption():
