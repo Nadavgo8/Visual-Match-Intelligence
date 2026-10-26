@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VMI · Performance test</title><link rel="icon" href="data:,">
+<link rel="stylesheet" href="./tv.css?v=3.16">
+<style>
+header,.results{max-width:1400px;margin:8px auto;padding:0 12px}h1{font-size:18px;margin:4px 0}p{font-size:13px;margin:5px 0}
+.stage{width:min(100%,calc((100dvh - 155px)*16/9))}.stage canvas[hidden]{display:none}.stage .overlay[hidden]{display:none}
+pre{white-space:pre-wrap;font-size:12px}#phase{font-variant-numeric:tabular-nums}button{margin-right:6px}
+</style></head><body>
+<header><h1>VMI performance test</h1>
+<p>One click: light animation → minimal WebGL → full local 3D replay. Each stage warms for 3 seconds and measures for 20 seconds.</p>
+<p>Keep this page visible and focused. Do not touch it, record screenshots, switch windows or run tests/builds until finished (about 70 seconds).</p>
+<button id="start" disabled>Start performance test</button><button id="copy" disabled>Copy result</button><button id="download" disabled>Download result</button>
+<span id="phase" role="status">Preparing local assets…</span></header>
+<div class="stage" id="stage">
+<canvas id="light" aria-label="Light animation control"></canvas><canvas id="minimal" hidden aria-label="Minimal WebGL control"></canvas>
+<canvas id="full" hidden aria-label="Full source-driven local replay"></canvas>
+<div class="overlay" id="overlay" hidden>
+<div class="scorebug"><div class="sb-row"><span id="home">HAR</span><span id="score">0–0</span><span id="away">NOR</span><span id="clock">0:00</span></div>
+<div class="momentum-row"><span id="mom-label">Momentum</span><div class="momentum"><i class="mom-fill" id="momentum"></i></div></div></div>
+<div id="edges"><span class="edge-bar left"><i></i></span><span class="edge-bar right"><i></i></span></div>
+<span id="meter-label" hidden></span>
+<div class="event-marker" id="marker" hidden><div class="event-circle" id="icon"></div><span id="label"></span></div>
+<span class="synthetic">SYNTHETIC DEMO · LOCAL REPLAY DIAGNOSTIC</span></div></div>
+<section class="results"><p id="limitations">Drawing isolation uses the actual High renderer and delivered meter evidence from a pinned replay. It does not test WebSocket throughput or prove presented frames. Cross-check browser Performance/Frames. CPU submission timing is not GPU completion time.</p>
+<details><summary>Environment fields requiring verification</summary>
+<p>DevTools CPU throttling, power saving, remote sharing and other system load are not detectable reliably from this page. The result records these as unverified unless checked separately. Other VMI tabs should be closed.</p></details>
+<table id="summary"><caption>Diagnostic results, not full-product acceptance</caption><thead><tr><th>Stage</th><th>FPS</th><th>Frame p95 ms</th><th>CPU submit mean ms</th></tr></thead><tbody></tbody></table>
+<pre id="result" aria-label="Performance results"></pre></section>
+<script type="module" src="./performance.mjs?v=1"></script></body></html>
