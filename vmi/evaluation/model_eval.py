@@ -18,7 +18,10 @@ import argparse
 import asyncio
 import csv
 import json
+import os
 import re
+import subprocess
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -179,6 +182,53 @@ class LocalOpenAICompatible:
             return parse_answer(resp.json()["choices"][0]["message"]["content"])
 
 
+def spending_limit_on(read_subscription) -> bool:
+    """True only when Azure reports the subscription's spending limit as On (Free Trial and similar):
+    usage then stops at the credit instead of billing a card. Anything else, or an error, is False."""
+    try:
+        sub = read_subscription()
+    except Exception:
+        return False
+    return (sub or {}).get("subscriptionPolicies", {}).get("spendingLimit") == "On"
+
+
+def az_subscription() -> dict:
+    out = subprocess.run(["az", "rest", "--method", "get", "--url",
+                          "https://management.azure.com/subscriptions/{subscriptionId}?api-version=2022-12-01"],
+                         capture_output=True, text=True, check=True, shell=sys.platform == "win32")
+    return json.loads(out.stdout)
+
+
+class FoundryCandidate:
+    """A model deployment in a Microsoft Foundry project, called keyless (Entra ID) through Agent Framework.
+
+    It can only be built when the subscription's spending limit is On, so an evaluation run can use
+    the free credit but never charge a card."""
+
+    name = "microsoft-foundry"
+    may_charge = False
+
+    def __init__(self, endpoint: str, model: str, read_subscription=az_subscription, client_factory=None):
+        if not spending_limit_on(read_subscription):
+            raise CostRiskError("the Azure subscription's spending limit is not On; refusing to call Foundry")
+        self.model = model
+        self._client = (client_factory or _foundry_client)(endpoint, model)
+
+    async def complete(self, request: ModelRequest) -> tuple[str, list[str]]:
+        from agent_framework import Agent
+
+        agent = Agent(self._client, PROMPT, name="eval_candidate")
+        resp = await agent.run(request.prompt)
+        return parse_answer(resp.text)
+
+
+def _foundry_client(endpoint: str, model: str):
+    from agent_framework.foundry import FoundryChatClient
+    from azure.identity.aio import DefaultAzureCredential
+
+    return FoundryChatClient(project_endpoint=endpoint, model=model, credential=DefaultAzureCredential())
+
+
 # ------------------------------------------------------------------ runner
 def _p(values: list[int], q: float) -> int | None:
     if not values:
@@ -243,7 +293,9 @@ def write_report(report: dict, out_dir: Path) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--provider", choices=["template", "local"], default="template")
+    ap.add_argument("--provider", choices=["template", "local", "foundry"], default="template")
+    ap.add_argument("--endpoint", default=os.getenv("FOUNDRY_PROJECT_ENDPOINT"),
+                    help="Foundry project endpoint (foundry provider)")
     ap.add_argument("--base-url", default="http://localhost:11434/v1")
     ap.add_argument("--model", default=None)
     ap.add_argument("--runs", type=int, default=2)
@@ -254,6 +306,10 @@ def main(argv=None) -> int:
         if not args.model:
             ap.error("--model is required for --provider local")
         provider = LocalOpenAICompatible(args.base_url, args.model)
+    elif args.provider == "foundry":
+        if not args.model or not args.endpoint:
+            ap.error("--model and --endpoint (or FOUNDRY_PROJECT_ENDPOINT) are required for --provider foundry")
+        provider = FoundryCandidate(args.endpoint, args.model)
     report = asyncio.run(run(provider, runs=args.runs))
     out = args.output / (args.model or "template")
     write_report(report, out)

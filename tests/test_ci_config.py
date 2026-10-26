@@ -48,3 +48,21 @@ def test_lock_pins_every_package_and_scopes_windows_only_ones():
     assert all('sys_platform == "win32"' in ln for ln in pywin)
     for tool in ("pytest==", "pytest-cov==", "ruff==", "jsonschema==", "agent-framework=="):
         assert any(ln.lower().startswith(tool) for ln in lines), tool
+
+
+ROOT_FILES = Path(__file__).resolve().parents[1]
+
+
+def test_container_build_excludes_local_environments_and_installs_the_lock():
+    ignore = (ROOT_FILES / ".dockerignore").read_text(encoding="utf-8").split()
+    assert {".venv", "out", ".git", "tests"} <= set(ignore)  # --source . must not upload the 900 MB venv
+    docker = (ROOT_FILES / "Dockerfile").read_text(encoding="utf-8")
+    assert "requirements-lock.txt" in docker and "-r requirements.txt" not in docker
+
+
+def test_deploy_script_refuses_subscriptions_that_could_bill_and_grants_real_roles():
+    script = (ROOT_FILES / "infra" / "deploy.sh").read_text(encoding="utf-8")
+    guard = script.index('if [ "$LIMIT" != "On" ]')
+    assert guard < script.index("az group create") and guard < script.index("az containerapp up")
+    assert '"Cognitive Services User"' in script and '"Azure AI Developer"' in script
+    assert "Azure AI User" not in script  # that role name doesn't exist
