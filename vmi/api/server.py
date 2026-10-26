@@ -45,7 +45,7 @@ log = logging.getLogger("vmi")
 WEB = Path(__file__).resolve().parents[2] / "web"
 # Browsers only run ES modules served as JavaScript; some OS registries map .mjs to text/plain.
 mimetypes.add_type("text/javascript", ".mjs")
-DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "12"))
+DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "2"))
 TICK_HZ = 20
 SPEEDS = [1, 2, 4, 8, 16, 32]
 DEFAULT_PROFILE = {"depth": "basic", "team": None, "amount": "balanced"}

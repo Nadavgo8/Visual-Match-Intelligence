@@ -101,6 +101,12 @@ Calls made while writing spec v2 (Claude, Oct 22; Developer 1 can revisit them i
 - The plan asks for "explicit possession state" in tracking. To keep the data realism rule, tracking emits what optical feeds such as TRACAB emit: ball-owning team, ball alive or dead, ball height and speeds. The engine derives which player holds the ball from positions. The event feed arrives 0.5–3 s late, so it couldn't meet the 500 ms freshness rule for the attack component anyway. **Superseded on Oct 23 by the merged D1-01 contract** (approved by the user with Developer 1): tracking samples carry an explicit `possession` with `holder_id`; see `contracts/v2/stream.schema.json`.
 - A whistle that stops play for VAR shows the generic whistle marker, never a VAR label.
 
+## Demo match (Oct 27)
+
+- Generator fixes kept changing seed 12 (2–1, then 6–0, then 0–2). Nadav chose **seed 2** as the demo match: Harbour City 2–1 Northvale Rovers, with a VAR-overturned penalty (37:16, scored 37:58), a second home goal (43:34) and an away goal kept after a VAR check (65:08 / 66:38).
+- The story is locked by `tests/test_demo_match.py`, so a generator change that alters it fails CI. Changing the demo on purpose means updating that test and the demo script together. The model evaluation keeps its own frozen fixture (generator 2.2, seed 12).
+- Any seed still works; the seed only sets which match a room starts with.
+
 ## Still open (as of Oct 22)
 
 | # | Decision | Owner | Note |
