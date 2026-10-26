@@ -104,6 +104,11 @@ Five capture tests cover warmup/window duration, genuine stalls, changed
 conditions, duplicate timestamps, bounded samples, latched transient changes,
 stable completed results and separate CPU phase reporting. The pinned replay
 test checks its bytes, roster completeness, valid frames and actual motion.
+The follow-up review also caught a stale DPR ratio between retries and a
+back/forward-cache lifecycle defect. Start now recalculates the ratio and
+requires identical surfaces across stages; persisted restoration reloads the
+disposed page. Four tests run the real entrypoint against controlled boundaries
+to check transient events, changed DPR, GPU error/retry and restoration.
 Full suite/CI on the final HEAD remains required.
 
 Primary references:
