@@ -7,6 +7,7 @@ import pytest
 from vmi.agents.explainer import Explainer, template, validate
 from vmi.agents.qa import Assistant
 from vmi.engine.replay import Replay, run_all
+from vmi.evaluation.benchmark import benchmark_match
 from vmi.generator.match import generate_match
 
 
@@ -29,8 +30,12 @@ def test_templates_always_pass_the_validator(seed):
 
 @pytest.fixture(scope="module")
 def goal_pack():
-    m = generate_match(12)
-    pack = next(o["factpack"] for o in run_all(m) if o["kind"] == "analysis" and o["moment"] == "goal")
+    # These validator/workflow assertions name the annotated first scorer.
+    # Keep their independent facts fixed when the live demo generator evolves.
+    m = benchmark_match()
+    replay = Replay(m)
+    pack = next(o["factpack"] for o in replay.advance(1200)
+                if o["kind"] == "analysis" and o["moment"] == "goal")
     return m, pack
 
 
