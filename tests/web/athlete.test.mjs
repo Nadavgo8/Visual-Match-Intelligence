@@ -3,11 +3,50 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import * as T from "../../web/vendor/three/three.module.js";
-import { validateAthlete, loadAthlete, athleteGeometry, createAthlete, DetailedFootballers } from "../../web/athlete.mjs";
+import { validateAthlete, loadAthlete, athleteGeometry, createAthlete, DetailedFootballers, reachLeg } from "../../web/athlete.mjs";
 import { SceneMotion } from "../../web/scene-state.mjs";
 const bytes = await readFile(new URL("../../web/assets/athlete/athlete.json", import.meta.url));
 const data = JSON.parse(bytes), teams = { home: { colour: "#2678b9" }, away: { colour: "#e9e4d6" } };
 const p = { id: "h1", x: 40, y: 34, n: 7, role: "FW", team: "home" };
+
+test("support foot cancels world travel while contact turns the body forward, sideways or backward",()=>{
+  for(const turn of [0,Math.PI/4,-Math.PI/4,Math.PI/2,-Math.PI/2,Math.PI]) {
+    const actors=new DetailedFootballers(new T.Scene(),data), positions=[];
+    actors.actions.update=()=>new Map([[p.id,{kind:'release',weight:1,heading:Math.PI/2-turn}]]);
+    for(let i=0;i<=10;i++) {
+      const supportSpan=.65-.33*Math.abs(Math.sin(turn));
+      const travel=i/10*supportSpan*.9,player={...p,x:40+travel};
+      const frame={t:travel/6,players:[player],ball:[80,34]};
+      const poses=new Map([[p.id,{speed:6,distance:1.1+travel,heading:Math.PI/2}]]);
+      actors.update(frame,poses,teams);
+      const actor=actors.actors.get(p.id);actor.phase=0;actors.update(frame,poses,teams);
+      positions.push(actor.joints['foot.R'].getWorldPosition(new T.Vector3()));
+      assert.equal(actor.root.position.x,player.x-52.5);assert.equal(actor.root.position.z,34-player.y);
+      const hip=actor.joints['upperleg01.R'].getWorldPosition(new T.Vector3());
+      const rest=actor.legRest.R,maxReach=Math.hypot(...rest.upper)+Math.hypot(...rest.lower);
+      assert.ok(hip.distanceTo(positions.at(-1))<=maxReach+1e-8);
+      if(i===5){const pose=actor.root.toJSON();actors.update(frame,poses,teams);assert.deepEqual(actor.root.toJSON(),pose);}
+    }
+    for(const position of positions) assert.ok(position.distanceTo(positions[0])<.015,
+      `body turn ${turn}: support foot slides ${position.distanceTo(positions[0])}m`);
+    actors.dispose();
+  }
+});
+
+test("three-dimensional leg reach solves reachable targets and clamps unreachable ones without moving the root",()=>{
+  const base=athleteGeometry(data),actor=createAthlete(data,base,p,teams);
+  actor.root.position.set(4,0,3);actor.root.rotation.y=.7;actor.root.updateMatrixWorld(true);
+  const root=actor.root.position.clone(),hip=actor.joints['upperleg01.L'].getWorldPosition(new T.Vector3());
+  for(const offset of [new T.Vector3(.2,-.65,.2),new T.Vector3(0,0,.65).applyQuaternion(actor.root.quaternion)]) {
+    const target=hip.clone().add(offset);reachLeg(actor,'L',target);
+    assert.ok(actor.joints['foot.L'].getWorldPosition(new T.Vector3()).distanceTo(target)<1e-8);
+  }
+  const far=hip.clone().add(new T.Vector3(5,-5,5));reachLeg(actor,'L',far);
+  const rest=actor.legRest.L,foot=actor.joints['foot.L'].getWorldPosition(new T.Vector3());
+  assert.ok(hip.distanceTo(foot)<=Math.hypot(...rest.upper)+Math.hypot(...rest.lower)+1e-8);
+  assert.deepEqual(actor.root.position,root);assert.ok(foot.toArray().every(Number.isFinite));
+  actor.dispose();base.dispose();
+});
 
 test("the actual rig support foot stays stationary in world space during straight constant-speed stance", () => {
   const actors = new DetailedFootballers(new T.Scene(), data);

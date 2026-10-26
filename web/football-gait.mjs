@@ -18,10 +18,10 @@ export function legAngles(upper, lower, targetY, targetZ) {
 
 export function gaitCycleLength(speed) { return clamp(0.8 + 0.5 * Math.max(0, speed), 0.8, 4.4); }
 
-export function footballGait(speed, cycle, keeper = false, cycleLength = 2.2) {
+export function footballGait(speed, cycle, keeper = false, cycleLength = 2.2, supportSpan = .65) {
   const pace = clamp(speed, 0, 9) / 9, moving = pace > 0.006;
   const phase = clamp(cycle, 0, Number.MAX_SAFE_INTEGER) % 1;
-  const length = clamp(cycleLength, 0.8, 4.4), duty = Math.min(0.60, 0.65 / length);
+  const length = clamp(cycleLength, 0.8, 4.4), duty = Math.min(0.60, clamp(supportSpan,.1,.65) / length);
   const span = length * duty;
   const step = offset => {
     const p = (phase + offset) % 1;

@@ -1,5 +1,5 @@
 import * as T from './vendor/three/three.module.js';
-import {Match3D,prepareAssets} from './match-3d.mjs?v=3.22';
+import {Match3D,prepareAssets} from './match-3d.mjs?v=3.23';
 import {qualitySettings} from './scene-state.mjs?v=3.22';
 import {interpolate} from './match-motion.mjs';
 import {renderAtmosphere,renderMomentum} from './meter-view.mjs?v=3.3';

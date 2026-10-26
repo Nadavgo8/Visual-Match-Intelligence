@@ -1,5 +1,5 @@
 import * as T from "./vendor/three/three.module.js";
-import { footballGait, legAngles } from "./football-gait.mjs?v=3.22";
+import { footballGait, legAngles } from "./football-gait.mjs?v=3.23";
 import { FootballActions, nearbyBallPose } from "./football-actions.mjs?v=3.11";
 
 export function validateAthlete(data) {
@@ -96,7 +96,7 @@ export function createAthlete(data, baseGeometry, player, teams, document) {
   const legRest = Object.fromEntries(["L", "R"].map(side => {
     const head = name => data.bones.find(b => b.name === `${name}.${side}`).head;
     const hip = head("upperleg01"), knee = head("lowerleg01"), foot = head("foot");
-    return [side, { upper: knee.map((v, i) => v - hip[i]), lower: foot.map((v, i) => v - knee[i]), y: foot[1] - hip[1], z: foot[2] - hip[2] }];
+    return [side, { upper: knee.map((v, i) => v - hip[i]), lower: foot.map((v, i) => v - knee[i]), x: foot[0] - hip[0], y: foot[1] - hip[1], z: foot[2] - hip[2] }];
   }));
   // The source mesh already spreads the arms. Animation angles are relative
   // to that rest pose, not an assumed pair of vertical upper arms.
@@ -131,23 +131,32 @@ export class DetailedFootballers {
       }
       // Legacy source has distance only; keep a fixed metric cycle until the
       // cumulative source gait phase is available (never divide by current speed).
-      const pose = poses.get(p.id), gait = footballGait(pose.speed, pose.distance / 2.2 + actor.phase, p.role === "GK");
+      const pose = poses.get(p.id);
       const ball = frame.ball ?? [52.5, 34], look = Math.atan2(ball[0] - p.x, p.y - ball[1]);
       const holder = frame.possession?.holder_id === p.id;
       const contact = contacts.get(p.id) ?? nearbyBallPose(frame,p), strength = contact?.weight ?? 0;
       let facing = pose.speed > 0.1 || holder ? pose.heading : look;
       if(Number.isFinite(contact?.heading)) facing += Math.atan2(Math.sin(contact.heading-facing),Math.cos(contact.heading-facing))*strength;
+      const travelAngle = pose.heading - facing;
+      // A wide resting stance leaves less lateral reach than forward reach.
+      // Shorten contact duration, not its cancellation speed or source travel.
+      const supportSpan = .65 - .33*Math.abs(Math.sin(travelAngle));
+      const gait = footballGait(pose.speed,pose.distance/2.2+actor.phase,p.role === "GK",2.2,supportSpan);
       actor.root.position.set(p.x - 52.5, gait.pelvis, 34 - p.y); actor.root.rotation.y = facing;
+      const legTargets = [];
       for (const [side, sign] of [["L", 1], ["R", -1]]) {
         const foot = side === "L" ? gait.left : gait.right, rest = actor.legRest[side];
         const touch = side === (actor.phase < .5 ? "L" : "R") ? strength : 0;
         const reach = contact?.kind === "receive" ? .2 : .42;
         const lift = contact && !touch ? 0 : foot.lift;
-        const leg = legAngles(rest.upper, rest.lower, rest.y - gait.pelvis + lift + touch*.16,
-          rest.z + foot.z*(1-touch) + touch*reach);
+        const targetY = rest.y - gait.pelvis + lift + touch*.16;
+        const targetZ = rest.z + Math.cos(travelAngle)*foot.z*(1-touch) + touch*reach;
+        const targetX = rest.x + Math.sin(travelAngle)*foot.z*(1-touch);
+        const leg = legAngles(rest.upper, rest.lower, targetY, targetZ);
         actor.joints[`upperleg01.${side}`].rotation.set(leg.hip, 0, 0);
-        actor.joints[`lowerleg01.${side}`].rotation.x = leg.knee;
-        actor.joints[`foot.${side}`].rotation.x = leg.ankle;
+        actor.joints[`lowerleg01.${side}`].rotation.set(leg.knee, 0, 0);
+        actor.joints[`foot.${side}`].rotation.set(leg.ankle, 0, 0);
+        if (Math.abs(targetX-rest.x)>1e-8) legTargets.push({side,offset:new T.Vector3(targetX,targetY,targetZ)});
         actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, sign * (gait.armSpread - actor.armRest[side]));
         actor.joints[`lowerarm01.${side}`].rotation.set(actor.forearmRest[side]-gait.elbow,0,0);
       }
@@ -156,6 +165,10 @@ export class DetailedFootballers {
       const lookDelta = Math.atan2(Math.sin(look - facing), Math.cos(look - facing));
       actor.joints.head.rotation.y = holder ? 0 : Math.max(-0.5, Math.min(0.5, lookDelta));
       actor.root.updateMatrixWorld(true);
+      for (const {side,offset} of legTargets) {
+        const hip=actor.joints[`upperleg01.${side}`].getWorldPosition(new T.Vector3());
+        reachLeg(actor,side,hip.add(offset.applyQuaternion(actor.root.quaternion)));
+      }
       if(p.role === "GK" && frame.ball_in_play && frame.ball_height > .35 && frame.ball_height < 2.4
         && Math.hypot(ball[0]-p.x,ball[1]-p.y)<1.5) {
         const target = new T.Vector3(ball[0]-52.5,frame.ball_height+.16,34-ball[1]);
@@ -172,14 +185,32 @@ export class DetailedFootballers {
 // stays on tracking; this does not classify a save, catch, dive or goal.
 export function reachArm(actor, side, target) {
   const upper=actor.joints[`upperarm01.${side}`],lower=actor.joints[`lowerarm01.${side}`],wrist=actor.joints[`wrist.${side}`];
+  reachTwoBone(actor,upper,lower,wrist,target,new T.Vector3(side==="L"?1:-1,-.4,-.3));
+}
+
+// The support target follows travel, even when the torso faces across it.
+// Reach is anatomical; neither the tracked root nor the target is displaced.
+export function reachLeg(actor, side, target) {
+  const upper=actor.joints[`upperleg01.${side}`],lower=actor.joints[`lowerleg01.${side}`],foot=actor.joints[`foot.${side}`];
+  reachTwoBone(actor,upper,lower,foot,target,new T.Vector3(0,0,1));
+  foot.quaternion.copy(foot.parent.getWorldQuaternion(new T.Quaternion()).invert()
+    .multiply(actor.root.getWorldQuaternion(new T.Quaternion())));
+  foot.updateWorldMatrix(false,true);
+}
+
+function reachTwoBone(actor,upper,lower,wrist,target,localPole) {
   const start=upper.getWorldPosition(new T.Vector3()), elbow=lower.getWorldPosition(new T.Vector3()), end=wrist.getWorldPosition(new T.Vector3());
   const a=start.distanceTo(elbow),b=elbow.distanceTo(end),direction=target.clone().sub(start);
   const distance=Math.max(Math.abs(a-b)+1e-5,Math.min(a+b-1e-5,direction.length()));
   if(direction.lengthSq()<1e-10) return;
   direction.normalize();
-  const pole=new T.Vector3(side==="L"?1:-1,-.4,-.3).applyQuaternion(actor.root.getWorldQuaternion(new T.Quaternion()));
+  const pole=localPole.applyQuaternion(actor.root.getWorldQuaternion(new T.Quaternion()));
   pole.addScaledVector(direction,-pole.dot(direction));
-  if(pole.lengthSq()<1e-8) pole.set(0,0,1).addScaledVector(direction,-direction.z);
+  if(pole.lengthSq()<1e-8) {
+    pole.set(0,Math.abs(direction.y)<.9?1:0,0);
+    if(pole.lengthSq()===0) pole.set(1,0,0);
+    pole.addScaledVector(direction,-pole.dot(direction));
+  }
   pole.normalize();
   const along=(a*a+distance*distance-b*b)/(2*distance),height=Math.sqrt(Math.max(0,a*a-along*along));
   const desiredElbow=start.clone().addScaledVector(direction,along).addScaledVector(pole,height);
@@ -188,7 +219,7 @@ export function reachArm(actor, side, target) {
     const delta=new T.Quaternion().setFromUnitVectors(from.normalize(),to.normalize());
     const world=delta.multiply(bone.getWorldQuaternion(new T.Quaternion()));
     const parent=bone.parent.getWorldQuaternion(new T.Quaternion()).invert();
-    bone.quaternion.copy(parent.multiply(world)); actor.root.updateMatrixWorld(true);
+    bone.quaternion.copy(parent.multiply(world)); bone.updateWorldMatrix(false,true);
   };
   rotate(upper,elbow.clone().sub(start),desiredElbow.clone().sub(start));
   const joint=lower.getWorldPosition(new T.Vector3());
