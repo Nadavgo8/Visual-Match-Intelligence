@@ -51,10 +51,13 @@
       <div class="room">Room <b id="room-code"></b> | seed <input id="seed" type="number" min="1" max="99999" value="12" aria-label="Match seed"> <button id="new">Load</button> | agents: <span id="agents"></span></div>
       <output class="room" id="scene-diagnostics">Waiting for source diagnostics.</output>
       <output class="room" id="frame-metrics">Cadence: awaiting an active visible window.</output>
+      <div class="room"><button id="live-perf">Start live performance test</button><button id="copy-live-perf" disabled>Copy live result</button>
+      <span id="live-perf-status">Seeks to 10:00, then measures 20 seconds at 1x after warmup. Keep this tab visible.</span></div>
+      <pre class="room" id="live-perf-result" hidden></pre>
       <details class="trace" id="trace"><summary>Attention Engine: <span id="trace-sum">waiting</span></summary><ol id="trace-list"></ol></details>
     </section>
   </details>
 </main>
-<script type="module" src="/static/tv.js?v=3.16"></script>
+<script type="module" src="/static/tv.js?v=3.17"></script>
 </body>
 </html>

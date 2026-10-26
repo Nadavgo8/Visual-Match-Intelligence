@@ -1,5 +1,61 @@
 # D1 performance isolation — 26 October 2026
 
+## Latest result — manual protocol 2
+
+The user supplied the complete protocol-2 result recorded at **09:46:05 UTC**.
+Same reported viewport **2048×852**, CSS/buffer **1240×697**, High/Broadcast,
+DPR .9375 / buffer ratio 1, Chrome155 / Intel Iris Plus D3D11, seed12
+generator2.3, source600–630. All three stages remained visible and focused;
+no visibility changes were recorded.
+
+| Stage | Duration / samples | FPS submissions | Frame p95 / max | CPU submission mean |
+|---|---|---:|---:|---:|
+| Light animation | 20.0159s / 1202 | 60.05 | 17 / 20ms | .083ms |
+| Minimal WebGL | 20.0161s / 1202 | 60.05 | 17 / 19.7ms | .293ms |
+| Full local replay | 20.0159s / 1036 | **51.76** | **33.3 / 83.4ms** | **5.921ms** |
+
+Full source advanced **603.0304→623.0297**, with1036 distinct samples.
+CPU means: source interpolation .043ms, overlay .017ms, pose .056ms,
+athlete animation .958ms, Three.js submission4.451ms, remaining camera/crowd/
+ball .339ms. Scene counters remained87calls /1,469,498triangles /36geometries /
+49textures. CPU submission is not GPU completion; a rare83.4ms frame remains
+visible in the evidence rather than filtered out.
+
+**Local High drawing exceeds30FPS average in this manual run.** This is not
+a claimed optimization speedup from the automated1Hz run: execution conditions
+differed, and no scene quality or rendering algorithm changed between them.
+Both manual controls are healthy, so the earlier shared1Hz ceiling is not an
+intrinsic limit of this browser/GPU under manual operation. Its exact automatic
+scheduling cause remains unproven. CPU throttling, OS power saving, remote
+sharing and external load remain unverified, not guessed.
+
+The full original JSON is in the user's reply. A clearly labelled transcription
+of its summary is saved in `out/visual-reference-review/performance-manual-20261026.json`.
+**Presented-frame/DevTools and live TV/companion acceptance remain open.**
+The existing TV now has a separate Start live performance test under Presenter
+tools: it seeks the current seed to600s, plays1x, warms3s, measures20s, records
+accepted WebSocket rates/callback CPU separately, stores a copyable result and
+pauses. It does not infer network transit latency or companion synchronization
+from render cadence. Do not repeat the three controls to obtain this final
+transport-inclusive measurement.
+
+The live capture checks the same 20s window for source and accepted tracking
+delivery, including its two boundaries. Gaps over500ms, source regression,
+missing source time or source/receipt drift over500ms invalidate it. This is a
+freshness check, not a one-way network-latency measurement. Warmup messages do
+not inflate reported throughput. A1Hz render loop with healthy20Hz transport
+remains a valid LOW-FPS result; a50Hz loop redrawing a frozen source fails.
+Source observation duration is recorded separately from render duration to
+avoid mistaking a slow first interval for a stopped clock.
+
+Review: Sol6.1 High reproduced a stale scene passing after one late clock jump,
+and normal1Hz playback falsely failing the old endpoint comparison. Regression
+tests were run red before the fixes (four failures including the window-scope
+assertion), then green. A real TV-entrypoint harness verifies one animation
+chain, seek/speed/play ordering, old-run rejection, same-window counts, copyable
+failure and retry. These are measurement fixes; no actors, crowd states,
+resolution or rendering quality were removed or reduced.
+
 ## Protocol and one-page manual fallback
 
 Open **http://127.0.0.1:17761/static/performance.html** and press

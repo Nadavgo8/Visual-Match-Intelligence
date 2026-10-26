@@ -8,6 +8,7 @@ export class PerformanceCapture {
     this.environment=structuredClone(environment);this.signature=JSON.stringify(environment);
     this.warmUntil=now+this.warmupMs;this.begin=null;this.previous=null;
     this.intervals=[];this.draws=[];this.phases={};this.sources=new Set();this.firstSource=null;this.lastSource=null;
+    this.sourceFirstAt=null;this.sourceLastAt=null;this.sourceMaxDriftMs=0;
     this.result=null;this.active=true;
   }
   invalidate(reason) { this.result={valid:false,reason,environment:this.environment};this.active=false;return this.result; }
@@ -25,6 +26,8 @@ export class PerformanceCapture {
     }
     if(Number.isFinite(sourceTime)){
       this.firstSource??=sourceTime;this.lastSource=sourceTime;this.sources.add(sourceTime);
+      this.sourceFirstAt??=now;this.sourceLastAt=now;
+      this.sourceMaxDriftMs=Math.max(this.sourceMaxDriftMs,Math.abs((sourceTime-this.firstSource)*1000-(now-this.sourceFirstAt)));
     }
     if(this.intervals.length>this.capacity)return this.invalidate('Measurement sample capacity exceeded.');
     const elapsed=now-this.begin;
@@ -38,7 +41,8 @@ export class PerformanceCapture {
       submittedFrames:this.intervals.length,fps:this.intervals.length*1000/elapsed,
       frameMs:stats(this.intervals),renderSubmitCpuMs:stats(this.draws),
       cpuPhases:Object.fromEntries(Object.entries(this.phases).map(([name,values])=>[name,stats(values)])),
-      source:{first:this.firstSource,last:this.lastSource,distinctSamples:this.sources.size},
+      source:{first:this.firstSource,last:this.lastSource,distinctSamples:this.sources.size,
+        observationMs:this.sourceFirstAt===null?0:this.sourceLastAt-this.sourceFirstAt,maxClockDriftMs:this.sourceMaxDriftMs},
       limitation:'Render submissions and rAF cadence; cross-check presented/dropped frames in DevTools. CPU submission time is not GPU completion time.'};
     this.active=false;return this.result;
   }
