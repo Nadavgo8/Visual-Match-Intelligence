@@ -50,6 +50,9 @@ function onSnapshot(s) {
   scope = scopeOf(room, s.state.seed, s.run_id);  // a seek or a new match starts a new checkpoint
   newestDelivered = null;
   onState(s.state);
+  // A snapshot replaces the prior run's evidence, including a same-run
+  // reconnect whose replacement snapshot has no measurements yet.
+  renderMeters(null, null);
   if (s.meters) onMeters(s.meters);
   onBacklog({ feed: s.feed || [] });
 }
@@ -70,14 +73,22 @@ function onState(s) {
 function onMeters(m) {
   $("score").textContent = `${m.score.home}–${m.score.away}`;
   $("clock").textContent = m.clock;
+  renderMeters(m.atmosphere, m.momentum);
+}
+function renderMeters(atmosphere, momentum) {
   const chip = $("atmo-chip");
-  const a = atmospherePresentation(m.atmosphere);
+  const a = atmospherePresentation(atmosphere);
   chip.textContent = a.label;
   chip.className = "chip";
   chip.style.background = a.color;
   chip.style.color = "#071b20";
-  chip.title = m.atmosphere.why;
-  $("mom").style.width = `${(m.momentum.home_index * 100).toFixed(0)}%`;
+  chip.title = atmosphere?.why ?? "";
+  const available = Number.isFinite(momentum?.home_index);
+  const value = available ? Math.min(1, Math.max(0, momentum.home_index)) : .5;
+  $("mom").style.width = `${(value * 100).toFixed(0)}%`;
+  const bar = document.querySelector(".mom");
+  bar.classList.toggle("unavailable", !available);
+  bar.setAttribute("aria-label", available ? `Seven-minute momentum: home ${Math.round(value * 100)} percent` : "Momentum unavailable");
 }
 
 // ---------- feed ----------
