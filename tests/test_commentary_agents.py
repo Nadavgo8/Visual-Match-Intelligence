@@ -254,3 +254,67 @@ def test_every_ask_agent_uses_low_reasoning_effort_by_default():
     assert qa.AGENT_OPTIONS == {"reasoning": {"effort": "low"}}
     src = (qa.PROMPTS.parent / "vmi" / "agents" / "qa.py").read_text(encoding="utf-8")
     assert src.count("Agent(self.client, ") == src.count("default_options=AGENT_OPTIONS")
+
+
+class ScriptedAgent:
+    """Stands in for agent_framework.Agent: records how each agent is built and replies from a script."""
+    built: list = []
+    replies: dict = {}
+
+    def __init__(self, client, instructions, default_options=None, name=None, description=None, tools=None):
+        ScriptedAgent.built.append({"name": name, "options": default_options, "tools": tools})
+        self.name = name
+
+    def as_tool(self, name):
+        return name
+
+    async def run(self, message):
+        return type("R", (), {"text": ScriptedAgent.replies[self.name]})()
+
+
+@pytest.fixture
+def scripted(monkeypatch):
+    import agent_framework
+    ScriptedAgent.built, ScriptedAgent.replies = [], {}
+    monkeypatch.setattr(agent_framework, "Agent", ScriptedAgent)
+    return ScriptedAgent
+
+
+def test_meaning_path_accepts_a_grounded_labelled_view(match, scripted):
+    replay = Replay(match)
+    replay.advance(1500)
+    scripted.replies["meaning_analyst"] = json.dumps({"answer": "Interpretation: Harbour City are slightly ahead.",
+                                                      "evidence": ["stat:momentum"]})
+    res = asyncio.run(Assistant(replay.model, client="c", model_name="gpt-5-mini")._meaning("who's on top?", {}))
+    assert res["agent"] == "meaning_analyst" and res["source"] == "agent" and res["model"] == "gpt-5-mini"
+    assert res["evidence"] == ["stat:momentum"]
+    assert scripted.built == [{"name": "meaning_analyst", "options": qa.AGENT_OPTIONS, "tools": None}]
+
+
+def test_meaning_path_rejects_an_unlabelled_or_invented_view(match, scripted):
+    replay = Replay(match)
+    replay.advance(1500)
+    a = Assistant(replay.model, client="c", model_name="gpt-5-mini")
+    scripted.replies["meaning_analyst"] = json.dumps({"answer": "Harbour City are dominating.", "evidence": []})
+    assert asyncio.run(a._meaning("who's on top?", {})) is None
+    scripted.replies["meaning_analyst"] = json.dumps({"answer": "Interpretation: they have 97 shots.", "evidence": []})
+    assert asyncio.run(a._meaning("who's on top?", {})) is None
+    scripted.replies["meaning_analyst"] = json.dumps({"answer": "Interpretation: slightly ahead.",
+                                                      "evidence": ["evt_unknown"]})
+    assert asyncio.run(a._meaning("who's on top?", {})) is None  # citing an id the facts lack rejects the answer
+
+
+def test_router_chain_builds_four_agents_with_the_meaning_analyst_as_a_tool(match, scripted):
+    replay = Replay(match)
+    replay.advance(1500)
+    scripted.replies["router"] = json.dumps({"answer": "It's 1-0.", "evidence": ["state"], "agent": "match_analyst"})
+    a = Assistant(replay.model, client="c", model_name="gpt-5-mini")
+    res = asyncio.run(a._agents("what's the score?", {}))
+    names = [b["name"] for b in scripted.built]
+    assert names == ["match_analyst", "rules_expert", "meaning_analyst", "router"]
+    assert all(b["options"] == qa.AGENT_OPTIONS for b in scripted.built)
+    assert scripted.built[2]["tools"] == []  # the meaning analyst gathers nothing itself
+    assert scripted.built[3]["tools"] == ["ask_match_analyst", "ask_rules_expert", "ask_meaning_analyst"]
+    assert res is None  # "state" wasn't returned by a tool in this scripted run, so the check rejects it
+    scripted.replies["router"] = json.dumps({"answer": "Sorry, only football.", "declined": True})
+    assert asyncio.run(a._agents("weather?", {}))["agent"] == "router"
