@@ -127,9 +127,9 @@ The viewer talks to **one commentator voice**. Behind it:
 |---|---|---|
 | **Router** | Sends each question to the right expert, or declines off-topic questions | built |
 | **Data analyst** | Brings the numbers through read-only engine tools: score, events in a minute range, team stats, momentum, player summary | built (as "Match analyst") |
-| **Meaning analyst** | Explains what the facts suggest, labelled as interpretation. May start as a writing stage inside an existing agent | to build |
+| **Meaning analyst** | Explains what the facts suggest, always starting "Interpretation:". For meaning questions ("who's on top?", "what changed?") code gathers the facts through the data tools and the meaning analyst makes the only model call, so it fits the 20 s limit; the router can also hand it the match analyst's facts | built (D2-05) |
 | **Rules expert** | Answers Laws of the Game questions, linked to the current match when relevant (rules knowledge base, the event being asked about) | built |
-| **Writer** | Merges the parts into one short answer at the viewer's depth and style | to build |
+| **Writer** | Merges the parts into one short answer at the viewer's depth and style. This is the router's final step, adding no facts of its own | built (D2-05, as the router's last step) |
 | **Explainer** | Writes stoppage analysis from a fact pack, as an Agent Framework **Workflow** (writer → validator → template fallback) | built |
 
 The read-only engine tools are also served as an **MCP server** (`python -m vmi.mcp_server`) *(built)*.
