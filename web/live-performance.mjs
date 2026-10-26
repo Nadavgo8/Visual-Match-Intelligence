@@ -1,5 +1,12 @@
 import {PerformanceCapture} from './performance-capture.mjs';
 
+export function canvasVisibleRatio(rect,width,height){
+  const area=rect.width*rect.height;
+  if(!(area>0))return 0;
+  return Math.max(0,Math.min(rect.right,width)-Math.max(rect.left,0))
+    *Math.max(0,Math.min(rect.bottom,height)-Math.max(rect.top,0))/area;
+}
+
 // Uses the existing TV animation chain and accepted WebSocket callbacks.
 export class LivePerformance {
   constructor(){this.capture=new PerformanceCapture();this.phase='idle';this.result=null;}
@@ -24,9 +31,9 @@ export class LivePerformance {
     if((this.phase==='seek'||this.phase==='play')&&now-this.preparedAt>30000)this.invalidate('Live replay preparation exceeded 30 seconds.');
     if(this.phase==='play'&&frame&&state?.playing&&state.speed===1&&state.seed===this.seed){
       this.capture.start(now,environment);this.phase='capture';
-      if(environment.renderer!=='3D stadium'||environment.quality!=='high'||!environment.visualSignals
+      if(environment.renderer!=='3D stadium'||environment.quality!=='high'||!environment.visualSignals||!environment.sceneVisible
         ||environment.camera!==(environment.reducedMotion?'fixed':'broadcast')){
-        this.capture.invalidate('The live test requires the 3D High renderer and accessibility overlay; 2D fallback is a separate diagnostic.');
+        this.capture.invalidate('The live test requires visible 3D High and its accessibility overlay. Keep the game in view; 2D fallback is a separate diagnostic.');
       }
     }
     if(this.phase!=='capture')return null;

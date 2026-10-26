@@ -70,6 +70,14 @@ not prove ongoing companion latency throughout capture. One separate manual
 live capture has been requested in room`quality-live-final`, with its companion
 already connected. Local heavy tests remain stopped during that user window.
 
+Manual UX repair: the user could not find Start because Presenter tools was
+collapsed below the match. Adding `&performance=live` opens that developer
+panel. Start now scrolls the match into view; completion scrolls to Copy only
+after measurement. At least95% of the canvas must be inside the viewport,
+in addition to document visibility/focus. This avoids accepting a mostly
+offscreen game just because its controls were visible. The earlier controlled
+smoke predates this extra visibility gate and remains diagnostic evidence.
+
 Source-consumer integration now reads generator2.4's optional heading, speed
 and cumulative distance; source gait matches direct/reverse seek and20/60Hz
 sampling. This does not yet make the entire rig pose seek-identical: legacy

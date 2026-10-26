@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LivePerformance} from '../../web/live-performance.mjs';
-const environment={visible:true,focused:true,run:'r1',speed:1,renderer:'3D stadium',quality:'high',camera:'broadcast',visualSignals:true,reducedMotion:false};
+import {LivePerformance,canvasVisibleRatio} from '../../web/live-performance.mjs';
+const environment={visible:true,focused:true,run:'r1',speed:1,renderer:'3D stadium',quality:'high',camera:'broadcast',visualSignals:true,reducedMotion:false,sceneVisible:true};
 const state={seed:12,t:600,playing:true,speed:1};
 test('live capture waits for the requested seek and normal-speed playback, then records active source and delivery',()=>{
   const p=new LivePerformance();p.prepare(12);
@@ -60,7 +60,7 @@ test('missing displayed tracking time cannot be replaced by a few valid late sam
 });
 
 test('fallback cannot certify 3D High, and reduced motion is an explicit fixed-camera condition',()=>{
-  for(const settings of [{renderer:'2D fallback'},{quality:'low'},{camera:'fixed'},{visualSignals:false}]){
+  for(const settings of [{renderer:'2D fallback'},{quality:'low'},{camera:'fixed'},{visualSignals:false},{sceneVisible:false}]){
     const p=new LivePerformance();p.prepare(12);p.state(state);
     assert.equal(p.observe(0,{frame:{t:600},state,environment:{...environment,...settings},drawMs:3}).valid,false);
   }
@@ -68,6 +68,14 @@ test('fallback cannot certify 3D High, and reduced motion is an explicit fixed-c
   const reduced={...environment,reducedMotion:true,camera:'fixed'};
   for(let now=0;now<=23000;now+=50){p.message({type:'frame',t:600+now/1000},now,1);p.observe(now,{frame:{t:600+now/1000},state,environment:reduced,drawMs:3});}
   assert.equal(p.result.valid,true);assert.match(p.result.cameraCondition,/reduced-motion preference preserved/);
+});
+
+test('a visible document does not imply a visible match canvas',()=>{
+  const r={left:100,right:1100,top:0,bottom:600,width:1000,height:600};
+  assert.equal(canvasVisibleRatio(r,1200,800),1);
+  assert.equal(canvasVisibleRatio({...r,top:-300,bottom:300},1200,800),.5);
+  assert.equal(canvasVisibleRatio({...r,top:-700,bottom:-100},1200,800),0);
+  assert.equal(canvasVisibleRatio({...r,width:0},1200,800),0);
 });
 test('disconnect or a pause invalidates the live result without replacing the existing animation loop',()=>{
   for(const stop of ['disconnect','pause']){

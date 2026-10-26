@@ -7,11 +7,12 @@ import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
 import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
 import {MeterTimeline} from "./meter-timeline.mjs?v=3.15";
 import {FrameMetrics} from "./frame-metrics.mjs?v=3.16";
-import {LivePerformance} from "./live-performance.mjs?v=3.17";
+import {LivePerformance,canvasVisibleRatio} from "./live-performance.mjs?v=3.19";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
+if(params.get('performance')==='live')$('presenter-tools').open=true;
 const meterTimeline=new MeterTimeline();let appliedMeters=null;
 const livePerformance=new LivePerformance();
 const screen = new MatchScreen(resetVisualState);
@@ -151,6 +152,7 @@ function render(now) {
     visible:document.visibilityState==="visible",focused:document.hasFocus(),viewport:[innerWidth,innerHeight],
     css:[canvas.clientWidth,canvas.clientHeight],buffer:[canvas.width,canvas.height],dpr:devicePixelRatio,
     renderer:renderer.mode,quality:canvas.dataset.quality,camera:canvas.dataset.camera,run:frame?.run_id,speed:state?.speed,
+    sceneVisible:canvasVisibleRatio(canvas.getBoundingClientRect(),innerWidth,innerHeight)>=.95,
     visualSignals:$("overlay-on").checked,reducedMotion:$("reduce-motion").checked}}):null;
   if(liveResult){
     liveResult.scene={actors:canvas.dataset.actors,drawCalls:canvas.dataset.drawCalls,triangles:canvas.dataset.triangles};
@@ -158,6 +160,7 @@ function render(now) {
     $("copy-live-perf").disabled=false;$("live-perf-status").textContent=liveResult.valid
       ? `Finished: ${liveResult.fps.toFixed(1)} render submissions FPS. Result is not proof of presented frames.`:liveResult.reason;
     send({cmd:"pause"});
+    $("copy-live-perf").scrollIntoView({block:'start',behavior:'instant'});
   }
   frameMetrics.observe(now, !!frame && !!state?.playing && document.visibilityState === "visible" && document.hasFocus(),
     `${frame?.run_id}/${renderer.mode}/${canvas.dataset.quality}/${canvas.dataset.camera}/${canvas.width}x${canvas.height}`);
@@ -189,6 +192,9 @@ $("live-perf").onclick=()=>{
   if(!isHost||livePerformance.phase==="capture"||livePerformance.phase==="seek"||livePerformance.phase==="play")return;
   $("render-quality").value="high";renderer.setQuality("high");$("camera-view").value="broadcast";renderer.setCamera("broadcast");
   $("overlay-on").checked=true;$("overlay").classList.remove("off");
+  // Controls are below the scene. Bring the match back into view before
+  // measuring, rather than rendering a mostly offscreen canvas.
+  $("stage").scrollIntoView({block:'start',behavior:'instant'});
   liveDprQuery?.removeEventListener("change",invalidateLiveDpr);liveDprQuery=matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
   liveDprQuery.addEventListener("change",invalidateLiveDpr);
   livePerformance.prepare(state.seed,performance.now());$("live-perf-result").hidden=true;$("copy-live-perf").disabled=true;
