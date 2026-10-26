@@ -175,9 +175,13 @@ visual PASS is implied by the implementation description.
   -p no:cacheprovider --tb=short`: **74 passed in 27.18 s**. Environment:
   `VMI_OFFLINE=1`, `VMI_WARM_DEMO=0`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`;
   interpreter is the existing `vmi-quality-baseline-20261022` Python environment.
-- The final standalone 100-seed probe was **IN_PROGRESS, PASS through seed 60**
-  at this commit checkpoint. It checks event contracts/links, every source segment's
-  per-player 9 m/s bound, separate shot outcomes/xG and unexposed bench bases.
+- The final standalone 100-seed probe **completed: 100 seeds PASS in 423.39 s**,
+  mean **1040.59 passes/match**, tool session `32113`, exit `0`. Executable source
+  was identical to `353bb35`; the commit checkpoint originally recorded progress
+  through seed 60. It checks event contracts/links, every source segment's per-player
+  9 m/s bound, separate shot outcomes/xG and unexposed bench bases. The agent-verified
+  receipt and reproduction script are saved locally under
+  `out/motion-source-100-seeds-353bb35.{md,py}`; no rerun was needed to persist them.
 - Existing frontend suite on synchronized main: **37 passed**. This does not
   validate the unmerged 3D renderer.
 - `ruff` and `git diff --check` passed at this checkpoint. Frozen benchmark SHA256
@@ -190,3 +194,40 @@ by checks on both sides of every source knot, reachability from the previous
 touch, and initial metadata before/after actual substitutions. A published event's
 rounded source timestamp is the roster boundary; private unrounded simulator
 time must not be used as a consumer's event-time oracle.
+
+## PR #30 CI fixture regressions
+
+[CI run 40291600377](https://github.com/Nadavgo8/Visual-Match-Intelligence/actions/runs/40291600377)
+on `353bb35` completed **472 passed, 3 failed in 561.91 s**. These failures are
+not recorded as a technical PASS:
+
+1. The valid-agent-draft test asserted that the first scorer was Reyes, while
+   constructing its facts from the evolving demo seed. The validator correctly
+   rejected that invented scorer in generator 2.4. Its goal-pack fixture now uses
+   the existing checksum-pinned 2.2 benchmark, whose first scorer is Reyes.
+2. The asynchronous snapshot test independently asserted `25:00 score 1-0`,
+   but seed 12 now produces `0-1` then. The commentary fixture now uses that same
+   annotated benchmark; the exact frozen-answer, timeout, injection and validation
+   assertions remain unchanged. Normal live-room tests still use the current generator.
+3. The VAR feed regression built a real continuous `_Sim` kickoff, then placed
+   H9 at `(94,34)` instantaneously. Source validation correctly rejected the
+   unreachable contact at `t=5.5`. This isolated feed/VAR test now uses the existing
+   `_Segment` scripted fixture with documented setup cuts and explicit final delivery
+   padding. Real generated matches retain the same 9 m/s bound and its regressions.
+
+No agent, validator, engine or generator production behavior was changed for these
+CI fixes. The annotated goal-pack fixture advances only to `1200 s`, after the
+fixed first goal, instead of replaying an unnecessary full match.
+
+The three reported regressions plus `test_generator_motion_v2.py` and
+`test_full_match_actions.py` completed **77 passed in 10.92 s** after the fixture
+repairs, with `-ra --strict-markers --strict-config -p no:cacheprovider -W error`.
+`ruff check vmi tests tools` and `git diff --check` passed. The initial sandboxed
+attempt stalled at Windows asyncio's loopback socketpair initialization
+(`socket.accept`, confirmed by a 30-second faulthandler stack). The same offline
+command completed after authorized sandbox escalation; this was not a product
+failure or a relaxed assertion. The prior default-sandbox attempts were interrupted
+and do not count as PASS. Fresh full CI and integrated-main B4 remain required.
+
+Future tests with independently annotated score/name facts must use a pinned or
+explicit fixture; seed reproducibility is versioned, not an unchanging narrative.
