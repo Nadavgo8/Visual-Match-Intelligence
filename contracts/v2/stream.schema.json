@@ -60,7 +60,25 @@
                 "description": "Optional source path sample: heading in radians in world XZ (atan2(dx,-dy)), speed in metres per source second, and cumulative source path distance in metres. Independent of viewer sample history.",
                 "type": "object", "required": ["heading", "speed", "distance"], "additionalProperties": false,
                 "properties": {"heading": {"type": "number", "minimum": -3.141592653589793, "maximum": 3.141592653589793},
-                  "speed": {"type": "number", "minimum": 0}, "distance": {"type": "number", "minimum": 0}}
+                  "speed": {"type": "number", "minimum": 0}, "distance": {"type": "number", "minimum": 0},
+                  "facing": {"type": "number", "minimum": -3.141592653589793, "maximum": 3.141592653589793},
+                  "gait_cycles": {"type": "number", "minimum": 0}}
+              },
+              "contact": {
+                "description": "Optional current physical action, sampled only after start_t. target is pitch x/y/height in metres; release/receive target is the actual touch point at start_t, control target is the current ball. phase is elapsed fraction of the action. No future outcome or xG.",
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "effector", "start_t", "end_t", "target", "phase", "heading"],
+                "properties": {
+                  "kind": {"enum": ["control", "receive", "release", "save", "throw", "block", "challenge"]},
+                  "effector": {"enum": ["foot", "hands", "head"]},
+                  "start_t": {"type": "number", "minimum": 0}, "end_t": {"type": "number", "minimum": 0},
+                  "target": {"type": "array", "minItems": 3, "maxItems": 3,
+                    "prefixItems": [{"type": "number", "minimum": -5, "maximum": 110},
+                      {"type": "number", "minimum": -5, "maximum": 73},
+                      {"type": "number", "minimum": 0, "maximum": 30}]},
+                  "phase": {"type": "number", "minimum": 0, "maximum": 1},
+                  "heading": {"type": "number", "minimum": -3.141592653589793, "maximum": 3.141592653589793}
+                }
               }
             }}
           }

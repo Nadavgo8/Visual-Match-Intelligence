@@ -93,6 +93,15 @@ def export_fixture(name: str, seed: int, destination: Path) -> dict:
     for stream, rows in (("events", match.events), ("crowd", match.crowd), ("match_state", match.match_state)):
         _jsonl(folder / f"{stream}.jsonl", rows)
     _jsonl(folder / "keyframes.jsonl", (asdict(k) for k in match.keyframes))
+    if match.player_paths:
+        # Developer truth, separate from the delivered tracking stream. Ball
+        # keys alone cannot reconstruct the physical model's Hermite tangents.
+        _jsonl(
+            folder / "player-paths.jsonl",
+            ({"player_id": pid, "nodes": [asdict(n) for n in nodes]} for pid, nodes in match.player_paths.items()),
+        )
+    elif (folder / "player-paths.jsonl").exists():
+        (folder / "player-paths.jsonl").unlink()
     _jsonl(folder / "tracking-20hz.jsonl", Tracker(match).frames())
     report = quality_report(match)
     (folder / "quality.json").write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")

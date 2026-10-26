@@ -1,0 +1,543 @@
+"""Physical requirements independent of the trajectory implementation's formulas."""
+
+import math
+
+import pytest
+
+from vmi.generator.physics import PathNode, sample, through_velocities, travel_time, certified, unit_roots
+from vmi.generator.motion import support_position
+
+
+def test_continuous_run_keeps_nonzero_velocity_at_an_intermediate_knot():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(2, 14, 20, 0), PathNode(4, 18, 20, 0)])
+    for t in (1.99999, 2, 2.00001):
+        x, y, motion = sample(nodes, t)
+        assert motion["speed"] == pytest.approx(2, abs=0.001)
+        assert motion["heading"] == pytest.approx(math.pi / 2)
+        assert y == 20 and x == pytest.approx(14, abs=0.0001)
+    assert sample(nodes, 4)[2]["distance"] == pytest.approx(8, abs=1e-8)
+
+
+def test_velocity_and_acceleration_are_physical_derivatives_in_both_directions():
+    for points in (((10, 20), (16, 23), (22, 20)), ((22, 20), (16, 23), (10, 20))):
+        nodes = through_velocities([PathNode(i * 3, *p, 0) for i, p in enumerate(points)])
+        previous = None
+        for index in range(601):
+            t = index / 100
+            x, y, motion = sample(nodes, t)
+            vx = math.sin(motion["heading"] or 0) * motion["speed"]
+            vy = -math.cos(motion["heading"] or 0) * motion["speed"]
+            assert motion["speed"] <= 9 + 1e-6
+            if previous:
+                px, py, pvx, pvy = previous
+                assert math.hypot(vx - pvx, vy - pvy) <= 0.08 + 1e-5
+                assert math.hypot(x - px, y - py) <= 0.090001
+            if 0.001 < t < 5.999:
+                a, b = sample(nodes, t - 0.00001), sample(nodes, t + 0.00001)
+                assert (b[0] - a[0]) / 0.00002 == pytest.approx(vx, abs=0.0001)
+                assert (b[1] - a[1]) / 0.00002 == pytest.approx(vy, abs=0.0001)
+            previous = (x, y, vx, vy)
+
+
+def test_reversal_brakes_to_rest_and_setup_time_includes_acceleration():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(3, 16, 20, 0), PathNode(6, 10, 20, 0)])
+    assert sample(nodes, 3)[2]["speed"] == 0
+    assert sample(nodes, 2.9)[2]["heading"] == pytest.approx(math.pi / 2)
+    assert sample(nodes, 3.1)[2]["heading"] == pytest.approx(-math.pi / 2)
+    assert travel_time(1) > 1 / 9
+    assert travel_time(0) == 0
+
+
+def test_stationary_sampling_and_reverse_seek_do_not_integrate_distance_history():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(3, 16, 20, 0), PathNode(6, 16, 20, 0)])
+    expected = sample(nodes, 4)
+    sample(nodes, 6)
+    sample(nodes, 0)
+    assert sample(nodes, 4) == expected
+    assert expected[2]["speed"] == 0 and expected[2]["distance"] == pytest.approx(6)
+    assert expected[2]["heading"] == pytest.approx(math.pi / 2)
+
+
+@pytest.mark.parametrize("right", [True, False])
+def test_defending_own_box_has_cover_screen_and_outlets_in_distinct_depth_bands(right):
+    roles = (("CB", 22, 26), ("RB", 28, 10), ("DM", 36, 34), ("CM", 42, 22), ("RW", 62, 12), ("ST", 66, 34))
+    positions = []
+    for role, x, y in roles:
+        player = {"id": role, "team": "home", "position": role, "base_x": x, "base_y": y}
+        ball = (6, 30) if right else (99, 38)
+        point = support_position(player, right, ball, 10, "away")
+        positions.append(point[0] if right else 105 - point[0])
+    cb, fullback, dm, cm, winger, striker = positions
+    assert cb < fullback < dm < cm < winger < striker
+    assert striker >= 25 and winger >= 20 and cm >= 15
+    assert max(positions) - min(positions) >= 20
+
+
+def test_a_twenty_metre_four_second_run_is_not_rejected_as_walking_pace():
+    a, b = PathNode(0, 10, 20, 0), PathNode(4, 30, 20, 20)
+    assert certified(a, b)
+    assert sample([a, b], 2)[2]["speed"] == pytest.approx(7.5)
+    assert not certified(a, PathNode(3, 30, 20, 20))  # acceleration exceeds 8m/s²
+    assert sorted(unit_roots((1, -1.5, 0.66, -0.08))) == pytest.approx([0.2, 0.5, 0.8])
+    assert not certified(PathNode(0, 10, 20, 0, 10, 0), PathNode(2, 30, 20, 20, 10, 0)), (
+        "constant10m/s cannot bypass speed9 through zero acceleration"
+    )
+
+
+def test_acceleration_limit_is_independent_of_the_speed_limit():
+    assert not certified(PathNode(0, 10, 20, 0), PathNode(1, 12, 20, 2))  # peak speed 3, acceleration 12
+    assert certified(PathNode(0, 10, 20, 0), PathNode(1.3, 12, 20, 2))  # peak speed 2.31, acceleration 7.10
+
+
+def test_certificate_includes_endpoint_bounds_and_zero_or_reversed_time():
+    assert certified(PathNode(1, 10, 20, 0), PathNode(1, 10, 20, 0))
+    assert not certified(PathNode(1, 10, 20, 0), PathNode(1, 10.01, 20, 0))
+    assert not certified(PathNode(1, 10, 20, 0), PathNode(0, 10, 20, 0))
+    # Both inner Bezier controls are inside; an outside endpoint still fails.
+    assert not certified(PathNode(0, 105.2, 34, 0, -0.6, 0), PathNode(1, 104.6, 34, 0, -0.6, 0))
+    assert not certified(PathNode(0, 10, 20, 0, 0, -100), PathNode(2, 10, 21, 0))
+    assert unit_roots((0, 0, 2, -1)) == pytest.approx([0.5])
+    assert unit_roots((0, 1, -1, 0.25)) == pytest.approx([0.5])
+
+
+def test_short_slow_corner_still_bounds_actual_body_turn_rate():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(0.1, 10.01, 20, 0), PathNode(0.2, 10.01, 20.01, 0)])
+    previous = sample(nodes, 0.1)[2]["facing"]
+    for i in range(1, 1001):
+        current = sample(nodes, 0.1 + i * 0.0001)[2]["facing"]
+        delta = math.atan2(math.sin(current - previous), math.cos(current - previous))
+        assert abs(delta) / 0.0001 <= 6.000001
+        previous = current
+
+
+def test_gait_cycles_integrate_variable_cadence_and_facing_has_a_separate_turn_bound():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(3, 16, 23, 0), PathNode(6, 16, 30, 0)])
+    integrated = 0.0
+    previous = sample(nodes, 0)[2]
+    last_rate = previous["speed"] / (0.8 + 0.5 * previous["speed"])
+    for index in range(1, 6001):
+        current = sample(nodes, index / 1000)[2]
+        stride = min(4.4, max(0.8, 0.8 + 0.5 * current["speed"]))
+        rate = current["speed"] / stride
+        integrated += (last_rate + rate) * 0.0005
+        assert current["gait_cycles"] >= previous["gait_cycles"] - 1e-6
+        turn = math.atan2(
+            math.sin(current["facing"] - previous["facing"]), math.cos(current["facing"] - previous["facing"])
+        )
+        assert abs(turn) <= 0.006001
+        previous, last_rate = current, rate
+    assert current["gait_cycles"] == pytest.approx(integrated, abs=0.001)
+    assert sample(nodes, 3 - 1e-7)[2]["gait_cycles"] == pytest.approx(
+        sample(nodes, 3 + 1e-7)[2]["gait_cycles"], abs=0.000001
+    )
+
+
+def physical_fixture(ball_x=20, ball_y=30, holder="H9"):
+    from vmi.generator.match import Match
+    from vmi.generator.motion import Keyframe
+    from vmi.generator.physics import stage_physical_players
+    from vmi.generator.teams import make_teams
+
+    teams = {
+        side: {"players": [vars(p) | {"starter": True} for p in team.players]} for side, team in make_teams().items()
+    }
+    match = Match(
+        {
+            "match_id": "physical-test",
+            "teams": teams,
+            "motion_model": "source-paths-2",
+            "seed": 12,
+            "schema_version": "2.0",
+            "end_t": 6,
+            "final_score": {"home": 0, "away": 0},
+        },
+        events=[
+            {
+                "id": "p1",
+                "type": "pass",
+                "t": 4.0,
+                "delivered_t": 4.75,
+                "period": 1,
+                "clock": "0:04",
+                "source": "event_feed",
+                "schema_version": "2.0",
+                "match_id": "physical-test",
+                "team": "home" if holder.startswith("H") else "away",
+                "player_id": holder,
+                "pass": {"outcome": "complete"},
+            }
+        ],
+        keyframes=[
+            Keyframe(0, ball_x, ball_y, holder, True),
+            Keyframe(2, ball_x + 4, ball_y, holder, True),
+            Keyframe(4, ball_x + 8, ball_y, holder, True),
+            Keyframe(6, ball_x + 16, ball_y, None, True),
+        ],
+    )
+    stage_physical_players(match)
+    return match
+
+
+def test_observation_frame_contact_and_seek_share_one_physical_source(monkeypatch):
+    from vmi.contracts import validate_record
+    from vmi.generator.tracking import Tracker
+
+    match = physical_fixture()
+    tracker = Tracker(match)
+    expected = tracker.frame(1.5)
+    from vmi.generator import physics
+
+    def forbidden_integral(*args, **kwargs):
+        raise AssertionError("lightweight engine observation must not integrate visual gait")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(physics, "arc_metrics", forbidden_integral)
+        observation = tracker.observation(1.5)
+    assert observation["ball"] == expected["ball"]
+    holder = next(p for p in expected["players"] if p["id"] == "H9")
+    assert observation["players"] == [{k: v for k, v in holder.items() if k not in {"motion", "contact"}}]
+    assert observation["ball_height"] == expected["ball_height"]
+    assert observation["possession"] == expected["possession"]
+    assert observation["ball_in_play"] == expected["ball_in_play"]
+    assert math.dist(expected["ball"], (holder["x"], holder["y"])) == pytest.approx(0.55, abs=0.015)
+    assert holder["contact"]["target"] == pytest.approx([*expected["ball"], expected["ball_height"]], abs=0.01)
+    tracker.frame(6)
+    tracker.frame(0)
+    assert tracker.frame(1.5) == expected == Tracker(match).frame(1.5)
+    assert next(p for p in tracker.frame(3.99)["players"] if p["id"] == "H9")["contact"]["kind"] == "control"
+    released = next(p for p in tracker.frame(4.1)["players"] if p["id"] == "H9")["contact"]
+    assert released["kind"] == "release" and released["start_t"] == 4
+    assert released["phase"] == pytest.approx(0.3125)
+    assert "contact" not in next(p for p in tracker.frame(4.32)["players"] if p["id"] == "H9")
+    validate_record(expected, "physical-test")
+
+
+def test_low_defensive_full_tracking_snapshot_keeps_midfield_and_outlets():
+    from vmi.generator.tracking import Tracker
+
+    match = physical_fixture(6, 30, "A9")
+    # The ball starts near the home goal in the opponent's possession.
+    frame = Tracker(match).frame(0)
+    home = {p["role"]: p for p in frame["players"] if p["team"] == "home"}
+    assert home["ST"]["x"] >= 25 and home["RW"]["x"] >= 20
+    assert home["CM"]["x"] >= 15 and home["CB"]["x"] < home["DM"]["x"] < home["ST"]["x"]
+    assert len(frame["players"]) == 22
+
+
+def test_physical_source_rejects_an_unreachable_contact_instead_of_clamping_it():
+    from vmi.generator.motion import Keyframe
+    from vmi.generator.physics import stage_physical_players
+
+    match = physical_fixture()
+    match.player_paths.clear()
+    match.keyframes = [Keyframe(0, 20, 30, "H9", True), Keyframe(1, 40, 30, "H9", True)]
+    with pytest.raises(ValueError, match="unreachable physical source contact: H9"):
+        stage_physical_players(match)
+
+
+def test_optional_support_knot_cannot_force_an_impossible_intermediate_stop():
+    from vmi.generator.motion import Keyframe
+    from vmi.generator.physics import stage_physical_players
+
+    match = physical_fixture()
+    match.player_paths.clear()
+    match.keyframes = [
+        Keyframe(0, 20, 30, "H9", True),
+        Keyframe(3, 36, 30, None, True),
+        Keyframe(7, 56, 30, "H9", True),
+    ]
+    stage_physical_players(match)
+    assert [n.t for n in match.player_paths["H9"]] == [0, 7]
+    assert 6 < sample(match.player_paths["H9"], 3)[2]["speed"] <= 9
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"start_t": 10},
+        {"end_t": -1},
+        {"phase": 1.1},
+        {"target": [1, 2]},
+        {"target": [1, 2, -1]},
+        {"target": [1000000, 2, 0]},
+        {"target": [1, 1000000, 0]},
+        {"target": [1, 2, 31]},
+        {"phase": 1},
+        {"kind": "control"},
+        {"effector": "unknown"},
+        {"outcome": "goal"},
+    ],
+)
+def test_invalid_or_future_contact_cannot_cross_the_runtime_contract(change):
+    from vmi.contracts import validate_record
+
+    contact = {
+        "kind": "release",
+        "effector": "foot",
+        "start_t": 1.0,
+        "end_t": 1.32,
+        "phase": 0.3125,
+        "target": [20.0, 30.0, 0.0],
+        "heading": 0.0,
+    }
+    contact.update(change)
+    frame = {
+        "schema_version": "2.0",
+        "stream": "tracking",
+        "match_id": "m",
+        "t": 1.1,
+        "players": [{"contact": contact}],
+    }
+    with pytest.raises(ValueError, match="source player contact"):
+        validate_record(frame, "m")
+
+
+def test_restart_arrival_does_not_restore_the_takers_stale_encounter_position():
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    sim = _Sim(12, "restart-prior-contact")
+    taker = sim.nearest("home", 52.5, 34)
+    sim.key("home", 20, 34, None, False)
+    sim.keyframes[-1].player_positions[taker.id] = (10, 34)
+    sim.t = 30
+    sim.kick_off("home")
+    action = next(e for e in sim.events if e["type"] == "set_piece")
+    tracker = Tracker(sim.export_match())
+    release = next(p for p in tracker.frame(action["t"])["players"] if p["id"] == taker.id)
+    arrival = next(p for p in tracker.frame(sim.t)["players"] if p["id"] == taker.id)
+    assert math.dist((release["x"], release["y"]), (arrival["x"], arrival["y"])) < 1.2
+
+
+@pytest.mark.parametrize("side", ["home", "away"])
+def test_throw_is_a_hand_contact_at_height_before_another_players_receipt(side):
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    sim = _Sim(12, "physical-throw")
+    sim.t = 10
+    sim.key(side, 60, 0, None, False)
+    sim.throw_in(side, 60, 0)
+    action = next(e for e in sim.events if e["type"] == "set_piece")
+    tracker = Tracker(sim.export_match())
+    release = tracker.frame(action["t"])
+    player = next(p for p in release["players"] if p["id"] == action["player_id"])
+    assert release["ball_height"] == pytest.approx(1.7)
+    assert player["contact"]["kind"] == "throw" and player["contact"]["effector"] == "hands"
+    assert player["contact"]["target"][2] == pytest.approx(1.7)
+    assert tracker.frame(sim.t)["possession"]["holder_id"] != action["player_id"]
+
+
+@pytest.mark.parametrize("draw,expected", [(0.2, "saved"), (0.45, "blocked")])
+def test_save_and_block_have_a_real_actor_at_contact_before_rebound(draw, expected):
+    import random
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    class Draw(random.Random):
+        def random(self):
+            return draw
+
+    sim = _Sim(12, "physical-shot-contact")
+    shooter = next(p for p in sim.on_pitch["home"] if p.position == "ST")
+    sim.t = 10
+    sim.ball_in_play = True
+    sim.key("home", 94, 34, shooter)
+    sim.rng = Draw(1)
+    sim.true_chance = lambda *args: 0
+    sim.corner = lambda *args: None  # inspect this rebound, not a subsequent attack
+    sim.shot("home", shooter, 94, 34, None)
+    result = next(e for e in sim.events if e["type"] == "shot_result")
+    assert result["outcome"] == expected
+    touch = next(e for e in sim.events if e["type"] == ("save" if expected == "saved" else "block"))
+    tracker = Tracker(sim.export_match())
+    frame = tracker.frame(touch["t"])
+    actor = next(p for p in frame["players"] if p["id"] == touch["player_id"])
+    assert actor["contact"]["kind"] == ("save" if expected == "saved" else "block")
+    assert actor["contact"]["target"][0] == pytest.approx(102 if expected == "saved" else 96)
+    assert math.dist(frame["ball"], (actor["x"], actor["y"])) == pytest.approx(0.55, abs=0.015)
+    assert tracker.frame(touch["t"] + 0.1)["ball"] != frame["ball"]
+
+
+def test_developer_fixture_preserves_physical_paths_separately_from_delivered_frames(tmp_path, monkeypatch):
+    import json
+    from vmi.generator import fixtures
+    from vmi.generator.match import Match
+    from vmi.generator.motion import Keyframe
+    from vmi.generator.tracking import Tracker
+
+    match = physical_fixture()
+    monkeypatch.setattr(fixtures, "generate_scenario", lambda *args: match)
+    assert fixtures.export_fixture("physical", 12, tmp_path)["status"] == "PASS"
+    directory = tmp_path / "physical"
+    rows = lambda file: [json.loads(line) for line in (directory / file).read_text().splitlines()]
+    paths = {row["player_id"]: [PathNode(**node) for node in row["nodes"]] for row in rows("player-paths.jsonl")}
+    restored = Match(
+        json.loads((directory / "meta.json").read_text()),
+        events=rows("events.jsonl"),
+        keyframes=[Keyframe(**row) for row in rows("keyframes.jsonl")],
+        player_paths=paths,
+    )
+    for t in (0, 1.5, 4.1, 6):
+        assert Tracker(restored).frame(t) == Tracker(match).frame(t)
+    delivered = rows("tracking-20hz.jsonl")
+    assert delivered[30] == Tracker(match).frame(1.5)
+    assert "player_paths" not in delivered[30]
+
+
+def test_receiver_readiness_delays_cross_release_without_stretching_flight():
+    import random
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    class Mid(random.Random):
+        def random(self):
+            return 0.1
+
+        def uniform(self, a, b):
+            return (a + b) / 2
+
+    sim = _Sim(12, "reachable-cross")
+    holder = next(p for p in sim.on_pitch["home"] if p.id == "H9")
+    receiver = next(p for p in sim.on_pitch["home"] if p.id == "H2")
+    sim.ball_in_play = True
+    sim.key("home", 80, 10, holder)
+    sim.keyframes[-1].player_positions[receiver.id] = (10, 34)
+    sim.t = 0.1
+    sim.key("home", 80, 10, holder)
+    sim.nearest = lambda *a, **kw: receiver
+    sim.rng = Mid(1)
+    sim.pass_("home", holder, 80, 10, 0.5)
+    event = next(e for e in sim.events if e["type"] == "pass")
+    assert event["t"] > 10
+    assert sim.t - event["t"] == pytest.approx(0.5 + math.hypot(16, 24) / 16, abs=0.01)
+    assert event["delivered_t"] >= sim.t
+    tracker = Tracker(sim.export_match())
+    for t in (1, event["t"] - 0.01):
+        frame = tracker.frame(t)
+        assert frame["ball"] == pytest.approx([80, 10], abs=0.01)
+        assert frame["ball_height"] == 0
+        assert frame["possession"]["holder_id"] == holder.id
+
+
+def test_stopped_ball_moves_only_with_a_reachable_active_retriever():
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    sim = _Sim(12, "actual-retrieval")
+    sim.key("home", 100, 34, None, False)
+    taker = sim.nearest("home", 52.5, 34)
+    sim.keyframes[-1].player_positions[taker.id] = (10, 34)
+    sim.t = 20
+    sim.set_restart_ball("home", 52.5, 34, taker)
+    tracker = Tracker(sim.export_match())
+    moved = 0
+    previous = tracker.frame(20)
+    for i in range(1, math.floor((sim.t - 20) * 20) + 1):
+        current = tracker.frame(20 + i / 20)
+        assert not current["ball_in_play"]
+        if math.dist(current["ball"], previous["ball"]) > 0.01:
+            moved += 1
+            actor = next(p for p in current["players"] if p["id"] == taker.id)
+            assert math.dist(current["ball"], (actor["x"], actor["y"])) == pytest.approx(0.55, abs=0.02)
+            assert actor["contact"]["effector"] == "hands"
+        previous = current
+    assert moved > 20
+    assert tracker.frame(sim.t - 0.5)["ball"] == tracker.frame(sim.t)["ball"]
+
+
+def test_ordinary_foul_has_reachable_two_player_encounter_before_whistle():
+    import random
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    class Half(random.Random):
+        def random(self):
+            return 0.5
+
+    sim = _Sim(12, "actual-foul")
+    victim = next(p for p in sim.on_pitch["home"] if p.id == "H9")
+    fouler = sim.opp_nearest("home", 60, 34)
+    sim.ball_in_play = True
+    sim.key("home", 60, 34, victim)
+    sim.keyframes[-1].player_positions[fouler.id] = (10, 10)
+    sim.t = 1
+    sim.key("home", 60, 34, victim)
+    sim.rng = Half(1)
+    sim.stoppage = lambda *a: None
+    sim.restart_free_kick = lambda *a: None
+    sim.foul("home", victim, 60, 34)
+    event = next(e for e in sim.events if e["type"] == "foul")
+    assert event["t"] > 9
+    tracker = Tracker(sim.export_match())
+    frame = tracker.frame(event["t"])
+    actors = {p["id"]: p for p in frame["players"]}
+    assert (
+        0.8
+        < math.dist((actors[victim.id]["x"], actors[victim.id]["y"]), (actors[fouler.id]["x"], actors[fouler.id]["y"]))
+        < 1.3
+    )
+    assert actors[fouler.id]["contact"]["kind"] == "challenge"
+    assert frame["possession"]["holder_id"] == victim.id
+    assert next(e for e in sim.events if e["type"] == "whistle")["t"] > event["t"]
+
+
+def test_source_wait_copies_effector_snapshots_before_a_later_release_changes_them():
+    from vmi.generator.match import _Sim
+
+    sim = _Sim(12, "snapshot-effectors")
+    keeper = sim.keeper("home")
+    sim.key("home", 5, 34, keeper, False, effector="hands")
+    first = sim.keyframes[-1]
+    sim.hold_until(2)
+    sim.keyframes[-1].contact_effectors[keeper.id] = "foot"
+    assert first.contact_effectors[keeper.id] == "hands"
+
+
+@pytest.mark.parametrize("action", ["restart", "save"])
+def test_distant_encounter_does_not_slow_a_restart_or_shot(action):
+    import random
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    class Draw(random.Random):
+        def random(self):
+            return 0.2
+
+    sim = _Sim(12, "ready-before-release")
+    shooter = next(p for p in sim.on_pitch["home"] if p.id == "H9")
+    receiver = sim.keeper("away") if action == "save" else next(p for p in sim.on_pitch["home"] if p.id == "H2")
+    ax = 94 if action == "save" else 60
+    sim.ball_in_play = True
+    sim.key("home", ax, 34, shooter)
+    sim.keyframes[-1].player_positions[receiver.id] = (10, 34)
+    sim.t = 0.1
+    sim.key("home", ax, 34, shooter)
+    sim.rng = Draw(1)
+    if action == "save":
+        sim.true_chance = lambda *a: 0
+        sim.corner = lambda *a: None
+        sim.stoppage = lambda *a: None
+        sim.shot("home", shooter, ax, 34, None)
+        departure = next(e for e in sim.events if e["type"] == "shot")["t"]
+        arrival = next(e for e in sim.events if e["type"] == "save")["t"]
+        duration = 0.6
+    else:
+        sim.nearest = lambda *a, exclude=None, **kw: receiver if exclude else shooter
+        sim.restart_pass("home", "free_kick", ax, 34)
+        departure = next(e for e in sim.events if e["type"] == "set_piece")["t"]
+        arrival = sim.t
+        duration = math.hypot(9, 6) / 12
+    assert departure > 8
+    assert arrival - departure == pytest.approx(duration, abs=0.01)
+    tracker = Tracker(sim.export_match())
+    assert tracker.frame(departure - 0.05)["ball_height"] == 0
+
+
+def test_repeated_centimetre_quantized_contact_needs_no_fictitious_approach():
+    from vmi.generator.match import _Sim
+
+    sim = _Sim(12, "quantized-repeat")
+    holder = sim.on_pitch["home"][0]
+    sim.key("home", 25.1234, 30.4567, holder)
+    assert sim.contact_ready(holder, (25.1234, 30.4567), sim.t) == sim.t

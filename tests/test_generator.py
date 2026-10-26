@@ -56,8 +56,23 @@ def test_feed_is_delayed_like_a_real_one(matches):
             assert offence["t"] == by_id[correction["shot_id"]]["t"]
             assert offence["delivered_t"] == round(decision["t"] + 0.75, 2)
             reviewed[offence["id"]] = offence
-        lat.extend(e["delivered_t"] - e["t"] for e in match.events
-                   if e["source"] == "event_feed" and e["id"] not in reviewed)
+        from bisect import bisect_right
+        keys=sorted({k.t:k for k in match.keyframes}.values(),key=lambda k:k.t)
+        times=[k.t for k in keys]
+        for event in match.events:
+            if event["source"]!="event_feed" or event["id"] in reviewed:
+                continue
+            available=event["t"]
+            if event["type"]=="pass":
+                # A pass timestamp denotes the kick, whereas complete/incomplete
+                # is only observable at the next physical arrival/ball-out key.
+                arrival=keys[bisect_right(times,event["t"])].t
+                available=arrival
+                if event["pass"]["outcome"]=="offside":
+                    decision=next(e for e in match.events if e["type"]=="offside" and event["id"] in e.get("related",[]))
+                    available=decision["t"]
+                assert event["delivered_t"]>=available
+            lat.append(event["delivered_t"]-available)
     assert 0.5 <= min(lat) and max(lat) <= 3.01
 
 

@@ -14,6 +14,9 @@ def simulator(side="home"):
     sim.emit("period_start", period_no=1)
     sim.kick_off(side)
     holder = next(p for p in sim.on_pitch[side] if p.position == "ST")
+    # Isolated action setup: the prior kickoff is not a physical journey to
+    # this test's independently specified 70m starting contact at t=10.
+    sim.keyframes.clear()
     sim.t = 10
     sim.key(side, 70, 34, holder)
     sim.carrier = (side, holder, 70, 34)
