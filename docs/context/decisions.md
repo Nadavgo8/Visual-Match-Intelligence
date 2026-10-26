@@ -107,6 +107,14 @@ Calls made while writing spec v2 (Claude, Oct 22; Developer 1 can revisit them i
 - The story is locked by `tests/test_demo_match.py`, so a generator change that alters it fails CI. Changing the demo on purpose means updating that test and the demo script together. The model evaluation keeps its own frozen fixture (generator 2.2, seed 12).
 - Any seed still works; the seed only sets which match a room starts with.
 
+## Unified match chat (Oct 27)
+
+- Nadav merged the app's Feed and Ask tabs into **one chronological chat** and approved **two named voices**, replacing "one commentator voice": **Kai** (commentator: what happened, labelled Fact) and **Ada** (analyst: what it means, labelled Interpretation; also answers rules questions). Nadav also explicitly overrode the 24-hour feature freeze for this change.
+- **Built on what exists, no rewrite.** Kai's automatic lines are the Attention Engine's feed items and stay **written by code** (Nadav's call). Ada's automatic messages are the existing stoppage analyses (fact pack → LLM → validator → template) and the engine's momentum call. When Ada stays silent, that is the engine's existing decision, logged with a `why`.
+- **Agent-to-agent replies come only from fixed engine rules**, never from one agent invoking the other. Each analysis replies to the commentator item for the event it explains. A goal links back to Ada's momentum call for the same team if that call came in the previous 10 minutes; it is only a link, with no claim about cause. Nothing replies to an analysis, so a thread is at most two hops and can't loop.
+- **Who answers a question** is chosen in code from the question and the agent that answered. A "why", meaning or rules question goes to Ada; anything else goes to Kai.
+- Not built: an LLM-based router, contextual follow-ups that resolve "that goal" against earlier chat messages, and Kai replying to Ada with new text.
+
 ## Still open (as of Oct 22)
 
 | # | Decision | Owner | Note |

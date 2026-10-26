@@ -16,7 +16,7 @@ LAYERS = {
     "integration": {"test_agents.py", "test_api.py", "test_engine.py", "test_generator.py",
                     "test_generator_determinism.py", "test_generator_motion_v2.py", "test_substitutions.py",
                     "test_test_layers.py", "test_realtime_session.py", "test_model_eval.py",
-                    "test_commentary_agents.py", "test_demo_match.py"},
+                    "test_commentary_agents.py", "test_demo_match.py", "test_match_chat.py"},
 }
 LAYER_OF = {name: layer for layer, names in LAYERS.items() for name in names}
 

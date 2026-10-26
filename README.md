@@ -6,7 +6,7 @@ Built for the Microsoft *Inside the Game* hackathon. **All matches, teams and pl
 
 | TV view (the broadcast) | Companion app (phone) |
 |---|---|
-| 2D replay with **whistle banners by type** (Foul, Offside, Penalty, Stoppage, Kick-off, Half-time, Full-time), each in its own fixed place; a **crowd surge** banner; one **atmosphere indicator**; a **momentum bar**. Nothing else. | **Feed** of goals, VAR, cards and subs; **stoppage analysis** in 2–3 sentences with receipts; **Ask**: a chat about this match, the rules, stats and tactics. No notifications. Two depth levels from a 3-question onboarding. |
+| 2D replay with **whistle banners by type** (Foul, Offside, Penalty, Stoppage, Kick-off, Half-time, Full-time), each in its own fixed place; a **crowd surge** banner; one **atmosphere indicator**; a **momentum bar**. Nothing else. | **One match chat** with two voices: **Kai** (commentator) calls goals, VAR, cards and subs as facts; **Ada** (analyst) adds stoppage analysis in 2–3 sentences with receipts, replying to the moment it explains, and stays quiet otherwise. Ask either of them about this match, the rules, stats and tactics; code picks who answers. No notifications. Two depth levels from a 3-question onboarding. |
 
 ## Run it
 

@@ -84,3 +84,44 @@ export class CatchUpCheckpoints {
     return true;
   }
 }
+
+// ---------- unified match chat ----------
+// Two named voices: Kai says what happened (logged facts), Ada says what it means (interpretation).
+export const SPEAKERS = Object.freeze({
+  commentator: Object.freeze({ name: "Kai", role: "Commentator", avatar: "🎙", label: "Fact" }),
+  analyst: Object.freeze({ name: "Ada", role: "Analyst", avatar: "📊", label: "Interpretation" }),
+});
+export const speakerOf = (key) => SPEAKERS[key] ?? SPEAKERS.commentator;
+
+// Index at which an entry with this order goes in a list sorted oldest first.
+// Equal orders keep arrival order, so a burst of same-second events never reshuffles.
+export function insertIndex(orders, order) {
+  let lo = 0, hi = orders.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (orders[mid] <= order) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// The viewer is following the latest messages when the bottom of the chat is (almost) on screen.
+export const NEAR_BOTTOM_PX = 80;
+export function isNearBottom(viewBottom, contentHeight, slack = NEAR_BOTTOM_PX) {
+  return contentHeight - viewBottom <= slack;
+}
+
+// Suggested questions follow the latest big moment, so a fan can ask about it with one tap.
+const SUGGEST_AFTER = {
+  goal: ["Why does it matter?", "Who's on top?"],
+  penalty: ["Why was it a penalty?", "Who's on top?"],
+  var: ["Why did VAR get involved?", "What happened?"],
+  card_red: ["What does the red card change?", "Who's on top?"],
+  card_yellow: ["Why was that a booking?", "Who's on top?"],
+  sub: ["What changed after the substitution?", "Who's on top?"],
+  momentum: ["Why is the momentum changing?", "Match stats"],
+};
+const SUGGEST_DEFAULT = ["Who's on top?", "Why was that offside?", "Match stats"];
+export function suggestionsFor(icon, max = 3) {
+  const out = [...(SUGGEST_AFTER[icon] ?? []), ...SUGGEST_DEFAULT];
+  return [...new Set(out)].slice(0, max);
+}
