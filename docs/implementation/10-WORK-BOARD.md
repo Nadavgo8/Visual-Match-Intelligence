@@ -54,6 +54,7 @@
 | D2-04 | DONE | [PR #19](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/19) מוזג ל־5414521; ארבעת ה־checks עברו (שורות קריטיות שהשתנו 96.30%, ענפים 100%) |
 | D2-05 | IN_REVIEW | `codex/d2-05-model-agents`: אנליסט משמעות (נתיב של קריאת מודל אחת), נתב ככותב, בדיקת תווית Interpretation, reasoning effort נמוך; בבדיקה חיה כל התשובות live ב־3.9–12.3s. [העברת D2](HANDOFF-D2.md) |
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
+| צ'אט משחק מאוחד | IN_REVIEW | `feat/unified-chat`: Feed ו־Ask הוחלפו בצ'אט כרונולוגי אחד עם Kai (פרשן, עובדות, טקסט בקוד) ו־Ada (אנליסטית, פרשנות); תשובות ביניהם רק לפי כללי המנוע, עומק עד שני דילוגים; ניתוב שאלות בקוד. הוקפאת הפיצ'רים בוטלה במפורש ע"י Nadav ב־27.10. [החלטה](../context/decisions.md) |
 
 ## הרשאות ורצף העבודה
 

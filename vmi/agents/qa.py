@@ -44,6 +44,22 @@ MEANING_Q = re.compile(r"\b(on top|dominat\w*|who'?s (better|winning the battle)
                        r"how (are|is) .{1,30} (doing|playing)|momentum)\b", re.I)
 
 
+# Two voices in one chat. Kai, the commentator, says what happened; Ada, the analyst, says what
+# it means, and also answers rules questions. The choice is made in code from the question and
+# the agent that answered, so a fan never has to pick who to ask.
+ANALYST_AGENTS = {"meaning_analyst", "rules_expert", "both"}
+ANALYST_Q = re.compile(r"\b(why|how come|dominat\w*|on top|better|in control|pressure|tactic\w*|formation|"
+                       r"momentum|chang\w*|mean\w*|matter\w*|turning point|influential|dangerous|expect\w*|"
+                       r"predict\w*|think|maintain|rules?|laws?|allowed|offside|handball|explain)\b", re.I)
+
+
+def speaker_for(question: str, agent: str | None) -> str:
+    """'analyst' for interpretation and rules, 'commentator' for what happened."""
+    if agent in ANALYST_AGENTS or MEANING_Q.search(question) or ANALYST_Q.search(question):
+        return "analyst"
+    return "commentator"
+
+
 class _Recorder:
     """Wraps tools so we know which ones ran and which evidence IDs they returned."""
 
@@ -85,7 +101,7 @@ class Assistant:
                 path = frozen._meaning if MEANING_Q.search(question) else frozen._agents
                 res = await asyncio.wait_for(path(question, profile), timeout=TOTAL_TIMEOUT_S)
                 if res:
-                    return self._finish(res, frozen, t0)
+                    return self._finish(res, frozen, t0, question)
                 fallback_reason = "agent answer failed validation"
             except asyncio.TimeoutError:
                 fallback_reason = "timeout"
@@ -94,10 +110,11 @@ class Assistant:
         res = frozen._local(question, profile)
         if fallback_reason:
             res["fallback_reason"] = fallback_reason
-        return self._finish(res, frozen, t0)
+        return self._finish(res, frozen, t0, question)
 
     @staticmethod
-    def _finish(res: dict, frozen: "Assistant", t0: float) -> dict:
+    def _finish(res: dict, frozen: "Assistant", t0: float, question: str = "") -> dict:
+        res["speaker"] = speaker_for(question, res.get("agent"))
         res["latency_ms"] = round((time.perf_counter() - t0) * 1000)
         res["answer_kind"] = "live" if res.get("source") == "agent" else "template"  # never present code as AI
         res["snapshot_clock"] = frozen.m.clock
