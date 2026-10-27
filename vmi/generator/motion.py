@@ -42,7 +42,14 @@ def support_position(player, right, ball, t, owner):
             # The defending block narrows toward the ball-side channel and
             # protects the space between ball and goal.
             ay = ay * .78 + by * .22
-            ax = min(ax, max(8, bx - (7 if role in {"CB", "DM"} else 2)))
+            # A low ball does not put the entire side on one six-yard line.
+            # Cover, midfield screens and counter outlets retain different
+            # depths; the block can still advance as the ball moves upfield.
+            depth = {"CB":(4,28,-7),"RB":(7,36,-3),"LB":(7,36,-3),
+                     "DM":(12,42,-6),"CM":(17,52,-3),
+                     "RW":(24,64,8),"LW":(24,64,8),"ST":(30,74,15)}
+            floor,ceiling,offset=depth.get(role,(17,52,-3))
+            ax = min(ax,max(floor,min(ceiling,bx+offset)))
     x, y = (ax, ay) if right else (105 - ax, 68 - ay)
     return min(104, max(1, x)), min(67, max(1, y))
 
@@ -148,3 +155,8 @@ class Keyframe:
     flight_height: float = 0.0  # arc from this keyframe to the next one
     possession_id: str | None = None
     player_positions: dict[str, tuple[float, float]] = field(default_factory=dict)
+    contact_effectors: dict[str, str] = field(default_factory=dict)  # private current physical touches
+    player_facings: tuple[tuple[str, float], ...] = ()  # immutable private setup orientation, radians
+
+    def __post_init__(self):
+        self.player_facings = tuple(tuple(pair) for pair in self.player_facings)

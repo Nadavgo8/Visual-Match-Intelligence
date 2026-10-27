@@ -43,6 +43,7 @@ from ..engine import derive
 from ..engine.attention import visible_to
 from ..engine.replay import Replay
 from ..generator.match import Match, generate_match
+from ..generator.scenarios import generate_demo_match
 from ..generator.tracking import Tracker
 
 log = logging.getLogger("vmi")
@@ -122,7 +123,7 @@ def get_match(seed: int) -> Match:
         return match
     with _match_lock:
         if seed not in _match_cache:
-            _match_cache[seed] = generate_match(seed)
+            _match_cache[seed] = generate_demo_match(seed) if seed == 2 else generate_match(seed)
             while len(_match_cache) > MATCH_CACHE_MAX:
                 del _match_cache[next(iter(_match_cache))]
         return _match_cache[seed]
@@ -209,7 +210,7 @@ class Room:
         self.name = name
         self.seed = seed
         self.clients: list[Client] = []
-        self.speed = 4
+        self.speed = 1 if seed == 2 else 4
         self.playing = False
         self.task: asyncio.Task | None = None
         self.host_token: str | None = None

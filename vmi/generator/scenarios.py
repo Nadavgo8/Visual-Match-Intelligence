@@ -2,9 +2,263 @@
 
 from copy import deepcopy
 import hashlib
+import math
 
 from .analytics import delayed_xg
 from .match import _Sim, Match
+
+DEMO_CONFIGURATION = {"mode": "scripted_demo", "revision": "original-v1"}
+
+
+class _PhysicalDemo(_Sim):
+    """A bounded episode script using the same physical producer as seeded play.
+
+    No ``name`` attribute: export must certify full body paths, not use the
+    legacy consumer-fixture setup cuts below. Unshown bridges are for presenter
+    cuts, not a claim to simulate every minute of professional football.
+    """
+
+    def __init__(self):
+        super().__init__(2, "demo_0002_original_1")
+        self.sub_plan = {"home": [], "away": []}
+        self.drinks_due = {}
+
+    def at(self, deadline):
+        if self.t > deadline + .005:
+            raise ValueError(f"physical demo deadline {deadline} is unreachable at {self.t}")
+        self.hold_until(deadline)
+
+    def player(self, side, number):
+        return next(p for p in self.on_pitch[side] if p.number == number)
+
+    def pass_to(self, side, receiver, ax, ay, *, kick_at=None, duration=2.5, header=False, setup=None):
+        start = self.keyframes[-1]
+        passer = next(p for p in self.on_pitch[side] if p.id == start.holder)
+        point = self.to_pitch(side, ax, ay)
+        if kick_at is not None:
+            if self.contact_ready(receiver, point, kick_at+duration) > kick_at+duration+.005:
+                raise ValueError("demo receiver cannot meet the reserved flight")
+            self.at(kick_at)
+        self.keyframes[-1].player_positions.update(setup or {})
+        arrival = self.flight_plan(receiver, point, duration)
+        self.keyframes[-1].player_positions.update(setup or {})
+        departure = self.t
+        if kick_at is not None and abs(departure-kick_at) > .005:
+            raise ValueError("demo release cannot meet its reserved clock")
+        start = self.keyframes[-1]
+        start.flight_height = 2.5 if header else 0
+        sx, sy = (start.x, start.y) if self.attacks_right(side) else (105-start.x, 68-start.y)
+        self.t = arrival
+        event = self.emit("pass", side, passer, sx, sy, t=departure, outcome="complete",
+                          recipient_id=receiver.id, height="high" if header else "ground", cross=header)
+        self.set_pass_end(event, side, ax, ay)
+        self.key(side, ax, ay, receiver, effector="head" if header else "foot")
+        if header:
+            self.keyframes[-1].z = 1.65
+        return event
+
+    def carry_to(self, side, player, ax, ay):
+        start = self.keyframes[-1]
+        if start.holder != player.id:
+            prior = next((p for squad in self.on_pitch.values() for p in squad if p.id == start.holder), None)
+            if prior and prior.team == side:
+                sx, sy = (start.x, start.y) if self.attacks_right(side) else (105-start.x, 68-start.y)
+                self.pass_to(side, player, min(100, sx+3), sy)
+            else:
+                point = (start.x, start.y)
+                self.hold_until(self.contact_ready(player, point, self.t))
+                sx, sy = point if self.attacks_right(side) else (105-point[0], 68-point[1])
+                self.key(side, sx, sy, player)
+                if prior:
+                    self.keyframes[-1].player_positions[prior.id] = point
+                    self.keyframes[-1].contact_effectors[prior.id] = "foot"
+                self.emit("tackle", side, player, sx, sy, outcome="won")
+        start = self.keyframes[-1]
+        self.t = self.contact_ready(player, self.to_pitch(side, ax, ay), self.t+1)
+        self.key(side, ax, ay, player)
+        self.record_carry(side, player, start, self.keyframes[-1])
+
+    def onside_setup(self, side, receiver, ax, ay):
+        """One covering defender and keeper, rather than a future VAR verdict."""
+        opp = "away" if side == "home" else "home"
+        defender = next(p for p in self.on_pitch[opp] if p.position == "CB")
+        positions = {receiver.id: self.to_pitch(side, ax-7, ay),
+                     defender.id: self.to_pitch(side, ax+2, 42)}
+        actors = {p.id:p for squad in self.on_pitch.values() for p in squad}
+        self.hold_until(max(self.contact_ready(actors[pid], point, self.t) for pid,point in positions.items()))
+        self.keyframes[-1].player_positions.update(positions)
+        return positions
+
+    def goal(self, side, shooter, result_at, *, preparation=None, penalty=False, positions=None, facings=()):
+        release = result_at-.6
+        self.at(release)
+        if penalty:
+            action = self.emit("set_piece", side, shooter, 94, 34, kind="penalty")
+            self.whistle(1, "short")
+            self.restart(action)
+        self.state(ball_in_play=True)
+        current = self.keyframes[-1]
+        ax, ay = (current.x, current.y) if self.attacks_right(side) else (105-current.x, 68-current.y)
+        self.key(side, ax, ay, shooter, effector="foot" if penalty else "head")
+        self.keyframes[-1].player_positions.update(positions or {})
+        self.keyframes[-1].player_facings = facings
+        self.keyframes[-1].z = 0 if penalty else 1.65
+        self.keyframes[-1].flight_height = 1.0 if penalty else .8
+        shot = self.emit("shot", side, shooter, ax, ay, body_part="right_foot" if penalty else "head",
+                         penalty=penalty, related=[preparation["id"]] if preparation else None)
+        if preparation:
+            shot["preparing_pass_id"] = preparation["id"]
+        self.events.append(delayed_xg(self.seed, shot, ax, ay, not penalty, self.xg_delay))
+        self.t = result_at
+        self.key(side, 105.5, 34, None, False)
+        if penalty:
+            keeper = self.keeper("away" if side == "home" else "home")
+            # A late, unsuccessful lateral reaction: no invented ball contact.
+            self.keyframes[-1].player_positions[keeper.id] = self.to_pitch(side, 105, 34.35)
+            self.keyframes[-1].player_facings = tuple((pid, face) for pid, face in facings if pid == keeper.id)
+        result = self.report("shot_result", shot_id=shot["id"], outcome="goal", team=side, player_id=shooter.id)
+        self.score[side] += 1  # actual line crossing; never a post-hoc score patch
+        self.stop(result, "goal")
+        self.crowd_hit(.6, 22, hold=6)
+        self.state(ball_in_play=False)
+        return shot
+
+    def build(self):
+        self.emit("period_start", period_no=1)
+        self.state(ball_in_play=False)
+        self.kick_off("home")
+        self.carry_to("home",self.player("home",8),58,24)
+        self.pass_to("home",self.player("home",7),68,16,duration=3)
+        self.carry_to("home",self.player("home",7),72,20)
+        self.pass_to("home",self.player("home",10),60,42,duration=3)
+        opening_end=self.t+5
+        self.at(opening_end)
+
+        # Ordinary called foul/yellow: a short physical encounter, then restart.
+        self.at(580)
+        victim, offender = self.player("home",7), self.player("away",6)
+        self.carry_to("home", victim, 70, 34)
+        self.hold_until(self.contact_ready(offender, self.to_pitch("home",70,34), self.t))
+        self.key("home",70,34,victim)
+        self.keyframes[-1].player_positions[offender.id] = self.to_pitch("home",70,34)
+        self.keyframes[-1].contact_effectors[offender.id] = "foot"
+        foul = self.emit_offence("away",offender,35,34,victim,"trip",False,handball=False)
+        self.t += .3
+        self.whistle()
+        self.decide(foul,"free_kick","home")
+        self.card_maybe("away",offender,1,foul,decision=("yellow",5))
+        self.restart_free_kick("home",70,34)
+
+        # A real mistimed run with a touch, separate from all three agreed goals.
+        self.at(980)
+        passer, receiver = self.player("home",7), self.player("home",9)
+        self.carry_to("home",passer,70,34)
+        snapshot = self.prepare_offside_kick("home",passer,receiver,70,34,90,34)
+        arrival = self.flight_plan(receiver,(90,34),2)
+        departure = self.t
+        self.keyframes[-1].player_positions.update(snapshot["players"])
+        self.keyframes[-1].flight_height = 0
+        self.t = arrival
+        passing = self.emit("pass","home",passer,70,34,t=departure,outcome="offside",recipient_id=receiver.id,height="ground")
+        self.set_pass_end(passing,"home",90,34)
+        self.key("home",90,34,receiver)
+        self.t += .4
+        self.whistle()
+        call = self.emit("offside","home",receiver,90,34,related=[passing["id"]])
+        passing["delivered_t"] = max(passing["delivered_t"],call["t"]+.75)
+        self.restart_free_kick("away",15,34)
+
+        # The momentum input is real 420s history, not a cropped fake state.
+        self.at(1250)
+        self.carry_to("away",self.player("away",6),48,34)
+        for i in range(16):
+            self.at(1260+i*25)
+            player=self.player("away",8 if i%2==0 else 10)
+            ax,ay=54+(i%3)*4,24 if i%2==0 else 44
+            self.pass_to("away",player,ax,ay)
+            self.carry_to("away",player,ax+3,ay+2)
+
+        # A missed box foul, followed by ball-out and the original VAR reversal.
+        self.at(2140)
+        victim, offender = self.player("home",9), self.player("away",6)
+        self.carry_to("home",victim,94,34)
+        self.hold_until(self.contact_ready(offender,(94,34),self.t))
+        self.key("home",94,34,victim)
+        self.keyframes[-1].player_positions[offender.id]=(94,34)
+        self.keyframes[-1].contact_effectors[offender.id]="foot"
+        incident_t=self.t
+        tackle=self.emit("tackle","away",offender,11,34,outcome="won")
+        self.t += 1
+        self.key("away",11,34,offender)
+        self.emit("clearance","away",offender,11,34)
+        self.keyframes[-1].flight_height=1.5
+        self.t += 2
+        self.key("away",11,-.5,None,False)
+        self.whistle(2,"normal")
+        original=self.decide(tackle,"no_penalty","away")
+        self.state(ball_in_play=False)
+        rid="demo_penalty_review"
+        self.emit("var",related=[tackle["id"]],review_id=rid,phase="check",incident="penalty",
+                  original_decision="no_penalty",outcome=None,incident_t=incident_t)
+        self.at(2205)
+        self.emit("var",review_id=rid,phase="on_field_review",incident="penalty",original_decision="no_penalty",outcome=None)
+        self.at(2236)
+        self.emit("var",review_id=rid,phase="decision",incident="penalty",original_decision="no_penalty",outcome="overturned")
+        self.whistle(1,"long")
+        foul=self.emit("foul","away",offender,11,34,t=incident_t,victim_id=victim.id,kind="trip",advantage=False,related=[tackle["id"]])
+        foul["delivered_t"]=self.t+.75
+        self.decide(foul,"penalty","home",supersedes=original["id"])
+        positions,facings=self.penalty_setup("home",victim)
+        self.goal("home",victim,2278,penalty=True,positions=positions,facings=facings)
+        self.at(2310)
+        self.kick_off("away")
+
+        self.at(2570)
+        passer,scorer=self.player("home",8),self.player("home",7)
+        self.carry_to("home",passer,78,30)
+        setup=self.onside_setup("home",scorer,94,30)
+        passing=self.pass_to("home",scorer,94,30,kick_at=2610.9,duration=2.5,header=True,setup=setup)
+        self.goal("home",scorer,2614,preparation=passing)
+        self.at(2645)
+        self.kick_off("away")
+        self.at(2680)
+        self.emit("added_time",minutes=3)
+        self.at(2880)
+        self.whistle(2,"long")
+        self.emit("period_end",period_no=1)
+        self.state(ball_in_play=False)
+        self.at(2940)  # real source-time walking/setup interval; no pose reset
+        self.period=2
+        self.period_start_t=self.t
+        self.clock_base=2700
+        self.emit("period_start",period_no=2)
+        self.kick_off("away")
+
+        self.at(4095)
+        passer,scorer=self.player("away",7),self.player("away",9)
+        self.carry_to("away",passer,78,38)
+        setup=self.onside_setup("away",scorer,94,38)
+        passing=self.pass_to("away",scorer,94,38,kick_at=4144.9,duration=2.5,header=True,setup=setup)
+        goal=self.goal("away",scorer,4148,preparation=passing)
+        self.at(4180)
+        self.emit("var",related=[goal["id"]],review_id="demo_goal_review",phase="check",incident="goal",original_decision="goal",outcome=None)
+        self.at(4238)
+        self.emit("var",review_id="demo_goal_review",phase="decision",incident="goal",original_decision="goal",outcome="stands")
+        self.kick_off("home")
+        self.at(max(4260,self.t+10))
+        match=self.export_match()
+        match.meta["configuration"]=dict(DEMO_CONFIGURATION)
+        match.meta["demo_windows"]={"opening":[0,round(opening_end,2)],"foul":[580,650],
+            "offside":[980,1030],"momentum_history":[1250,1670],"penalty_review":[2140,2290],
+            "home_goal":[2595,2626],"away_goal":[4130,4160],"goal_review":[4180,4250]}
+        return match
+
+
+def generate_demo_match(seed=2):
+    """The agreed 2-1 scripted demo; generic seeded matches remain independent."""
+    if seed != 2:
+        raise ValueError("the original physical demo uses seed 2")
+    return _PhysicalDemo().build()
 
 SCENARIOS = (
     "shots_reversed", "xg_missing", "xg_duplicate", "source_late", "source_missing",
