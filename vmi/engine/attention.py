@@ -124,6 +124,10 @@ class AttentionEngine:
             say.update(on=m.player_name(ev["substitution"]["on_id"]), off=m.player_name(ev["substitution"]["off_id"]))
         elif etype == "added_time":
             say["minutes"] = ev["added_time"]["minutes"]
+        elif etype == "foul":
+            f = ev["foul"]
+            say.update(victim=m.player_name(f.get("victim_id")), advantage=bool(f.get("advantage")),
+                       to=m.team_name(_opp(ev["team"])))
         elif etype in ("period_start", "period_end"):
             say["period"] = ev[etype]["period_no"]
         elif etype == "shot":
@@ -384,8 +388,14 @@ class AttentionEngine:
                 out.append(self._feed(ev, TIER_BIG, "penalty", f"Penalty to {m.team_name(_opp(team))}! {who} fouled in the box.",
                                       f"Penalty: {ev['foul']['kind']} by {who} inside the box.", team=_opp(team)))
             else:
-                out.append({"kind": "skip", "t": ev["t"], "what": ev["id"],
-                            "why": "ordinary foul: the whistle banner covers it"})
+                victim = m.player_name(ev["foul"].get("victim_id"))
+                on = f" on {victim}" if victim else ""
+                if ev["foul"].get("advantage"):
+                    basic = f"Foul by {who}{on}. The referee plays advantage."
+                else:
+                    basic = f"Foul by {who}{on}. Free kick to {m.team_name(_opp(team))}."
+                out.append(self._feed(ev, TIER_BALANCED, "foul", basic,
+                                      f"{basic} ({ev['foul'].get('kind', 'foul').replace('_', ' ')})"))
         elif etype == "set_piece" and ev["set_piece"]["kind"] == "penalty":
             self._expect("penalty_kick", 15)
         elif etype == "substitution":

@@ -223,12 +223,17 @@ function addFeed(f, fresh) {
 }
 
 function onBacklog(m) {
+  // Rebuilding the list shortens the page for a moment, and the browser would leave the
+  // reader at the top. Keep the same distance from the bottom (zero when following).
+  const doc = document.documentElement;
+  const fromBottom = following() ? 0 : Math.max(0, (doc.scrollHeight || 0) - (window.scrollY || 0));
   dropAgentMessages();
   feedStore.reset(m.feed);
   for (const f of [...m.feed].sort((a, b) => (a.delivered ?? a.t) - (b.delivered ?? b.t))) addFeed(f, false);
   $("chat-empty").hidden = entries.size > 0;
   const big = [...m.feed].reverse().find((f) => f.tier <= 2);
   renderSuggestions(big?.icon);
+  window.scrollTo?.({ top: Math.max(0, (doc.scrollHeight || 0) - fromBottom), behavior: "auto" });
 }
 
 // Every message still says who wrote it: an AI model, or code. A template is never shown as AI.

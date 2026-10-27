@@ -41,6 +41,12 @@ def _kai_options(icon: str, s: dict) -> list[str] | None:
                 f"{who} tries a shot for {team}: {result}."]
     if icon == "penalty":
         return [f"PENALTY to {team}! The referee points to the spot.", f"Penalty! {team} have a big chance here."]
+    if icon == "foul":
+        on = f" on {s['victim']}" if s.get("victim") else ""
+        if s.get("advantage"):
+            return [f"Foul by {who}{on}, but the referee waves play on.", f"{who} fouls{on}. Advantage played."]
+        return [f"Foul by {who}{on}. Free kick to {s.get('to')}.", f"{who} brings down{on or ' an opponent'}. Free kick, {s.get('to')}.",
+                f"The whistle goes: {who} fouls{on}."]
     if icon == "card_yellow":
         return [f"Yellow card: {who} is cautioned ({team}).", f"{who} of {team} gets a yellow.",
                 f"The referee shows {who} a yellow card."]
