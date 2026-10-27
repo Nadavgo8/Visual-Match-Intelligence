@@ -564,7 +564,7 @@ async def ws(websocket: WebSocket, room_name: str, role: Literal["tv", "app"] = 
                     await room.send(c, {"type": "answer_discarded", "id": msg.get("id"), "reason": "run_changed"})
                 else:
                     await room.send(c, {"type": "answer", "id": msg.get("id"), "q": q, **res,
-                                        "clock": room.replay.model.clock})
+                                        "clock": res.get("snapshot_clock") or room.replay.model.clock})
     except WebSocketDisconnect:
         pass
     finally:

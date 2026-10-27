@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import re
+from asyncio import timeout
 
 from .tools import POSITIONS
+from .providers import TOTAL_TIMEOUT_S
 
 VERB = {"trip": "tripped", "push": "pushed", "holding": "held", "kick": "kicked"}
 CROWD_CAUSAL = re.compile(r"\b(because|due to|in protest|angry|anger|furious|outrage|boo\w*|jeer\w*|whistl\w* at|"
@@ -339,8 +341,18 @@ class Explainer:
         self.roster = roster_names or set()
 
     async def write(self, pack: dict, depth: str = "basic", fav: str | None = None) -> dict:
-        from .workflow import AnalysisJob, build_analysis_workflow
+        from .workflow import AnalysisJob, _result, build_analysis_workflow
 
         wf = build_analysis_workflow(self.llm, self.roster)
-        result = await wf.run(AnalysisJob(pack, depth, fav))
+        job = AnalysisJob(pack, depth, fav)
+        try:
+            async with timeout(TOTAL_TIMEOUT_S):
+                result = await wf.run(job)
+        except TimeoutError:
+            # Bound the entire workflow, not only the provider's HTTP call.
+            # Cancellation from seek/reset still propagates to the room owner.
+            sentences = template(pack, depth, fav)
+            fallback = _result(job, sentences, "template", None, validate(sentences, pack, self.roster))
+            fallback["rejected"] = ["analysis timeout"]
+            return fallback
         return result.get_outputs()[-1]

@@ -175,6 +175,55 @@ def test_analysis_written_for_an_old_run_is_never_published():
     asyncio.run(scenario())
 
 
+def test_slow_answer_is_labelled_with_its_snapshot_clock_not_the_live_clock(monkeypatch):
+    from vmi.evaluation.benchmark import benchmark_match
+
+    monkeypatch.setattr(server, "get_match", lambda _: benchmark_match())
+
+    async def scenario():
+        room = Room("answer-clock", 12)
+        room.replay.advance(754)
+        server.rooms[room.name] = room
+        started, release, delivered = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        class SlowAssistant:
+            async def answer(self, q, profile):
+                snapshot = room.replay.model.clock
+                started.set()
+                await release.wait()
+                return {"text": "Frozen facts", "evidence": ["state"], "snapshot_clock": snapshot}
+
+        room.assistant = SlowAssistant()
+        ws, incoming = FakeWS(), asyncio.Queue()
+        ws.accept = lambda: asyncio.sleep(0)
+        ws.receive_text = incoming.get
+        original_send = ws.send_text
+
+        async def send(text):
+            await original_send(text)
+            if json.loads(text)["type"] == "answer":
+                delivered.set()
+
+        ws.send_text = send
+        endpoint = asyncio.create_task(server.ws(ws, room.name, role="app"))
+        try:
+            await incoming.put(json.dumps({"cmd": "ask", "q": "score?", "id": "clock-q"}))
+            await asyncio.wait_for(started.wait(), 1)
+            room.replay.advance(801)  # Same run continues while the model is answering.
+            release.set()
+            await asyncio.wait_for(delivered.wait(), 1)
+            answer = next(message for message in ws.sent if message["type"] == "answer")
+            assert answer["clock"] == answer["snapshot_clock"] == "12:34"
+            assert answer["clock"] != room.replay.model.clock
+            assert answer["run_id"] == "r1" and answer["id"] == "clock-q"
+        finally:
+            endpoint.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await endpoint
+
+    asyncio.run(scenario())
+
+
 def test_ask_answered_after_a_seek_is_discarded_not_shown():
     async def scenario():
         room = Room("s6", 12)
