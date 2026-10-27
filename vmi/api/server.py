@@ -22,8 +22,10 @@ import secrets
 import time
 from collections import deque
 from contextlib import asynccontextmanager
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock, RLock
 from typing import Literal
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -53,6 +55,8 @@ CONTROL_COMMANDS = {"play", "pause", "speed", "seek", "new_match"}
 OUTBOX_MAX = 256  # queued events per client before it is resynced with a snapshot
 ROOM_GRACE_S = 120.0  # an empty room survives this long, so a reconnecting screen keeps its match
 MAX_ROOMS = 64
+MATCH_CACHE_MAX = 8
+MATCH_LOAD_MAX = 4
 
 def _telemetry():
     """Application Insights via OpenTelemetry when a connection string is set (Azure)."""
@@ -69,9 +73,15 @@ def _telemetry():
 @asynccontextmanager
 async def lifespan(_app):
     _telemetry()
+    warm = None
     if os.getenv("VMI_WARM_DEMO", "1") == "1":
-        asyncio.create_task(warm_demo())
-    yield
+        warm = asyncio.create_task(warm_demo())
+    try:
+        yield
+    finally:
+        if warm:
+            warm.cancel()
+            await asyncio.gather(warm, return_exceptions=True)
 
 
 app = FastAPI(title="Visual Match Intelligence", version="0.1.0", lifespan=lifespan)
@@ -79,15 +89,55 @@ app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 _client, _model_name = foundry_client()
 _match_cache: dict[int, Match] = {}
+_match_lock = Lock()
+_match_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vmi-source")
+_match_loads: dict[int, Future[Match]] = {}
+_match_load_lock = RLock()  # Only future bookkeeping; never held during generation.
 # explainer results shared by all rooms: (seed, moment, t, depth, team) -> result.
 # Replays are deterministic, so the demo match is written once and then served instantly.
 _text_cache: dict[tuple, dict] = {}
 
 
 def get_match(seed: int) -> Match:
-    if seed not in _match_cache:
-        _match_cache[seed] = generate_match(seed)
-    return _match_cache[seed]
+    # Cached reads must not wait behind an unrelated cold seed's generation.
+    match = _match_cache.get(seed)
+    if match is not None:
+        return match
+    with _match_lock:
+        if seed not in _match_cache:
+            _match_cache[seed] = generate_match(seed)
+            while len(_match_cache) > MATCH_CACHE_MAX:
+                del _match_cache[next(iter(_match_cache))]
+        return _match_cache[seed]
+
+
+class MatchLoadBusy(Exception):
+    """The bounded source preparation queue has no free slot."""
+
+
+async def prepare_match(seed: int) -> Match:
+    """Share cold work without blocking rooms or cancelling another caller's load."""
+    cached = _match_cache.get(seed)
+    if cached is not None:
+        return cached
+    with _match_load_lock:
+        future = _match_loads.get(seed)
+        if future is None:
+            if len(_match_loads) >= MATCH_LOAD_MAX:
+                raise MatchLoadBusy("match preparation is busy; try again shortly")
+            future = _match_loads[seed] = _match_worker.submit(get_match, seed)
+
+            def finished(done):
+                # Release admission only when the actual worker has stopped,
+                # even if a caller disconnects or its event loop closes.
+                with _match_load_lock:
+                    if _match_loads.get(seed) is done:
+                        del _match_loads[seed]
+
+            future.add_done_callback(finished)
+    wrapped = asyncio.wrap_future(future)
+    wrapped.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+    return await asyncio.shield(wrapped)
 
 
 def chapters(match: Match) -> list[dict]:
@@ -123,7 +173,7 @@ class Client:
 
 
 class Room:
-    def __init__(self, name: str, seed: int):
+    def __init__(self, name: str, seed: int, *, match: Match | None = None):
         self.name = name
         self.seed = seed
         self.clients: list[Client] = []
@@ -133,8 +183,9 @@ class Room:
         self.host_token: str | None = None
         self.expiry: asyncio.TimerHandle | None = None
         self.run = 0
+        self.match_request = 0
         self.pending: dict[tuple, asyncio.Task] = {}
-        self.reset()
+        self.reset(match=match)
 
     @property
     def run_id(self) -> str:
@@ -148,13 +199,13 @@ class Room:
         self.pending = {}
         self.held: list[tuple[dict, tuple, int]] = []  # explanations waiting for the next stoppage
 
-    def reset(self, seed: int | None = None):
+    def reset(self, seed: int | None = None, *, match: Match | None = None):
         self.new_run()
         self.counts = {"in": 0, "banner": 0, "feed": 0, "analysis": 0, "skip": 0}
         self.recent = []
         if seed is not None:
             self.seed = seed
-        self.match = get_match(self.seed)
+        self.match = match if match is not None else get_match(self.seed)
         self.replay = Replay(self.match, atmosphere_mode=os.getenv("VMI_ATMOSPHERE_MODE", "combined"))
         self.tracker = Tracker(self.match)
         roster = {p["name"] for t in self.match.meta["teams"].values() for p in t["players"]}
@@ -272,7 +323,7 @@ class Room:
             raise ValueError("seek time must be a finite number")
         t = min(max(t, 0.0), self.match.duration)
         if t < self.replay.now:
-            self.reset()
+            self.reset(match=self.match)
         else:
             self.new_run()
         outs = self.replay.advance(t)
@@ -289,7 +340,12 @@ class Room:
             await self.deliver_snapshot(c)
 
     async def new_match(self, seed: int):
-        self.reset(seed)
+        self.match_request += 1
+        request, run = self.match_request, self.run
+        match = await prepare_match(seed)
+        if request != self.match_request or run != self.run:
+            return  # A newer request, seek or room expiry superseded this load.
+        self.reset(seed, match=match)
         self.playing = False
         for c in self.clients:
             await self.deliver_snapshot(c)
@@ -414,9 +470,13 @@ rooms: dict[str, Room] = {}
 
 async def warm_demo(seed: int = DEMO_SEED):
     """Write every analysis of the demo match ahead of time, for all profiles."""
-    match = get_match(seed)
-    room = Room("_warm", seed)
-    analyses = [o for o in Replay(match).advance(match.duration) if o["kind"] == "analysis"]
+    match = await prepare_match(seed)
+    room = Room("_warm", seed, match=match)
+
+    def scan():
+        return [o for o in Replay(match).advance(match.duration) if o["kind"] == "analysis"]
+
+    analyses = await asyncio.get_running_loop().run_in_executor(_match_worker, scan)
     for a in analyses:
         for depth in ("basic", "deep"):
             for team in (None, "home", "away"):
@@ -514,7 +574,18 @@ async def ws(websocket: WebSocket, room_name: str, role: Literal["tv", "app"] = 
         if len(rooms) >= MAX_ROOMS:
             await websocket.close(code=1013, reason="too many rooms; try again later")
             return
-        room = rooms[room_name] = Room(room_name, seed or DEMO_SEED)
+        try:
+            match = await prepare_match(seed if seed is not None else DEMO_SEED)
+        except MatchLoadBusy:
+            await websocket.close(code=1013, reason="match preparation busy; try again later")
+            return
+        # Other connections can join this name or fill the room limit while loading.
+        room = rooms.get(room_name)
+        if room is None:
+            if len(rooms) >= MAX_ROOMS:
+                await websocket.close(code=1013, reason="too many rooms; try again later")
+                return
+            room = rooms[room_name] = Room(room_name, seed if seed is not None else DEMO_SEED, match=match)
     if room.expiry:
         room.expiry.cancel()
         room.expiry = None
@@ -539,6 +610,9 @@ async def ws(websocket: WebSocket, room_name: str, role: Literal["tv", "app"] = 
                     continue
                 try:
                     await control(room, cmd, msg)
+                except MatchLoadBusy:
+                    await room.send(c, {"type": "error", "code": "match_busy",
+                                        "message": "Match preparation is busy. Try again shortly."})
                 except (TypeError, ValueError, OverflowError):
                     await room.send(c, {"type": "error", "code": "bad_command", "message": f"Invalid {cmd} command."})
             elif cmd == "catch_up":
