@@ -228,7 +228,8 @@ $("scrub").onchange = (e) => { scrubbing = false; jump({ cmd: "seek", t: Number(
 $("overlay-on").onchange = (e) => $("overlay").classList.toggle("off", !e.target.checked);
 $("sound-on").onchange = (e) => { audio.unlock(); audio.enabled = e.target.checked; if (!e.target.checked) audio.crowd(0); };
 $("new").onclick = () => jump({ cmd: "new_match", seed: Number($("seed").value) });
-$("random").onclick = () => jump({ cmd: "new_match", seed: 1 + Math.floor(Math.random() * 99999) });
+// The server picks a random match it has already built, so it opens at once.
+$("random").onclick = () => jump({ cmd: "new_match", random: true });
 
 // ---------- engine trace: what was shown, and what was left out and why ----------
 function onTrace(m) {
