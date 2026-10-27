@@ -1,11 +1,45 @@
 # Physical source motion, generator 2.5
 
-Status: implementation and targeted validation in progress. This is not full
-football, anatomy or visual acceptance. The annotated 2.2 benchmark is unchanged.
-The latest user decision restores the original exact 2-1 demo story; the
-intermediate random 1-1 world below is superseded as a narrative. Its physical
-audit remains evidence, but the demo-story gate is blocked pending an explicit
-scenario built from the existing physical generator. No scenario is implemented.
+Status: the explicit physical demo now preserves the original exact 2-1 story.
+Targeted validation passed; full exact-head CI, technical review and integrated
+visual acceptance remain pending. This is not full football or anatomy acceptance.
+The annotated 2.2 benchmark is unchanged. Earlier random 1-1/2-0 worlds below are
+superseded narrative checkpoints, retained only as historical evidence.
+
+`generate_demo_match(2)` uses `_Sim` contact scheduling, fixed flights, restarts,
+physical export and the existing Tracker/Replay. Its configuration is
+`scripted_demo / original-v1`, with a distinct match ID. The API selects that
+configuration for seed 2, starting at 1x; generic `generate_match(2)` remains the
+independent seeded generator. Other API seeds and presenter speed controls retain
+their existing behavior. Neither the private episode schedule nor final score is
+included in initial public metadata; the configuration revision encodes no result.
+
+The script has an opening live passing/carrying sequence. Selected windows are
+continuous physical episodes, with reachable actor paths and real restarts.
+Unshown bridges use coarse held states for optional presenter cuts; this is not
+a claim of realistic action throughout 90 minutes. Momentum at source t=1354
+uses the complete preceding 420s replay, including the offside restart and later
+away passes/carries, rather than a reset or cropped input window.
+
+The shared penalty setup now constrains all active players before the kick:
+keeper on the line facing the kicker; other players outside the area, behind
+the mark and at least 9.15m away; taker behind the ball facing goal. Private
+immutable facing targets retain the 6 rad/s orientation limit and fixture reload.
+The demo keeper makes a reachable unsuccessful lateral reaction, without a fake
+save/contact. A regression also covers an ordinary saved penalty in both directions.
+Stopping play now preserves the former holder's physical contact anchor, preventing
+the reproduced post-whistle body overlap with the offender.
+
+Latest local receipt: 164 tests passed in 6.56s from
+`pytest tests/test_demo_match.py tests/test_full_match_actions.py tests/test_generator_physics.py -q --strict-markers --strict-config -W error -p no:cacheprovider`.
+Three demo-speed/phone-control/malformed-input tests passed in 1.49s outside the
+sandbox, after its asyncio socket-pair creation stalled before application code.
+The retained demo built in 0.260s. Its 4,414 source records validated; the complete
+Replay produced 12,775 outputs and passed the unchanged chat-analysis reply
+assertion. Replay plus assertion/persistence took 9.28s. Private reusable receipts:
+`out/physical-demo-original-world.pkl`, `out/physical-demo-original-replay.pkl`,
+and `out/physical-demo-original-receipt.json`. These are local scoped evidence,
+not a substitute for the unchanged full CI gate or a visual/rigger PASS.
 
 ## Concrete changes
 
@@ -105,7 +139,7 @@ setup cuts for isolated event/latency tests.
 | Keeper catch/parry/rebound | Incoming shot | Keeper plus rebound contender | Hands at source contact; catch lift or later deflection (E) | Recovery/clearance outlet | Keeper control or actual rebound winner | save/recovery | Save event at different source point; every hand receipt labelled save | Save contact and parry sampling |
 | Corner/free kick/throw/goal kick | Stopped ball; awarded restart | Retriever/taker, receiver, opponents | Pickup/carry/placement/stationary setup/release/flight (E) | Options/cover; legal setup separately tested (L) | New possession only on execution | stop/award/taken/set_piece/pass | Award means execution; unmanned dead-ball transfer | Whole retrieval interval; both-direction throw height |
 | Offside/advantage | Frozen actual kick/incident snapshot | Receiver, active opponents, offender | Reachable kick/real involvement; live advantage until next stop | Source roots at actual kick (L) | Stop at actual involvement/whistle | offence/decision/whistle/card | RNG verdict without geometry; card advances live time | Both directions/periods; 11 actual Seed2 calls; deferred yellow |
-| Penalty setup | Awarded penalty; stopped ball | Kicker, keeper, other active players | Reuse encounter/release planner | Legal line/distance constraints (L) still unverified | Actual shot then result | decision/penalty/shot/result | Keeper ahead of line; defenders too near mark | Independently reproduced remaining gap, not PASS |
+| Penalty setup | Awarded penalty; stopped ball | Kicker, keeper, other active players | Shared reachable setup/release planner | Line/distance constraints (L); source-facing targets (E) | Actual shot then result | decision/penalty/shot/result | Keeper ahead of line; defenders too near mark; sideways kick root | Both directions: legal kick snapshot and fixed .6s saved flight; original demo penalty |
 | Cards/red/sub/drinks | Actual disciplinary or stoppage state | Active roster; outgoing/incoming | Stop/control preserved; no fake play | Vacated role inherited only after entry | Stopped until actual restart | card/sub/drinks/restart | Sent-off/bench actor active; changed initial roster; moving stopped ball | Roster-before/after and snapshot alias regressions |
 | Kick-off/half-time/ends | Period boundary and stopped ball | Actual active roster/taker | Reachable setup; physical halftime walk, no sampled reset teleport (E) | Direction changes by period | Execution starts next possession | period/kick-off/whistle | Source time confused with clock; instantaneous side switch | Continuous source knot/direction tests |
 
@@ -118,10 +152,10 @@ procedures; a generic decision must not stand in for the actual kick.
 
 The subsequently authorized bounded Law 11/12 corrections are documented in the
 final timeline section: actual kick/involvement and delayed advantage sanctions
-are now tested. Remaining [Law 14](https://www.theifab.com/laws/latest/the-penalty-kick/)
-setup still needs reachable legal keeper/other-player positions; the reproduced
-ordinary penalty can put the keeper ahead of the line and defenders close to the
-mark. That case is not selected as an accepted demo and is not waived by paths.
+are now tested. The latest shared [Law 14](https://www.theifab.com/laws/latest/the-penalty-kick/)
+setup above addresses the reproduced keeper-line and other-player distance gaps
+in both ordinary penalties and the explicit demo. This is bounded lineup/contact
+validation, not a claim to implement every penalty infringement or biomechanics.
 
 ## Review and evidence checkpoint
 
@@ -388,11 +422,29 @@ reconciliation. Preserve the exact original story with a physical explicit demo:
 | Marsh goal | 65:08 | away goal |
 | VAR goal decision | 66:38 | goal stands |
 
-Required final score is 2-1. These constants are restored in the story test.
-The current random physical world does not meet them; this is an explicit failing
-gate, not permission to alter the agreed story or weaken the physics certificate.
+Required final score is 2-1. These original constants now pass against the explicit
+physical configuration; the independent random world is not used as its story.
 The original story has no cancelled goal, so it does not require a fabricated
-offside cancellation. A separate valid offside sequence can be included.
+offside cancellation. The demo includes a separate eligible kick and actual
+recipient touch before the offside call.
+
+| Current explicit episode | Match clock | Source t |
+| --- | --- | --- |
+| Called trip / linked yellow | 9:45 / 9:50 | 585.47 / 590.77 |
+| Offside involvement / call | 16:27 / 16:28 | 987.81 / 988.21 |
+| Away momentum call, full prior 420s | 22:34 | 1354 |
+| Missed actual box foul | 35:48 | 2148.11 |
+| VAR overturns no-penalty decision | 37:16 | 2236 |
+| Dumont penalty goal | 37:58 | 2278 |
+| Ferreira header goal | 43:34 | 2614 |
+| Marsh header goal | 65:08 | 4148 |
+| VAR keeps Marsh goal | 66:38 | 4238 |
+
+Source t includes the real halftime gap; the second period starts at t2940 with
+clock 45:00. Scores reach the engine only through delivered state/result records:
+at each line crossing the previous score remains visible until its packets arrive.
+The exact original story test and final score reconciliation pass without changing
+the three goal or two VAR expectations.
 
 **Intermediate audit, superseded as the demo narrative:** the offside/card
 corrections yielded Harbour City 1-1 Northvale Rovers. They superseded the earlier
@@ -454,7 +506,8 @@ advantage is recalled for a red/second-yellow decision; no clear-scoring-chance
 exception is invented. This follows [IFAB Law 12](https://www.theifab.com/laws/latest/fouls-and-misconduct/).
 The source still does not declare pre-contact windup/preparation animation;
 the 0.32s contact interval starts at the actual touch and is follow-through.
-Legal penalty setup and complete biomechanics remain outside this bounded fix.
+The latest explicit-demo change above adds shared legal penalty setup. Complete
+biomechanics and source pre-contact windup remain outside this bounded fix.
 
 
 ## Cold-seed integration gap
@@ -472,8 +525,9 @@ acceptance.
 
 Historical f9 checkpoint gates: physics/demo/fixture-export/action suites passed
 115 tests in 303.64s under isolated coverage. That earlier 2-0 story was GREEN
-with linked cancellation and score reconciliation; it is superseded by the final
-1-1 source narrative above. The scoped coverage
+with linked cancellation and score reconciliation; both that story and the later
+intermediate 1-1 narrative are superseded by the explicit original 2-1 demo above.
+The scoped coverage
 report before the final zero-span guard showed physics 515 statements / six
 missed / 188 branches / seven partial (98% combined), and tracking 226 statements /
 32 missed / 116 branches / 16 partial (83% combined). This partial selection is

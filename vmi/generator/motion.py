@@ -156,3 +156,7 @@ class Keyframe:
     possession_id: str | None = None
     player_positions: dict[str, tuple[float, float]] = field(default_factory=dict)
     contact_effectors: dict[str, str] = field(default_factory=dict)  # private current physical touches
+    player_facings: tuple[tuple[str, float], ...] = ()  # immutable private setup orientation, radians
+
+    def __post_init__(self):
+        self.player_facings = tuple(tuple(pair) for pair in self.player_facings)

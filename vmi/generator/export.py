@@ -4,7 +4,7 @@ from copy import deepcopy
 
 
 def initial_metadata(meta: dict) -> dict:
-    return deepcopy({k: v for k, v in meta.items() if k not in {"end_t", "final_score", "scenario", "expected_anomalies"}})
+    return deepcopy({k: v for k, v in meta.items() if k not in {"end_t", "final_score", "scenario", "expected_anomalies", "demo_windows"}})
 
 
 def finish_export(events: list[dict], states: list[dict], crowd: list[dict]) -> None:

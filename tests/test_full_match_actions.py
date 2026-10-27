@@ -24,6 +24,47 @@ def simulator(side="home"):
 
 
 @pytest.mark.parametrize("side", ["home", "away"])
+def test_penalty_setup_and_a_saved_kick_keep_legal_roots_and_a_fixed_flight(side):
+    class Saved(random.Random):
+        def random(self):
+            return .8
+
+    sim = _Sim(12, "legal-penalty")
+    sim.emit("period_start", period_no=1)
+    sim.key(side, 94, 34, None, False)
+    sim.rng = Saved(1)
+    sim.penalty(side)
+    match = sim.export_match()
+    tracker = Tracker(match)
+    shot = next(e for e in match.events if e["type"] == "shot")
+    save = next(e for e in match.events if e["type"] == "save")
+    frame = tracker.frame(shot["t"])
+    keeper = sim.keeper("away" if side == "home" else "home")
+    attack_x = lambda x: x if tracker.attacks_right(side, shot["t"]) else 105-x
+    for p in frame["players"]:
+        if p["id"] == keeper.id:
+            assert attack_x(p["x"]) == pytest.approx(105, abs=.01)
+            facing = -math.pi/2 if tracker.attacks_right(side, shot["t"]) else math.pi/2
+            assert p["motion"]["facing"] == pytest.approx(facing, abs=.001)
+        elif p["id"] == shot["player_id"]:
+            assert attack_x(p["x"]) == pytest.approx(94-.55, abs=.01)
+            assert p["y"] == pytest.approx(34, abs=.01)
+            facing = math.pi/2 if tracker.attacks_right(side, shot["t"]) else -math.pi/2
+            assert p["motion"]["facing"] == pytest.approx(facing, abs=.001)
+            assert p["contact"]["heading"] == pytest.approx(facing, abs=.001)
+        elif p["id"] != shot["player_id"]:
+            assert attack_x(p["x"]) < 88.5
+            assert attack_x(p["x"]) < 94
+            assert math.dist([p["x"],p["y"]],frame["ball"]) >= 9.15
+    assert save["t"]-shot["t"] == pytest.approx(.6, abs=.001)
+    saved = tracker.frame(save["t"])
+    actor = next(p for p in saved["players"] if p["id"] == keeper.id)
+    assert attack_x(actor["x"]) == pytest.approx(105, abs=.01)
+    assert math.dist([actor["x"],actor["y"]],saved["ball"]) == pytest.approx(.55, abs=.015)
+    assert actor["contact"]["effector"] == "hands"
+
+
+@pytest.mark.parametrize("side", ["home", "away"])
 def test_carry_reports_the_observed_span_without_changing_outcome_rng(side):
     sim, holder = simulator(side)
     start = sim.keyframes[-1]

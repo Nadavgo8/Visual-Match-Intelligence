@@ -494,8 +494,9 @@ def arc_length(a, b, u=1):
     return arc_metrics(a, b, u)[0]
 
 
-def through_velocities(nodes):
+def through_velocities(nodes, *, facing_targets=None):
     """Keep shared nonzero tangents through runs, with certified braking at turns."""
+    facing_targets = facing_targets or {}
     for i in range(1, len(nodes) - 1):
         a, b, c = nodes[i - 1 : i + 2]
         dt, future = b.t - a.t, c.t - b.t
@@ -529,6 +530,8 @@ def through_velocities(nodes):
         ),
         None,
     )
+    if facing is None and facing_targets:
+        facing = facing_targets[min(facing_targets)]
     for i, node in enumerate(nodes):
         metrics = None
         if i:
@@ -542,9 +545,12 @@ def through_velocities(nodes):
             cycles += turns
             if math.dist((previous.x, previous.y), (node.x, node.y)) > 1e-8:
                 heading = math.atan2(node.x - previous.x, previous.y - node.y)
-            if facing is not None and heading is not None:
-                delta = math.atan2(math.sin(heading - facing), math.cos(heading - facing))
+            desired = facing_targets.get(node.t, heading)
+            if facing is not None and desired is not None:
+                delta = math.atan2(math.sin(desired - facing), math.cos(desired - facing))
                 allowed = BODY_TURN_SPEED * (node.t - previous.t) / 1.5
+                if node.t in facing_targets and abs(delta) > allowed + 1e-7:
+                    raise ValueError("unreachable source body facing deadline")
                 facing += min(allowed, max(-allowed, delta))
                 facing = math.atan2(math.sin(facing), math.cos(facing))
         elif len(nodes) > 1:
@@ -553,6 +559,8 @@ def through_velocities(nodes):
                 facing = math.atan2(dx, -dy)
         if facing is None:
             facing = heading
+        if i == 0 and node.t in facing_targets:
+            facing = facing_targets[node.t]
         nodes[i] = replace(
             node, distance=total, heading=heading, facing=facing, gait_cycles=cycles, incoming_metrics=metrics
         )
@@ -602,11 +610,14 @@ def stage_physical_players(match):
         previous = by_time.get(key.t)
         positions = dict(previous.player_positions) if previous else {}
         effectors = dict(previous.contact_effectors) if previous else {}
+        facings = dict(previous.player_facings) if previous else {}
         positions.update(key.player_positions)
         effectors.update(key.contact_effectors)
+        facings.update(key.player_facings)
         if key.holder:
             positions[key.holder] = (key.x, key.y)
-        by_time[key.t] = replace(key, player_positions=positions, contact_effectors=effectors)
+        by_time[key.t] = replace(key, player_positions=positions, contact_effectors=effectors,
+                                player_facings=tuple(facings.items()))
     knots = sorted(by_time.values(), key=lambda k: k.t)
     if not knots:
         return
@@ -661,7 +672,13 @@ def stage_physical_players(match):
                 if k.holder and k.holder != pid and by_id[k.holder]["team"] != player["team"]:
                     dx, dy = -dx, -dy
                 offset = (CONTACT_REACH * dx / length, CONTACT_REACH * dy / length)
-                if last_touch is not None and math.dist(position, last_touch) < 1e-7:
+                explicit_facing = dict(k.player_facings).get(pid)
+                if explicit_facing is not None:
+                    # A planned stationary kick constrains both orientation and
+                    # the physical foot reach, independently of ball bookkeeping.
+                    offset = (CONTACT_REACH * math.sin(explicit_facing),
+                              -CONTACT_REACH * math.cos(explicit_facing))
+                elif last_touch is not None and math.dist(position, last_touch) < 1e-7:
                     offset = last_offset
                 root = (position[0] - offset[0], position[1] - offset[1])
                 if not 0 <= root[0] <= 105 or not 0 <= root[1] <= 68:
@@ -724,7 +741,10 @@ def stage_physical_players(match):
             nodes.append(PathNode(knots[end_i].t, *end, total))
         if not nodes:
             nodes = [PathNode(knots[0].t, *initial, 0)]
-        nodes = through_velocities(nodes)
+        targets = {k.t: dict(k.player_facings)[pid] for k in knots if pid in dict(k.player_facings)}
+        if targets.keys() - {node.t for node in nodes}:
+            raise ValueError("source body facing requires an explicit position anchor")
+        nodes = through_velocities(nodes, facing_targets=targets)
         match.player_paths[pid] = nodes
         for k in knots:
             x, y, _ = sample(nodes, k.t, distance=False)

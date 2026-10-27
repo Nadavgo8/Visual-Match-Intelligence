@@ -120,8 +120,13 @@ class _Sim:
         self.play.possession_team = None
         if self.keyframes:
             k = self.keyframes[-1]
+            positions = dict(k.player_positions)
+            if k.holder:
+                positions[k.holder] = (k.x, k.y)
             self.keyframes.append(Keyframe(round(self.t, 2), k.x, k.y, None, False,
-                                           player_positions=dict(k.player_positions)))
+                                           player_positions=positions,
+                                           contact_effectors=dict(k.contact_effectors),
+                                           player_facings=k.player_facings))
         self.drain_cards()
 
     def decide(self, trigger: dict, kind: str, team: str, *, supersedes: str | None = None):
@@ -260,9 +265,9 @@ class _Sim:
             "quality": {"status": "measured", "confidence": 1.0},
         })
 
-    def key(self, side: str, ax: float, ay: float, holder: Player | None, in_play: bool = True, *, effector=None):
+    def key(self, side: str, ax: float, ay: float, holder: Player | None, in_play: bool = True, *, effector=None, body_root=None):
         if holder and not hasattr(self, "name"):
-            self.t = self.contact_ready(holder, self.to_pitch(side, ax, ay), self.t)
+            self.t = self.contact_ready(holder, self.to_pitch(side, ax, ay), self.t, body_root=body_root)
         self.t = round(self.t, 2)
         x, y = self.to_pitch(side, ax, ay)
         inherited = self.keyframes[-1] if self.keyframes else None
@@ -387,6 +392,7 @@ class _Sim:
             "match_id": self.match_id,
             "seed": self.seed,
             "generator_version": GENERATOR_VERSION,
+            "configuration": {"mode": "seeded", "revision": "normal-v1"},
             "synthetic": True,
             "pitch": [PITCH_X, PITCH_Y],
             "teams": teams_meta,
@@ -931,17 +937,18 @@ class _Sim:
         return len(opponents) >= 2 and receiver > max(52.5, attack_x(snapshot["ball"][0]), opponents[1]) + .01
 
     # ---------- restarts ----------
-    def contact_ready(self, player, point, earliest):
+    def contact_ready(self, player, point, earliest, *, body_root=None):
         """A player's next source touch must be reachable from their last one."""
         point = tuple(round(value, 2) for value in point)
         for k in reversed(self.keyframes):
             previous = (k.x, k.y) if k.holder == player.id else k.player_positions.get(player.id)
             if previous is not None:
                 previous = tuple(round(value, 2) for value in previous)
-                distance = math.dist(previous, point)
+                precise = body_root is not None and k.holder != player.id and player.id not in k.contact_effectors
+                distance = math.dist(previous, body_root if precise else point)
                 # Root-to-contact orientation can change at the next touch.
                 # Reserve its reach in the real source schedule, never a draw clamp.
-                duration = travel_time(distance + 2 * CONTACT_REACH) if distance > 1e-7 else 0
+                duration = travel_time(distance + (0 if precise else 2 * CONTACT_REACH)) if distance > 1e-7 else 0
                 return math.ceil(100 * max(earliest, k.t + duration + (0.002 if distance > 1e-7 else 0)) - 1e-7) / 100
         return math.ceil(100 * earliest - 1e-7) / 100
 
@@ -964,10 +971,10 @@ class _Sim:
         self.keyframes[-1].flight_height = previous.flight_height
         previous.flight_height = 0
 
-    def flight_plan(self, receiver, point, duration):
+    def flight_plan(self, receiver, point, duration, *, receiver_root=None):
         """Delay the kick for a reachable encounter; never slow an airborne ball."""
         duration = math.ceil(duration * 100 - 1e-7) / 100
-        arrival = self.contact_ready(receiver, point, self.t + duration) if receiver else round(self.t + duration, 2)
+        arrival = self.contact_ready(receiver, point, self.t + duration, body_root=receiver_root) if receiver else round(self.t + duration, 2)
         self.hold_until(round(arrival - duration, 2))
         return arrival
 
@@ -1169,8 +1176,10 @@ class _Sim:
         self.t += 0 if penalty else 0.3
         blocker = self.opp_nearest(side, ax + 2, ay) if outcome == "blocked" else None
         contact_actor = self.keeper(opp) if outcome == "saved" else blocker
-        contact_point = self.to_pitch(side, 102 if outcome == "saved" else ax + 2, ay)
-        arrival = self.flight_plan(contact_actor, contact_point, 0.6)
+        save_ax = 105-CONTACT_REACH if penalty else 102
+        contact_point = self.to_pitch(side, save_ax if outcome == "saved" else ax + 2, ay)
+        keeper_root = self.to_pitch(side, 105, ay) if penalty and outcome == "saved" else None
+        arrival = self.flight_plan(contact_actor, contact_point, 0.6, receiver_root=keeper_root)
         if before_release:
             before_release()
         self.key(side, ax, ay, shooter, effector="head" if header else "foot")
@@ -1206,8 +1215,8 @@ class _Sim:
         self.crowd_hit(0.2, 4)
         if outcome in ("saved",):
             gk = self.keeper(opp)
-            self.emit("save", opp, gk, PITCH_X - 102, PITCH_Y - ay, related=[s["id"]])
-            self.key(side, 102, ay, gk, effector="hands")
+            self.emit("save", opp, gk, PITCH_X - save_ax, PITCH_Y - ay, related=[s["id"]])
+            self.key(side, save_ax, ay, gk, effector="hands", body_root=keeper_root)
             if rng.random() < 0.4:
                 self.t += 0.25  # physical deflection after the save contact
                 self.key(side, 105.5, 34, None, in_play=False)
@@ -1215,9 +1224,9 @@ class _Sim:
                 self.corner(side, 105, rng.choice([0, 68]))
             else:
                 self.t += 0.35
-                self.key(side, 102, ay, gk, effector="hands")
+                self.key(side, save_ax, ay, gk, effector="hands")
                 self.keyframes[-1].z = 1.0
-                self.carrier = (opp, gk, 3.0, PITCH_Y - ay)
+                self.carrier = (opp, gk, PITCH_X-save_ax, PITCH_Y - ay)
             return
         if outcome == "blocked":
             blk = blocker
@@ -1481,14 +1490,40 @@ class _Sim:
         self.throw_in(side, PITCH_X - cx, PITCH_Y - edge)
         return True
 
+    def penalty_setup(self, side, taker):
+        """Retrieve/place the ball and stage a reachable Law 14 kick snapshot."""
+        self.set_restart_ball(side, 94, 34, taker)
+        opp = _other(side)
+        keeper = self.keeper(opp)
+        ball = self.to_pitch(side, 94, 34)
+        positions = {keeper.id: self.to_pitch(side, 105, 34)}
+        actors = {p.id: p for squad in self.on_pitch.values() for p in squad if p.id not in self.sent_off}
+        for pid, player in actors.items():
+            if pid in {keeper.id, taker.id}:
+                continue
+            x, y = formation_position(player.base_x, player.base_y, player.position, pid,
+                                      self.attacks_right(player.team), *ball, self.t)
+            ax, ay = (x, y) if self.attacks_right(side) else (105-x, 68-y)
+            positions[pid] = self.to_pitch(side, min(ax, 84), ay)
+        self.hold_until(max(self.contact_ready(actors[pid], xy, self.t) for pid, xy in positions.items()))
+        self.key(side, 94, 34, taker, False, effector="foot")
+        facing = -math.pi/2 if self.attacks_right(side) else math.pi/2
+        facings = ((keeper.id, facing), (taker.id, -facing))
+        self.keyframes[-1].player_positions.update(positions)
+        self.keyframes[-1].player_facings = facings
+        return positions, facings
+
     def penalty(self, side):
         taker = next((p for p in self.on_pitch[side] if p.position == "ST"), self.on_pitch[side][-1])
-        self.key(side, 94, 34, taker, in_play=False)
+        positions, facings = self.penalty_setup(side, taker)
         action = self.emit("set_piece", side, taker, 94, 34, kind="penalty")
         self.murmurs.append((self.t - 6, self.t + 1, 0.25))  # the hush before the kick
         self.t += 1.0
 
         def signal():
+            self.key(side, 94, 34, taker, False)
+            self.keyframes[-1].player_positions.update(positions)
+            self.keyframes[-1].player_facings = facings
             self.whistle(1, "short")
             action["delivered_t"] = round(action["delivered_t"] + self.t - action["t"], 2)
             action["t"] = round(self.t, 2)

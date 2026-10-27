@@ -58,6 +58,36 @@ def test_stationary_sampling_and_reverse_seek_do_not_integrate_distance_history(
     assert expected[2]["heading"] == pytest.approx(math.pi / 2)
 
 
+def test_explicit_current_body_facing_is_separate_from_travel_and_seek_pure():
+    nodes = through_velocities([PathNode(0, 100, 34, 0), PathNode(3, 105, 34, 0), PathNode(6, 105, 34, 0)],
+                               facing_targets={3: -math.pi/2, 6: -math.pi/2})
+    expected = sample(nodes, 4)
+    assert expected[2]["facing"] == pytest.approx(-math.pi/2)
+    assert expected[2]["heading"] == pytest.approx(math.pi/2)
+    previous = sample(nodes, 0)[2]["facing"]
+    for i in range(1, 601):
+        facing = sample(nodes, i/100)[2]["facing"]
+        turn = abs(math.atan2(math.sin(facing-previous), math.cos(facing-previous)))
+        assert turn <= .060001
+        previous = facing
+    sample(nodes, 0)
+    assert sample(nodes, 4) == expected
+
+
+def test_impossible_explicit_facing_deadline_is_rejected_instead_of_snapping():
+    with pytest.raises(ValueError, match="facing"):
+        through_velocities([PathNode(0, 100, 34, 0), PathNode(.1, 100, 34, 0)],
+                           facing_targets={0: math.pi/2, .1: -math.pi/2})
+
+
+def test_stationary_body_obeys_an_explicit_facing_even_without_a_travel_heading():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(3, 10, 20, 0)],
+                               facing_targets={3: -math.pi/2})
+    for t in (0, 1, 3):
+        motion = sample(nodes, t)[2]
+        assert motion["speed"] == 0 and motion["facing"] == pytest.approx(-math.pi/2)
+
+
 @pytest.mark.parametrize("right", [True, False])
 def test_defending_own_box_has_cover_screen_and_outlets_in_distinct_depth_bands(right):
     roles = (("CB", 22, 26), ("RB", 28, 10), ("DM", 36, 34), ("CM", 42, 22), ("RW", 62, 12), ("ST", 66, 34))
@@ -575,6 +605,7 @@ def test_developer_fixture_preserves_physical_paths_separately_from_delivered_fr
     from vmi.generator.tracking import Tracker
 
     match = physical_fixture()
+    match.keyframes[0].player_facings = (("H9", 0.25),)
     monkeypatch.setattr(fixtures, "generate_scenario", lambda *args: match)
     assert fixtures.export_fixture("physical", 12, tmp_path)["status"] == "PASS"
     directory = tmp_path / "physical"
@@ -586,6 +617,8 @@ def test_developer_fixture_preserves_physical_paths_separately_from_delivered_fr
         keyframes=[Keyframe(**row) for row in rows("keyframes.jsonl")],
         player_paths=paths,
     )
+    assert restored.keyframes[0].player_facings == (("H9", 0.25),)
+    assert isinstance(restored.keyframes[0].player_facings, tuple)
     for t in (0, 1.5, 4.1, 6):
         assert Tracker(restored).frame(t) == Tracker(match).frame(t)
     delivered = rows("tracking-20hz.jsonl")
