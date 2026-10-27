@@ -1201,12 +1201,37 @@ class _Sim:
             self.state(ball_in_play=False)
         return cancelled
 
-    def emit_offence(self, side, fouler, ax, ay, victim, kind, advantage):
-        if not advantage and self.detail_rng.random() < 0.06:
-            return self.emit("handball", side, fouler, ax, ay,
+    def emit_offence(self, side, fouler, ax, ay, victim, kind, advantage, *, handball=None, incident_t=None):
+        if handball is None:
+            handball=not advantage and self.detail_rng.random()<.06
+        if handball:
+            return self.emit("handball", side, fouler, ax, ay, t=incident_t,
                              offence=True, victim_id=victim.id)
         return self.emit("foul", side, fouler, ax, ay,
                          victim_id=victim.id, kind=kind, advantage=advantage)
+
+    def handball_encounter(self, side, victim, fouler, ax, ay):
+        """An actual chip meets a hand, then deflects free before the whistle."""
+        hx=min(ax+1.5,104)
+        point=self.to_pitch(side,hx,ay)
+        arrival=self.flight_plan(fouler,point,.45)
+        self.key(side,ax,ay,victim,effector="foot")
+        departure=self.t
+        self.keyframes[-1].flight_height=.2
+        self.t=arrival
+        self.key(side,hx,ay,None)
+        touch=self.keyframes[-1]
+        touch.z=1.1
+        touch.player_positions[fouler.id]=point
+        touch.contact_effectors[fouler.id]="hands"
+        self.report("pass",t=departure,team=side,player_id=victim.id,
+                    location=list(self.to_pitch(side,ax,ay)),possession_id=self.play.possession_id,
+                    play_context=self.play.play_context,
+                    **{"pass":{"outcome":"incomplete","height":"high","end_location":list(point)}})
+        incident=self.t
+        self.t+=.3
+        self.key(side,hx-.5,ay,None)  # a real downward/free-ball deflection
+        return hx,ay,incident
 
     # ---------- fouls ----------
     def foul(self, side, victim, ax, ay) -> bool:
@@ -1214,34 +1239,48 @@ class _Sim:
         rng = self.rng
         opp = _other(side)
         fouler = self.opp_nearest(side, ax, ay)
-        self.t = self.contact_ready(fouler, self.to_pitch(side, ax, ay), self.t)
-        self.key(side, ax, ay, victim)
-        self.keyframes[-1].player_positions[fouler.id] = self.to_pitch(side, ax, ay)
-        self.keyframes[-1].contact_effectors[fouler.id] = "foot"
         in_box = ax >= BOX_X and BOX_Y[0] <= ay <= BOX_Y[1]
         kind = rng.choice(["trip", "trip", "push", "holding", "kick"])
+        called=in_box and rng.random()<.6
+        advantage=not in_box and ax>60 and rng.random()<.22
+        handball=(not in_box or called) and not advantage and self.detail_rng.random()<.06
+        incident=None
+        if handball:
+            ax,ay,incident=self.handball_encounter(side,victim,fouler,ax,ay)
+            # The chip can cross the box boundary: award at the actual hand
+            # contact, not at the carrier's earlier ground-ball location.
+            in_box=ax>=BOX_X and BOX_Y[0]<=ay<=BOX_Y[1]
+            called=in_box
+        else:
+            self.t = self.contact_ready(fouler, self.to_pitch(side, ax, ay), self.t)
+            self.key(side, ax, ay, victim)
+            self.keyframes[-1].player_positions[fouler.id] = self.to_pitch(side, ax, ay)
+            self.keyframes[-1].contact_effectors[fouler.id] = "foot"
         if in_box:
             # the referee sees it about 60% of the time; VAR catches some of the rest
-            if rng.random() < 0.6:
+            if called:
                 self.whistle(1, "long")
                 self.crowd_hit(0.42, 12, dt=0.4)
-                f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, False)
+                f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, False,
+                                      handball=handball,incident_t=incident)
                 self.decide(f, "penalty", side)
                 self.card_maybe(opp, fouler, base=0.35, offence=f)
                 self.stoppage(rng.uniform(55, 80))
                 self.penalty(side)
                 return True
             return self.missed_box_foul(side, victim, fouler, ax, ay, kind)
-        advantage = ax > 60 and rng.random() < 0.22
-        f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, advantage)
+        f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, advantage,
+                              handball=handball,incident_t=incident)
         if advantage:
             self.card_maybe(opp, fouler, base=0.12, offence=f)
             return False
-        self.t += 0.3
+        self.t += 0 if handball else .3
         self.whistle(1, "normal" if rng.random() < 0.8 else "long")
         self.decide(f, "free_kick", side)
         self.state(ball_in_play=False)
-        self.key(side, ax, ay, None, in_play=False)
+        stopped=self.keyframes[-1]
+        self.keyframes.append(replace(stopped,t=round(self.t,2),holder=None,in_play=False,
+                                      player_positions=dict(stopped.player_positions),contact_effectors={}))
         self.card_maybe(opp, fouler, base=0.12, offence=f)
         if rng.random() < 0.05:
             self.emit("injury_stoppage", side, victim, related=[f["id"]])

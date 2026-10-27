@@ -132,6 +132,77 @@ def test_gait_cycles_integrate_variable_cadence_and_facing_has_a_separate_turn_b
     )
 
 
+def test_certified_strong_turn_distance_and_gait_never_run_backward():
+    from vmi.generator.physics import arc_metrics, _metric_curve, _metric_key
+
+    a = PathNode(0, 50, 34, 0, -0.5502310440248639, 1.6246998777916524)
+    b = PathNode(5.9167718405420375, 48.86507710453219, 36.7320476955137, 0, 2.3911157157975858, -1.395977939455939)
+    assert certified(a, b)
+    samples = [arc_metrics(a, b, i / 200) for i in range(201)]
+    for previous, current in zip(samples, samples[1:]):
+        assert current[0] >= previous[0] - 1e-12
+        assert current[1] >= previous[1] - 1e-12
+    expected = arc_metrics(a, b, 0.69)
+    arc_metrics(a, b, 0.9)
+    arc_metrics(a, b, 0.1)
+    assert arc_metrics(a, b, 0.69) == expected
+    for cell in _metric_curve(_metric_key(a, b)):
+        boundary = cell[0]
+        left = arc_metrics(a, b, max(0, boundary - 1e-10))
+        right = arc_metrics(a, b, min(1, boundary + 1e-10))
+        for before, after in zip(left, right):
+            assert after >= before - 1e-12
+            assert after - before < 1e-6
+
+
+@pytest.mark.parametrize("end_velocity", [(2.3911157157975858, -1.395977939455939), (-1.5, 2.0), None])
+def test_source_integral_matches_dense_independent_position_measurement(end_velocity):
+    from vmi.generator.physics import arc_metrics
+
+    if end_velocity is None:
+        # Cross the speed-dependent stride cap at 7.2m/s in a real fast run.
+        a, b = PathNode(0, 20, 34, 0), PathNode(4, 40, 34, 0)
+    else:
+        a = PathNode(0, 50, 34, 0, -0.5502310440248639, 1.6246998777916524)
+        b = PathNode(5.9167718405420375, 48.86507710453219, 36.7320476955137, 0, *end_velocity)
+    assert certified(a, b)
+    previous = sample([a, b], 0, distance=False)[:2]
+    distance = cycles = 0.0
+    dt = b.t / 40000
+    for i in range(1, 40001):
+        current = sample([a, b], i * dt, distance=False)[:2]
+        travelled = math.dist(previous, current)
+        speed = travelled / dt
+        distance += travelled
+        cycles += travelled / min(4.4, max(0.8, 0.8 + 0.5 * speed))
+        if i in (10000, 20000, 27600, 30000, 40000):
+            actual = arc_metrics(a, b, i / 40000)
+            assert actual[0] == pytest.approx(distance, abs=3e-5)
+            assert actual[1] == pytest.approx(cycles, abs=3e-5)
+        previous = current
+
+
+def test_metric_cache_is_bounded_and_eviction_cannot_change_seek_phase():
+    from vmi.generator.physics import arc_metrics, _metric_curve, _metric_total
+
+    a = PathNode(0, 10, 20, 0)
+    b = PathNode(3, 12, 20, 0)
+    expected = arc_metrics(a, b, 0.537)
+    for i in range(300):
+        end = PathNode(3, 12 + (i + 1) * 0.001, 20, 0)
+        arc_metrics(a, end, 0.3)
+    assert _metric_curve.cache_info().currsize <= 256
+    assert _metric_total.cache_info().currsize <= 256
+    assert all(len(_metric_curve(key)) <= 256 for key in ((3.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0),))
+    assert arc_metrics(a, b, 0.537) == expected
+    nodes = through_velocities([a, b, PathNode(6, 14, 20, 0)])
+    at = sample(nodes, 3)[2]
+    for t in (3 - 1e-8, 3 + 1e-8):
+        near = sample(nodes, t)[2]
+        assert near["distance"] == pytest.approx(at["distance"], abs=1e-6)
+        assert near["gait_cycles"] == pytest.approx(at["gait_cycles"], abs=1e-6)
+
+
 def physical_fixture(ball_x=20, ball_y=30, holder="H9"):
     from vmi.generator.match import Match
     from vmi.generator.motion import Keyframe
@@ -480,6 +551,86 @@ def test_ordinary_foul_has_reachable_two_player_encounter_before_whistle():
     assert actors[fouler.id]["contact"]["kind"] == "challenge"
     assert frame["possession"]["holder_id"] == victim.id
     assert next(e for e in sim.events if e["type"] == "whistle")["t"] > event["t"]
+
+
+@pytest.mark.parametrize("side", ["home", "away"])
+def test_handball_is_an_actual_high_hand_contact_after_a_chip_and_before_stopping(side):
+    import random
+    from vmi.generator.match import _Sim
+    from vmi.generator.tracking import Tracker
+
+    class Half(random.Random):
+        def random(self):
+            return 0.5
+
+    sim = _Sim(12, "actual-handball")
+    victim = next(p for p in sim.on_pitch[side] if p.position == "ST")
+    fouler = sim.opp_nearest(side, 60, 34)
+    sim.ball_in_play = True
+    sim.key(side, 60, 34, victim)
+    sim.keyframes[-1].player_positions[fouler.id] = (10, 10)
+    sim.t = 1
+    sim.key(side, 60, 34, victim)
+    sim.rng = Half(1)
+    sim.detail_rng.random = lambda: 0
+    sim.card_maybe = lambda *a, **kw: None
+    sim.stoppage = lambda *a: None
+    sim.restart_free_kick = lambda *a: None
+    sim.foul(side, victim, 60, 34)
+    handball = next(e for e in sim.events if e["type"] == "handball")
+    attempted = next(e for e in sim.events if e["type"] == "pass")
+    whistle = next(e for e in sim.events if e["type"] == "whistle")
+    assert handball["t"] - attempted["t"] == pytest.approx(0.45)
+    assert attempted["pass"]["outcome"] == "incomplete"
+    assert attempted["delivered_t"] >= handball["t"]
+    tracker = Tracker(sim.export_match())
+    before = tracker.frame(attempted["t"] - 0.05)
+    assert before["ball_height"] == 0 and before["possession"]["holder_id"] == victim.id
+    release = tracker.frame(attempted["t"])
+    assert next(p for p in release["players"] if p["id"] == victim.id)["contact"]["kind"] == "release"
+    mid = tracker.frame(attempted["t"] + 0.225)
+    assert 0.5 < mid["ball_height"] < 1.1
+    impact = tracker.frame(handball["t"])
+    actor = next(p for p in impact["players"] if p["id"] == fouler.id)
+    assert impact["ball_height"] == pytest.approx(1.1)
+    assert impact["possession"].get("holder_id") is None
+    assert actor["contact"]["kind"] == "challenge" and actor["contact"]["effector"] == "hands"
+    assert actor["contact"]["target"] == pytest.approx([*impact["ball"], 1.1])
+    assert math.dist((actor["x"], actor["y"]), impact["ball"]) == pytest.approx(0.55, abs=0.015)
+    after = tracker.frame(handball["t"] + 0.15)
+    assert 0 < after["ball_height"] < 1.1 and after["ball"] != impact["ball"]
+    assert whistle["t"] > handball["t"] and tracker.frame(whistle["t"])["ball_height"] == 0
+
+
+@pytest.mark.parametrize("side", ["home", "away"])
+def test_handball_award_uses_actual_contact_when_chip_crosses_into_the_box(side):
+    import random
+    from vmi.generator.match import _Sim, BOX_X
+
+    class Half(random.Random):
+        def random(self):
+            return 0.5
+
+    sim = _Sim(12, "handball-box-boundary")
+    victim = next(p for p in sim.on_pitch[side] if p.position == "ST")
+    sim.ball_in_play = True
+    sim.key(side, BOX_X - 1, 34, victim)
+    sim.rng = Half(1)
+    sim.detail_rng.random = lambda: 0
+    sim.card_maybe = lambda *a, **kw: None
+    sim.stoppage = lambda *a: None
+    taken = []
+    sim.penalty = lambda side: taken.append(side)
+    sim.foul(side, victim, BOX_X - 1, 34)
+    event = next(e for e in sim.events if e["type"] == "handball")
+    decision = next(e for e in sim.events if e["type"] == "referee_decision")
+    from vmi.generator.tracking import Tracker
+
+    impact = Tracker(sim.export_match()).frame(event["t"])
+    local = impact["ball"][0] if side == "home" else 105 - impact["ball"][0]
+    assert local == pytest.approx(BOX_X + 0.5)
+    assert decision["trigger_event_id"] == event["id"] and decision["decision"] == "penalty"
+    assert taken == [side]
 
 
 def test_source_wait_copies_effector_snapshots_before_a_later_release_changes_them():

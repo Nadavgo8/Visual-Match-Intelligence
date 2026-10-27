@@ -2,6 +2,7 @@
 
 from bisect import bisect_right
 from dataclasses import dataclass, replace
+from functools import lru_cache
 import math
 
 from .motion import PLAYER_SPEED, _in_disk, _reachable_target, support_position
@@ -118,14 +119,147 @@ _GAUSS = (
 )
 
 
-def arc_metrics(a, b, u=1):
+def _quadrature(coefficients, lo, hi):
+    aa, bb, cc, dd, ee, ff, inverse_dt, rest = coefficients
     distance, cycles = 0.0, 0.0
     for x, weight in _GAUSS:
-        speed = math.hypot(*velocity(a, b, u * (x + 1) / 2))
-        distance += weight * speed
-        cycles += weight * speed / min(4.4, max(0.8, 0.8 + 0.5 * speed))
-    scale = u * (b.t - a.t) / 2
+        u = lo + (hi - lo) * (x + 1) / 2
+        rate = (
+            6 * u * (1 - u) * rest if rest is not None else math.hypot((aa * u + bb) * u + cc, (dd * u + ee) * u + ff)
+        )
+        distance += weight * rate
+        cycles += weight * rate / min(4.4, 0.8 + 0.5 * rate * inverse_dt)
+    scale = (hi - lo) / 2
     return scale * distance, scale * cycles
+
+
+def _metric_key(a, b):
+    # Translation cannot change distance/cadence; identical local curves share
+    # a cache entry even when they belong to different actors or pitch areas.
+    return b.t - a.t, b.x - a.x, b.y - a.y, a.vx, a.vy, b.vx, b.vy
+
+
+def _metric_coefficients(key):
+    dt, dx, dy, avx, avy, bvx, bvy = key
+    return (
+        -6 * dx + 3 * dt * (avx + bvx),
+        6 * dx - dt * (4 * avx + 2 * bvx),
+        dt * avx,
+        -6 * dy + 3 * dt * (avy + bvy),
+        6 * dy - dt * (4 * avy + 2 * bvy),
+        dt * avy,
+        1 / dt,
+        math.hypot(dx, dy) if avx == avy == bvx == bvy == 0 else None,
+    )
+
+
+@lru_cache(maxsize=256)
+def _metric_total(key):
+    """Accurate canonical endpoint; source planning need not build partial tables."""
+    coefficients = _metric_coefficients(key)
+    rest = coefficients[-1]
+    if rest == 0:
+        return 0.0, 0.0
+
+    def integrate(lo, hi, whole, depth):
+        mid = (lo + hi) / 2
+        left, right = _quadrature(coefficients, lo, mid), _quadrature(coefficients, mid, hi)
+        fine = tuple(x + y for x, y in zip(left, right))
+        if depth == 8 or all(
+            abs(fine[i] - whole[i]) <= tolerance * (hi - lo) for i, tolerance in enumerate((1e-6, 1e-7))
+        ):
+            return fine
+        first, last = integrate(lo, mid, left, depth + 1), integrate(mid, hi, right, depth + 1)
+        return tuple(x + y for x, y in zip(first, last))
+
+    cuts = [0.0, 1.0]
+    if rest is not None and 1.5 * rest / key[0] > 7.2:
+        root = math.sqrt(1 - 4 * 7.2 * key[0] / (6 * rest))
+        cuts = [0.0, (1 - root) / 2, (1 + root) / 2, 1.0]
+    parts = [integrate(lo, hi, _quadrature(coefficients, lo, hi), 0) for lo, hi in zip(cuts, cuts[1:])]
+    return (rest if rest is not None else sum(p[0] for p in parts), sum(p[1] for p in parts))
+
+
+def _positive_integral(fraction, width, total, left, right):
+    # With endpoint slopes in [0,3*mean], every corner of this Hermite
+    # derivative's affine slope domain is nonnegative: no backwards phase.
+    ceiling = 3 * total / width
+    left, right = min(ceiling, max(0, left)), min(ceiling, max(0, right))
+    u = fraction
+    value = total * progress(u) + width * (left * u * (1 - u) ** 2 - right * u * u * (1 - u))
+    return min(total, max(0, value))
+
+
+@lru_cache(maxsize=256)
+def _metric_curve(key):
+    """At most 256 positive cells; bounded cache, independent of viewer history."""
+    coefficients = _metric_coefficients(key)
+    cells = []
+    rates = {}
+
+    def rate(u):
+        cached = rates.get(u)
+        if cached is not None:
+            return cached
+        aa, bb, cc, dd, ee, ff, inverse_dt, rest = coefficients
+        value = (
+            6 * u * (1 - u) * rest if rest is not None else math.hypot((aa * u + bb) * u + cc, (dd * u + ee) * u + ff)
+        )
+        result = value, value / min(4.4, 0.8 + 0.5 * value * inverse_dt)
+        rates[u] = result
+        return result
+
+    def divide(lo, hi, whole, depth):
+        width = hi - lo
+        # Positive Simpson cells reuse dyadic samples across subdivision. This
+        # avoids dozens of fresh Gauss evaluations on every cold render segment.
+        values = [rate(lo + width * j / 8) for j in range(9)]
+        quarters = [
+            tuple(width / 24 * (values[2 * j][i] + 4 * values[2 * j + 1][i] + values[2 * j + 2][i]) for i in (0, 1))
+            for j in range(4)
+        ]
+        total = tuple(sum(q[i] for q in quarters) for i in (0, 1))
+        left, right = rate(lo), rate(hi)
+        accurate = all(abs(total[i] - whole[i]) <= tol * width for i, tol in enumerate((1e-6, 1e-7)))
+        for j in (1, 2, 3):
+            for i, tol in enumerate((1e-5, 1e-5)):
+                expected = sum(q[i] for q in quarters[:j])
+                if abs(_positive_integral(j / 4, width, total[i], left[i], right[i]) - expected) > tol:
+                    accurate = False
+        if accurate or depth == 8:
+            cells.append((lo, hi, total, left, right))
+        else:
+            mid = (lo + hi) / 2
+            divide(lo, mid, tuple(quarters[0][i] + quarters[1][i] for i in (0, 1)), depth + 1)
+            divide(mid, hi, tuple(quarters[2][i] + quarters[3][i] for i in (0, 1)), depth + 1)
+
+    divide(0.0, 1.0, _metric_total(key), 0)
+    # Partial and full requests use exactly the same cached canonical endpoint.
+    approximate = tuple(sum(cell[2][i] for cell in cells) for i in (0, 1))
+    canonical = _metric_total(key)
+    factors = tuple(canonical[i] / approximate[i] if approximate[i] else 0 for i in (0, 1))
+    cumulative = [0.0, 0.0]
+    table = []
+    for lo, hi, total, left, right in cells:
+        total = tuple(total[i] * factors[i] for i in (0, 1))
+        left, right = (tuple(value[i] * factors[i] for i in (0, 1)) for value in (left, right))
+        table.append((hi, lo, tuple(cumulative), total, left, right))
+        cumulative = [cumulative[i] + total[i] for i in (0, 1)]
+    return tuple(table)
+
+
+def arc_metrics(a, b, u=1):
+    if b.t <= a.t or u <= 0:
+        return 0.0, 0.0
+    key = _metric_key(a, b)
+    if u >= 1:
+        return _metric_total(key)
+    table = _metric_curve(key)
+    cell = table[min(bisect_right(table, u, key=lambda cell: cell[0]), len(table) - 1)]
+    hi, lo, prefix, total, left, right = cell
+    return tuple(
+        prefix[i] + _positive_integral((u - lo) / (hi - lo), hi - lo, total[i], left[i], right[i]) for i in (0, 1)
+    )
 
 
 def arc_length(a, b, u=1):
