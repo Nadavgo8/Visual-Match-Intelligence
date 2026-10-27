@@ -90,16 +90,18 @@ def _telemetry():
 @asynccontextmanager
 async def lifespan(_app):
     _telemetry()
-    warm = None
+    warm = []
     # Pre-writing the demo match's analyses only pays off when the demo will be played.
     if os.getenv("VMI_WARM_DEMO", "1" if demo_mode() else "0") == "1":
-        warm = asyncio.create_task(warm_demo())
+        warm.append(asyncio.create_task(warm_demo()))
+    if _client is not None and os.getenv("VMI_WARM_FOUNDRY", "1") == "1":
+        warm.append(asyncio.create_task(warm_foundry()))
     try:
         yield
     finally:
-        if warm:
-            warm.cancel()
-            await asyncio.gather(warm, return_exceptions=True)
+        for task in warm:
+            task.cancel()
+        await asyncio.gather(*warm, return_exceptions=True)
 
 
 app = FastAPI(title="Visual Match Intelligence", version="0.1.0", lifespan=lifespan)
@@ -518,6 +520,29 @@ async def warm_demo(seed: int = DEMO_SEED):
                 if key not in _text_cache:
                     _text_cache[key] = await room.explainer.write(a["factpack"], depth, team)
     log.info("warmed %d analysis texts for seed %d", len(_text_cache), seed)
+
+
+# One question per answer path: the routed agents and the meaning analyst.
+WARM_QUESTIONS = ("What's the score?", "Who is in control?")
+
+
+async def warm_foundry(seed: int = DEMO_SEED) -> list[str]:
+    """Ask the model once per answer path at startup, before any viewer does.
+
+    The first calls of a fresh process fetch the identity token and open the
+    connections and agents; that can exceed the answer time limit, so a viewer's
+    first question would fall back to written-by-code text. Results are discarded.
+    """
+    if _client is None:
+        return []
+    match = await prepare_match(seed)
+    room = Room("_warm_ai", seed, match=match)
+    sources = []
+    for question in WARM_QUESTIONS:
+        res = await room.assistant.answer(question)
+        sources.append(res.get("source", "?"))
+    log.info("warmed Foundry answer paths: %s", ", ".join(sources))
+    return sources
 
 
 @app.get("/")
