@@ -2,6 +2,10 @@
 
 Status: implementation and targeted validation in progress. This is not full
 football, anatomy or visual acceptance. The annotated 2.2 benchmark is unchanged.
+The latest user decision restores the original exact 2-1 demo story; the
+intermediate random 1-1 world below is superseded as a narrative. Its physical
+audit remains evidence, but the demo-story gate is blocked pending an explicit
+scenario built from the existing physical generator. No scenario is implemented.
 
 ## Concrete changes
 
@@ -100,7 +104,8 @@ setup cuts for isolated event/latency tests.
 | Final third/shot/miss/goal/block | Shooter controls at release | Shooter, keeper or actual blocker | Fixed shot flight, then real deflection/rebound | Attacking depth and recovery cover | Save/recovery/out/goal stoppage | shot, separate result, delayed xG, block | Ball changes before action; future result in motion | Distant keeper .60s shot; block/contact/rebound pair |
 | Keeper catch/parry/rebound | Incoming shot | Keeper plus rebound contender | Hands at source contact; catch lift or later deflection (E) | Recovery/clearance outlet | Keeper control or actual rebound winner | save/recovery | Save event at different source point; every hand receipt labelled save | Save contact and parry sampling |
 | Corner/free kick/throw/goal kick | Stopped ball; awarded restart | Retriever/taker, receiver, opponents | Pickup/carry/placement/stationary setup/release/flight (E) | Options/cover; legal setup separately tested (L) | New possession only on execution | stop/award/taken/set_piece/pass | Award means execution; unmanned dead-ball transfer | Whole retrieval interval; both-direction throw height |
-| Penalty/offside/advantage | Relevant private kick/incident snapshot | Kicker/receiver/defenders/referee decision | Reuse encounter/release planner | Rule-constrained setup needed (L) | Actual live/stopped state | offence/decision/whistle/card | RNG offside without geometry; illegal penalty line; card interrupts advantage | Known follow-on gaps below, not PASS |
+| Offside/advantage | Frozen actual kick/incident snapshot | Receiver, active opponents, offender | Reachable kick/real involvement; live advantage until next stop | Source roots at actual kick (L) | Stop at actual involvement/whistle | offence/decision/whistle/card | RNG verdict without geometry; card advances live time | Both directions/periods; 11 actual Seed2 calls; deferred yellow |
+| Penalty setup | Awarded penalty; stopped ball | Kicker, keeper, other active players | Reuse encounter/release planner | Legal line/distance constraints (L) still unverified | Actual shot then result | decision/penalty/shot/result | Keeper ahead of line; defenders too near mark | Independently reproduced remaining gap, not PASS |
 | Cards/red/sub/drinks | Actual disciplinary or stoppage state | Active roster; outgoing/incoming | Stop/control preserved; no fake play | Vacated role inherited only after entry | Stopped until actual restart | card/sub/drinks/restart | Sent-off/bench actor active; changed initial roster; moving stopped ball | Roster-before/after and snapshot alias regressions |
 | Kick-off/half-time/ends | Period boundary and stopped ball | Actual active roster/taker | Reachable setup; physical halftime walk, no sampled reset teleport (E) | Direction changes by period | Execution starts next possession | period/kick-off/whistle | Source time confused with clock; instantaneous side switch | Continuous source knot/direction tests |
 
@@ -111,15 +116,12 @@ our physical implementation choice, not a rule requiring the taker to fetch it.
 [Law 13](https://www.theifab.com/laws/latest/free-kicks/) distinguish restart
 procedures; a generic decision must not stand in for the actual kick.
 
-Known law-family follow-on (independently reproduced, outside this shared-path
-checkpoint): [Law 11](https://www.theifab.com/laws/latest/offside/) needs a frozen
-kick snapshot plus actual involvement; current random branch can report a player
-behind the ball. [Law 14](https://www.theifab.com/laws/latest/the-penalty-kick/)
-needs reachable legal keeper/other-player setup; current ordinary penalty can put
-the keeper ahead of the line and defenders close to the mark.
-[Law 12](https://www.theifab.com/laws/latest/fouls-and-misconduct/) requires a
-sanction following advantage at the next stoppage; the current immediate card
-path remains a reproduced follow-on. These are not waived by trajectory tests.
+The subsequently authorized bounded Law 11/12 corrections are documented in the
+final timeline section: actual kick/involvement and delayed advantage sanctions
+are now tested. Remaining [Law 14](https://www.theifab.com/laws/latest/the-penalty-kick/)
+setup still needs reachable legal keeper/other-player positions; the reproduced
+ordinary penalty can put the keeper ahead of the line and defenders close to the
+mark. That case is not selected as an accepted demo and is not waived by paths.
 
 ## Review and evidence checkpoint
 
@@ -360,12 +362,13 @@ presented FPS:
 
 The maximum fell from 738.50ms and p99 is below the nominal 50ms source interval.
 A 66ms individual call is not by itself a failure of the 500ms freshness or
-presented-FPS acceptance gate. Generation remains materially above the earlier
-approximately eight-second receipt, which was measured hours earlier; a matched
-old-algorithm control has not yet separated CPU conditions from algorithm cost.
+presented-FPS acceptance gate. These historical generation measurements used
+different CPU conditions. A later matched control on the same event geometry
+measured the older f5 algorithm at 18.36s and current source at 16.81s, with
+identical events, crowd and root nodes; it refuted the inferred fourfold regression.
 Finalized summaries added approximately 24.67MB of source objects. Generation
-runtime remains an open CI/P2 risk; the unchanged complete CI gate must decide
-actual current-head runtime. The memory cost and isolated maximum are reported
+runtime is decided by the unchanged complete CI gate, not the unmatched earlier
+times. The memory cost and isolated maximum are reported
 measurements, not newly invented blocking thresholds. The actual action
 actor/ball audit found no geometry failures, and the frozen 2.2 benchmark hash
 remained unchanged. Receipt: out/physical-motion-profile-summary-final-seed12.json.
@@ -374,35 +377,84 @@ No complete current-head Python/coverage gate, B4 or merge readiness is claimed.
 
 ## Corrected seed-2 demo timeline
 
-The user authorized the faster reconciliation on Oct 27: keep seed 2 and update
-its locked narrative to corrected source 2.5.0. This supersedes the pending story
-decision described in the historical checkpoint above; it does not relax physics
-or causality assertions. Harbour City win 2-0. The feed contains three original
-goal results: Dumont's two count, while Marsh's later goal is explicitly cancelled.
-`test_demo_match.py` locks all three original results, the VAR decision, linked
-cancellation and final score; cancellation is never silently deleted from history.
+**Current requirement:** the latest Oct 27 decision overrides the faster narrative
+reconciliation. Preserve the exact original story with a physical explicit demo:
+
+| Required moment | Match clock | Required outcome |
+| --- | --- | --- |
+| VAR penalty decision | 37:16 | no_penalty overturned |
+| Dumont penalty goal | 37:58 | home goal |
+| Ferreira goal | 43:34 | home goal |
+| Marsh goal | 65:08 | away goal |
+| VAR goal decision | 66:38 | goal stands |
+
+Required final score is 2-1. These constants are restored in the story test.
+The current random physical world does not meet them; this is an explicit failing
+gate, not permission to alter the agreed story or weaken the physics certificate.
+The original story has no cancelled goal, so it does not require a fabricated
+offside cancellation. A separate valid offside sequence can be included.
+
+**Intermediate audit, superseded as the demo narrative:** the offside/card
+corrections yielded Harbour City 1-1 Northvale Rovers. They superseded the earlier
+unmerged 2-0 checkpoint, whose Marsh cancellation had no actual kick geometry.
+`test_demo_match.py` still locks every raw goal result and VAR decision and
+reconciles counted goals with the score. Cancellation link assertions remain;
+focused source/consumer tests exercise real cancellations in other situations.
 
 | Moment | Match clock | Source t | Delivered t | Source receipt |
 | --- | --- | --- | --- | --- |
-| Dumont header from a corner, first goal | 9:16 | 556.91 | 557.66 | aux_00175, shot evt_0139 |
-| Dumont header from a corner, second goal | 28:07 | 1687.64 | 1688.39 | aux_00480, shot evt_0385 |
-| Marsh goal initially reported | 70:15 | 4477.29 | 4478.04 | aux_01222, shot evt_0992 |
-| Goal review begins | 71:18 | 4539.72 | 4541.58 | evt_0993, var_0992 |
-| Goal cancelled; free kick to home | 71:57 | 4579.40 | 4580.15 | aux_01227, decision aux_01225 |
-| VAR outcome reported: overturned | 71:57 | 4579.40 | 4581.69 | evt_0994, var_0992 |
+| Dumont header, home goal | 58:18 | 3744.48 | 3745.23 | aux_01094, shot evt_0854 |
+| Goal review begins | 59:05 | 3791.68 | 3794.38 | evt_0855, var_0854 |
+| VAR outcome: goal stands | 59:39 | 3825.73 | 3828.53 | evt_0856, var_0854 |
+| Silva header, away equaliser | 84:56 | 5343.04 | 5343.79 | aux_01493, shot evt_1174 |
 
-For a short presenter sequence, show the two home goal receipts, seek before the
-away goal, then show its initial report followed by the delivered correction and
-the final 2-0 score. Keep the review outcome unknown until a corresponding feed
-packet arrives. Source time and match clock are different after period handling;
-use the source-t column for seeks rather than treating 70:15 as 4215 source seconds.
-The earlier penalty-overturn narrative is no longer this seed's script.
+Keep the review outcome unknown until its corresponding packet arrives. Source
+time and match clock differ after period handling; seek with source t. The old
+penalty-overturn and Marsh-cancellation stories are not this source's script.
 
 Reproduce the locked full narrative offline:
 `VMI_OFFLINE=1 VMI_WARM_DEMO=0 python -m pytest tests/test_demo_match.py -q`.
-Raw checkpoint receipt: out/source25-final-demo-story.json (ignored developer
-artifact). This narrative update is user-authorized; it is not a fabricated
-physical-law, complete-CI or visual acceptance result.
+That intermediate world and complete replay are retained in ignored `out/seed2-final-world.pkl`;
+`out/seed2-final-source-receipt.json` records the source-file hash, exact story,
+all 11 offside audits, clip events, delivered receipts and current-world samples.
+The exact unchanged Seed2 chat-analysis assertion also passed on that replay.
+The subsequently restored original 2-1 story assertion is not satisfied by it.
+The previous no-goal extractor attempt was incomplete, not acceptance; its world
+was retained before the unnecessary incident-RNG reordering was corrected.
+
+| Short view window (source t) | Actual sequence | Source crowd C range |
+| --- | --- | --- |
+| 3728.88-3755.23 | Real head release 3743.88 at 1.65m, goal 3744.48, stopped ball; later kick-off 3869.40 | 0.383-0.973 |
+| 43.18-72.97 | Kick 58.18: receiver attack-x 95.66, ball 80.86, second-last opponent 93.21; touch 60.58, call 61.17 | 0.320-0.503 |
+| 4426.29-4470.97 | Foul 4441.29 with advantage, next stop 4454.36, linked yellow 4459.08; later restart 4487.14 | 0.345-0.620 |
+| 1339.00-1364.00 | Away momentum call 1354 using the existing 420s window and full prior replay | 0.287-0.460 |
+
+The caution window deliberately includes the interval until the next stoppage;
+it is not an immediate-whistle foul. Actor roots were 1.093m apart at contact.
+The momentum crossing includes an older home shot leaving the rolling window;
+it is not attributed to a new crowd reaction. C is measured source crowd data,
+not a boosted effect. These are view windows over one existing world/replay,
+not cropped engine inputs, new routes, presented-FPS evidence or visual approval.
+
+### Offside and discipline causality
+
+The retained pre-fix Seed2 world had ten ordinary calls and a VAR cancellation
+with no eligible kick position. Ordinary called passes now stage reachable
+receiver/opponent roots before release, preserve the flight duration and record
+the actual receiver touch before the whistle. Rare missed calls reuse the same
+private kick snapshot; VAR can cancel only for its actual preparing-pass recipient
+and later involvement. Direct corner/throw/goal-kick exceptions remain; a free
+kick is not generally exempt. This follows [IFAB Law 11](https://www.theifab.com/laws/latest/offside/).
+All 11 final Seed2 calls passed exported-world kick geometry and touch checks.
+
+An advantage caution no longer advances live time or changes the roster. Its
+decision and delay are selected once and shown at the next actual stop, before
+substitution. Duplicate processing cannot redraw or show it twice. Generic
+advantage is recalled for a red/second-yellow decision; no clear-scoring-chance
+exception is invented. This follows [IFAB Law 12](https://www.theifab.com/laws/latest/fouls-and-misconduct/).
+The source still does not declare pre-contact windup/preparation animation;
+the 0.32s contact interval starts at the actual touch and is follow-through.
+Legal penalty setup and complete biomechanics remain outside this bounded fix.
 
 
 ## Cold-seed integration gap
@@ -410,17 +462,18 @@ physical-law, complete-CI or visual acceptance result.
 `vmi/api/server.py:get_match` calls `generate_match` synchronously. That path is
 reached by `Room.reset` / async `Room.new_match` from the WebSocket handler.
 An uncached seed can therefore block the shared event loop for the generation
-duration; cached seeds avoid this work. The current approximately 34-second
-measurement makes this a concrete cold-seed responsiveness/freshness gap, not
-only a possible CI issue. The synchronous base path already existed. This source
-checkpoint does not change server/D2 ownership or claim full 500ms integration
-acceptance; source runtime and/or bounded worker integration still require a
-separate measured fix before that gate can pass.
+duration; cached seeds avoid this work. The final short-clip audit generated
+seed 2 in 3.03s under its current CPU conditions; this is source construction,
+not a measured live request/FPS gate. The synchronous cold path remains a
+responsiveness gap. The synchronous base path already existed. This source
+checkpoint does not change server/D2 scheduling or claim full 500ms integration
+acceptance.
 
 
-Focused checkpoint gates: physics/demo/fixture-export/action suites passed
-115 tests in 303.64s under isolated coverage. The approved seed-2 story is now
-GREEN with linked cancellation and score reconciliation. The scoped coverage
+Historical f9 checkpoint gates: physics/demo/fixture-export/action suites passed
+115 tests in 303.64s under isolated coverage. That earlier 2-0 story was GREEN
+with linked cancellation and score reconciliation; it is superseded by the final
+1-1 source narrative above. The scoped coverage
 report before the final zero-span guard showed physics 515 statements / six
 missed / 188 branches / seven partial (98% combined), and tracking 226 statements /
 32 missed / 116 branches / 16 partial (83% combined). This partial selection is
@@ -443,3 +496,13 @@ node times, so its profile/story data is unchanged. The exact committed head
 still requires the unchanged full CI suite. All 51 Node tests passed in 2.05s;
 Ruff format/check and `git diff --check` passed. No new local full-suite or
 100-seed run was started, and no gate, timeout or assertion was reduced.
+
+Subsequent exact-head CI `40457888427` on f9e10ab completed 584 passes and one
+causal goal-correction failure in 1656.87s, within the unchanged timeout.
+The necessary engine correction retained a cancelled goal's receipt topic and
+audience and fixed an overturned-goal VAR fact. CI `40486362503` on e233e4f
+then passed all four checks: 595 Python tests in 1255.34s, 51 Node tests, line/
+branch coverage 95.59%/91.43%. Those results are the prior baseline, not approval
+of the subsequent offside/card source changes. Their focused red/green tests,
+retained final world and same-head full CI remain separate evidence. No local
+100-seed or full-suite repeat was substituted for the required remote gate.

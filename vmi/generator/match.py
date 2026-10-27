@@ -88,6 +88,9 @@ class _Sim:
         self.xg_delay = xg_delay
         self.aux_n = 0
         self.stop_whistle: dict | None = None
+        self.offside_kicks: dict[str, dict] = {}  # private actual kick snapshots, never a public verdict
+        self.pending_cards: list[tuple] = []
+        self.discipline_decided: set[str] = set()
 
     def report(self, etype: str, *, t: float | None = None, **fields) -> dict:
         """Extra v2 records use a separate clock/id/RNG path from match outcomes."""
@@ -105,6 +108,7 @@ class _Sim:
 
     def stop(self, trigger: dict, reason: str = "unknown"):
         if self.play.stoppage_id is not None:
+            self.drain_cards()
             return
         origin = self.stop_whistle or trigger
         stopped = self.report("play_stopped", trigger_event_id=origin["id"],
@@ -118,6 +122,7 @@ class _Sim:
             k = self.keyframes[-1]
             self.keyframes.append(Keyframe(round(self.t, 2), k.x, k.y, None, False,
                                            player_positions=dict(k.player_positions)))
+        self.drain_cards()
 
     def decide(self, trigger: dict, kind: str, team: str, *, supersedes: str | None = None):
         self.stop(trigger)
@@ -432,6 +437,8 @@ class _Sim:
         self.maybe_subs()
 
     def maybe_subs(self):
+        if not self.ball_in_play:
+            self.drain_cards()
         for side in ("home", "away"):
             plan = self.sub_plan[side]
             while plan and self.clock_s() >= plan[0] and self.period == 2 and self.bench[side]:
@@ -439,6 +446,8 @@ class _Sim:
                 self.substitute(side, reason="tactical")
 
     def substitute(self, side: str, reason: str, off: Player | None = None):
+        if not self.ball_in_play:
+            self.drain_cards()
         if not self.bench[side] or self.subs_done[side] >= 5:
             return
         cands = [p for p in self.on_pitch[side] if p.position != "GK" and p not in self.subbed_on]
@@ -733,6 +742,15 @@ class _Sim:
         # offside on forward balls into the final third
         if tx - ax > 10 and tx > 68 and rng.random() < 0.06:
             target = self.nearest(side, tx, ty, exclude=holder)
+            snapshot = None
+            if not hasattr(self, "name"):
+                snapshot = self.prepare_offside_kick(side, holder, target, ax, ay, tx, ty)
+                self.keyframes[-1].flight_height = 0
+            departure = self.t
+            arrival = self.flight_plan(target, self.to_pitch(side, tx, ty), .6 + dist / 17) if snapshot else None
+            if snapshot:
+                snapshot["t"] = self.t
+                self.keyframes[-1].player_positions.update(snapshot["players"])
             p = self.emit(
                 "pass",
                 side,
@@ -744,9 +762,11 @@ class _Sim:
                 recipient_id=target.id,
                 height="ground",
             )
+            if snapshot:
+                self.offside_kicks[p["id"]] = snapshot
             self.set_pass_end(p, side, tx, ty)
-            self.t += 0.6 + dist / 17
-            self.key(side, tx, ty, None)
+            self.t = arrival if snapshot else departure + .6 + dist / 17
+            self.key(side, tx, ty, target if snapshot else None)
             self.t += rng.uniform(0.4, 1.2)
             self.whistle(1, "short")
             self.emit("offside", side, target, tx, ty, related=[p["id"]])
@@ -758,6 +778,9 @@ class _Sim:
         target = self.nearest(side, tx, ty, exclude=holder)
         height = "high" if cross or dist > 35 else "ground"
         complete = rng.random() < p_ok
+        missed = (not hasattr(self, "name") and complete and tx-ax > 10 and tx > 68
+                  and self.detail_rng.random() < .08)
+        snapshot = self.prepare_offside_kick(side, holder, target, ax, ay, tx, ty) if missed else None
         out = not complete and (tx > 98 or ty < 1.5 or ty > 66.5 or rng.random() < 0.3)
         ix, iy = ax + (tx - ax) * 0.75, ay + (ty - ay) * 0.75
         opp = _other(side)
@@ -767,6 +790,9 @@ class _Sim:
             self.to_pitch(side, tx, ty) if complete or out else self.to_pitch(side, ix, iy),
             0.5 + (dist if complete or out else 0.75 * dist) / 16,
         )
+        if snapshot:
+            snapshot["t"] = self.t
+            self.keyframes[-1].player_positions.update(snapshot["players"])
         departure = self.t
         self.t = arrival
         if complete:
@@ -786,6 +812,8 @@ class _Sim:
             if rng.random() < 0.03:  # missing qualifier, like a real feed
                 p["pass"].pop("recipient_id")
             self.set_pass_end(p, side, tx, ty)
+            if snapshot:
+                self.offside_kicks[p["id"]] = snapshot
             self.key(side, tx, ty, target)
             return target, tx, ty, p, cross
         # failed pass
@@ -853,6 +881,54 @@ class _Sim:
     def set_pass_end(self, p: dict, side: str, tx: float, ty: float):
         x, y = self.to_pitch(side, tx, ty)
         p["pass"]["end_location"] = [round(x, 1), round(y, 1)]
+
+    def prepare_offside_kick(self, side, holder, receiver, ax, ay, tx, ty):
+        """Construct a reachable mistimed run before a real open-play kick.
+
+        Explicit body roots fix the kick snapshot. Normal role-based lateral
+        positions remain; only opponents beyond the trap line step forward.
+        No event outcome or future delivery is published by this preparation.
+        """
+        opp = _other(side)
+        point = self.to_pitch(side, ax, ay)
+        keeper = self.keeper(opp)
+        opponents = [p for p in self.on_pitch[opp] if p.id not in self.sent_off]
+        positions = {receiver.id: self.to_pitch(side, tx-CONTACT_REACH, ty)}
+        for player in opponents:
+            x, y = formation_position(player.base_x, player.base_y, player.position, player.id,
+                                      self.attacks_right(opp), *point, self.t)
+            px, py = (x, y) if self.attacks_right(side) else (105-x, 68-y)
+            if player.id != keeper.id:
+                px = min(px, tx-3)
+            positions[player.id] = self.to_pitch(side, px, py)
+        actors = {p.id: p for squad in self.on_pitch.values() for p in squad}
+        ready = max(self.contact_ready(actors[pid], xy, self.t) for pid, xy in positions.items())
+        self.hold_until(ready)
+        height = self.keyframes[-1].flight_height
+        self.key(side, ax, ay, holder)
+        self.keyframes[-1].flight_height = height
+        self.keyframes[-1].player_positions.update(positions)
+        return {"t": self.t, "team": side, "right": self.attacks_right(side), "receiver": receiver.id,
+                "ball": (self.keyframes[-1].x, self.keyframes[-1].y),
+                "players": dict(positions), "opponents": tuple(p.id for p in opponents)}
+
+    def offside_preparing_pass(self, shot):
+        """Law 11 kick position plus this recipient's actual later shot touch."""
+        preparing = next((e for e in self.events if e["id"] == shot.get("preparing_pass_id")), None)
+        snapshot = self.offside_kicks.get(shot.get("preparing_pass_id"))
+        if (not snapshot or not preparing or preparing["t"] != snapshot["t"]
+                or shot.get("player_id") != snapshot["receiver"] or shot["team"] != snapshot["team"]
+                or preparing["t"] >= shot["t"]
+                or not any(k.holder == shot["player_id"] and preparing["t"] < k.t <= shot["t"]
+                           for k in self.keyframes)):
+            return False
+        if any(e["type"] == "set_piece" and e["t"] == preparing["t"] and e["team"] == preparing["team"]
+               and e["set_piece"]["kind"] in {"corner", "throw_in", "goal_kick"} for e in self.events):
+            return False
+        attack_x = lambda x: x if snapshot["right"] else 105-x
+        receiver = attack_x(snapshot["players"][snapshot["receiver"]][0])
+        opponents = sorted((attack_x(snapshot["players"][pid][0]) for pid in snapshot["opponents"]), reverse=True)
+        return len(opponents) >= 2 and receiver > max(52.5, attack_x(snapshot["ball"][0]), opponents[1]) + .01
 
     # ---------- restarts ----------
     def contact_ready(self, player, point, earliest):
@@ -1115,10 +1191,15 @@ class _Sim:
             self.crowd_hit(0.6, 22, hold=6)
             self.state(ball_in_play=False)
             self.t += rng.uniform(45, 70)  # celebration
-            cancelled = self.var_goal_check(s) if rng.random() < 0.18 else False
+            review = rng.random() < .18 or self.offside_preparing_pass(s)
+            cancelled = self.var_goal_check(s) if review else False
             self.maybe_subs()
             if cancelled:
-                self.restart_free_kick(opp, 105 - ax, 68 - ay)
+                decision = next(e for e in self.events if e["id"] == self.play.decision_id)
+                offence = next(e for e in self.events if e["id"] == decision["trigger_event_id"])
+                x, y = offence["location"]
+                fx, fy = (x, y) if self.attacks_right(opp) else (105-x, 68-y)
+                self.restart_free_kick(opp, fx, fy)
             else:
                 self.kick_off(opp)
             return
@@ -1184,16 +1265,19 @@ class _Sim:
                   incident="goal", original_decision="goal", outcome=None)
         self.murmurs.append((self.t, self.t + 35, 0.12))
         self.t += self.rng.uniform(25, 45)
-        cancelled = (not goal_evt["shot"].get("penalty") and bool(goal_evt.get("preparing_pass_id"))
-                     and self.detail_rng.random() < 0.25)
+        cancelled = not goal_evt["shot"].get("penalty") and self.offside_preparing_pass(goal_evt)
         self.emit("var", None, None, review_id=rid, phase="decision", incident="goal",
                   original_decision="goal", outcome="overturned" if cancelled else "stands")
         if cancelled:
             side = goal_evt["team"]
             result = next(e for e in self.events if e["type"] == "shot_result"
                           and e["shot_id"] == goal_evt["id"])
-            offence = self.report("offside", t=goal_evt["t"], delivered_t=round(self.t + 0.75, 2),
-                                  team=side, player_id=goal_evt["player_id"], location=list(goal_evt["location"]))
+            kick = self.offside_kicks[goal_evt["preparing_pass_id"]]
+            touch = next(k for k in self.keyframes
+                         if kick["t"] < k.t <= goal_evt["t"] and k.holder == goal_evt["player_id"])
+            offence = self.report("offside", t=touch.t, delivered_t=round(self.t + 0.75, 2),
+                                  team=side, player_id=goal_evt["player_id"], location=[touch.x, touch.y],
+                                  related=[goal_evt["preparing_pass_id"]])
             decision = self.decide(offence, "free_kick", _other(side))
             self.report("goal_cancelled", shot_id=goal_evt["id"], result_id=result["id"],
                         decision_id=decision["id"], team=side, player_id=goal_evt["player_id"])
@@ -1243,6 +1327,7 @@ class _Sim:
         kind = rng.choice(["trip", "trip", "push", "holding", "kick"])
         called=in_box and rng.random()<.6
         advantage=not in_box and ax>60 and rng.random()<.22
+        discipline = None
         handball=(not in_box or called) and not advantage and self.detail_rng.random()<.06
         incident=None
         if handball:
@@ -1264,7 +1349,7 @@ class _Sim:
                 f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, False,
                                       handball=handball,incident_t=incident)
                 self.decide(f, "penalty", side)
-                self.card_maybe(opp, fouler, base=0.35, offence=f)
+                self.card_maybe(opp, fouler, base=0.35, offence=f, decision=discipline)
                 self.stoppage(rng.uniform(55, 80))
                 self.penalty(side)
                 return True
@@ -1272,7 +1357,14 @@ class _Sim:
         f = self.emit_offence(opp, fouler, PITCH_X - ax, PITCH_Y - ay, victim, kind, advantage,
                               handball=handball,incident_t=incident)
         if advantage:
-            self.card_maybe(opp, fouler, base=0.12, offence=f)
+            # Select after recording the incident, preserving its independent
+            # noise/latency draws, but before deciding whether play continues.
+            discipline = self.choose_card(fouler, .12)
+            if discipline[0] in {"red", "second_yellow"}:
+                advantage = False
+                f["foul"]["advantage"] = False
+        if advantage:
+            self.card_maybe(opp, fouler, base=0.12, offence=f, decision=discipline)
             return False
         self.t += 0 if handball else .3
         self.whistle(1, "normal" if rng.random() < 0.8 else "long")
@@ -1281,7 +1373,7 @@ class _Sim:
         stopped=self.keyframes[-1]
         self.keyframes.append(replace(stopped,t=round(self.t,2),holder=None,in_play=False,
                                       player_positions=dict(stopped.player_positions),contact_effectors={}))
-        self.card_maybe(opp, fouler, base=0.12, offence=f)
+        self.card_maybe(opp, fouler, base=0.12, offence=f, decision=discipline)
         if rng.random() < 0.05:
             self.emit("injury_stoppage", side, victim, related=[f["id"]])
             self.t += rng.uniform(45, 90)
@@ -1408,19 +1500,44 @@ class _Sim:
 
         self.shot(side, taker, 94, 34, None, penalty=True, before_release=signal)
 
-    def card_maybe(self, side, player, base: float, offence: dict):
+    def choose_card(self, player, base):
+        """Choose once; the selection is private until the sanction is shown."""
         rng = self.rng
         if player.id in self.sent_off:
-            return
+            return None, 0
         r = rng.random()
         colour = None
         if r < 0.012:
             colour = "red"
         elif r < base:
-            colour = "second_yellow" if self.yellows.get(player.id) else "yellow"
+            booked = self.yellows.get(player.id) or any(p.id == player.id and c == "yellow"
+                                                       for _, p, c, _, _ in self.pending_cards)
+            colour = "second_yellow" if booked else "yellow"
+        return colour, rng.uniform(4, 9) if colour else 0
+
+    def card_maybe(self, side, player, base: float, offence: dict, decision=None):
+        if player.id in self.sent_off or offence["id"] in self.discipline_decided:
+            return
+        self.discipline_decided.add(offence["id"])
+        colour, delay = decision if decision is not None else self.choose_card(player, base)
         if not colour:
             return
-        self.t += rng.uniform(4, 9)
+        if self.ball_in_play and offence.get("foul", {}).get("advantage"):
+            self.pending_cards.append((side, player, colour, delay, offence))
+            return
+        self.give_card(side, player, colour, delay, offence)
+
+    def drain_cards(self):
+        """Show delayed sanctions once at the next real stoppage, before subs."""
+        if self.ball_in_play:
+            return
+        pending, self.pending_cards = self.pending_cards, []
+        for side, player, colour, delay, offence in pending:
+            if player.id not in self.sent_off:
+                self.give_card(side, player, colour, delay, offence)
+
+    def give_card(self, side, player, colour, delay, offence):
+        self.t += delay
         card = self.emit("card", side, player, colour=colour, related=[offence["id"]])
         card["offence_id"] = offence["id"]
         self.crowd_hit(0.12, 5)

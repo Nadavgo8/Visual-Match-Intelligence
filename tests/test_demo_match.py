@@ -10,11 +10,11 @@ from vmi.generator.match import generate_match
 
 DEMO_STORY = {
     "generator_version": "2.5.0",
-    "final": {"home": 2, "away": 0},
-    # All reported goal results, including Marsh's later cancelled goal.
-    "goals": [("9:16", "home", "Dumont"), ("28:07", "home", "Dumont"), ("70:15", "away", "Marsh")],
-    "var": [("71:57", "goal", "goal", "overturned")],
-    "cancelled_goals": [("70:15", "away", "Marsh", "71:57")],
+    "final": {"home": 2, "away": 1},
+    # Original agreed story: the physical demo scenario must satisfy these times.
+    "goals": [("37:58", "home", "Dumont"), ("43:34", "home", "Ferreira"), ("65:08", "away", "Marsh")],
+    "var": [("37:16", "penalty", "no_penalty", "overturned"), ("66:38", "goal", "goal", "stands")],
+    "cancelled_goals": [],
 }
 
 
