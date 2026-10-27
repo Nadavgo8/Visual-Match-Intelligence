@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from vmi.agents.explainer import Explainer, template, validate
+from vmi.agents.explainer import Explainer, max_sentences, template, validate
 from vmi.agents.qa import Assistant
 from vmi.engine.replay import Replay, run_all
 from vmi.evaluation.benchmark import benchmark_match
@@ -24,7 +24,7 @@ def test_templates_always_pass_the_validator(seed):
         for depth in ("basic", "deep"):
             for fav in (None, "home", "away"):
                 sents = template(o["factpack"], depth, fav)
-                assert 1 <= len(sents) <= 3
+                assert 1 <= len(sents) <= max_sentences(o["factpack"])
                 assert validate(sents, o["factpack"], _roster(m)) == []
 
 

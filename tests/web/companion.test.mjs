@@ -158,26 +158,28 @@ test("answer metadata from a model is literal text, including unknown agent name
   const html = app.html("m-q1");
   assert.equal(html.includes("<img"), false);
   assert.ok(html.includes("&lt;img src=x onerror=&quot;bad()&quot;&gt; &amp;"));
-  assert.ok(html.includes("<details")); // receipts remain structured and usable
+  assert.equal(html.includes("<details"), false);  // no receipts block in the chat
 });
 
 test("known agent labels and answer deduplication remain intact", async () => {
   const app = await appHarness();
   app.receive({ type: "answer", id: "q1", agent: "match_analyst", source: "local", text: "First", latency_ms: 12 });
   const html = app.html("m-q1");
-  assert.ok(html.includes("Kai via match analyst (local) · 12 ms"));
+  assert.ok(html.includes("<b>Kai</b>") && html.includes("Fact · written by code"));
   app.receive({ type: "answer", id: "q1", agent: "router", text: "Replacement" });
   assert.equal(app.html("m-q1"), html);
 });
 
-test("analysis receipt metadata and attribute values cannot introduce HTML", async () => {
+test("analysis shows who wrote it, never a receipts block, and its text stays literal", async () => {
   const app = await appHarness();
+  app.receive(snapshotWith([]));
   const payload = '<svg onload="bad()"> &';
-  const html = app.receipts([{ s: payload, evidence: [payload] }], [{ id: payload, text: payload }],
-    { source: "agent", model: payload, validation: "passed", rejected: [payload], latency_ms: payload });
-  assert.equal(html.includes("<svg"), false);
-  assert.ok(html.includes("&lt;svg"));
-  assert.ok(html.includes("✓ passed"));
+  app.receive({ type: "analysis", cue_id: "a1", clock: "1:00", t: 60, moment: "goal", text: payload,
+    receipts: { source: "agent" }, sentences: [], facts: [] });
+  app.receive({ type: "analysis", cue_id: "a2", clock: "2:00", t: 120, moment: "goal", text: "x",
+    receipts: { source: "template" }, sentences: [], facts: [] });
+  assert.ok(app.html("m-a1").includes("interpretation · AI") && app.html("m-a2").includes("interpretation · written by code"));
+  assert.equal(app.html("m-a1").includes("<svg") || app.html("m-a1").includes("<details"), false);
 });
 
 // ---------- unified match chat ----------
@@ -227,7 +229,7 @@ test("Kai, Ada and the fan share one chronological chat; a question sits after w
   app.receive({ type: "answer", id: "q1", speaker: "analyst", agent: "meaning_analyst", source: "agent", model: "m",
     text: "Home lead through Dumont.", latency_ms: 5 });
   assert.deepEqual(app.order(), ["m-a", "m-b", "m-u1", "m-q1", "m-c"]);  // answered in place, nothing moved
-  assert.ok(app.html("m-q1").includes("<b>Ada</b>") && app.html("m-q1").includes("Interpretation · live answer"));
+  assert.ok(app.html("m-q1").includes("<b>Ada</b>") && app.html("m-q1").includes("Interpretation · AI"));
   assert.equal(app.node("announce").textContent, "Ada answered: Home lead through Dumont.");
 });
 
@@ -297,4 +299,34 @@ test("Ada's rules answers are labelled Rules, not interpretation", async () => {
   app.ask("Was that offside?");
   app.receive({ type: "answer", id: "q1", speaker: "analyst", agent: "rules_expert", source: "local", text: "Law 11.", latency_ms: 1 });
   assert.ok(app.html("m-q1").includes("Rules · written by code") && app.html("m-q1").includes("<b>Ada</b>"));
+});
+
+test("Kai closes Ada's analysis with one reply, placed right after hers", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("g", 100, { icon: "goal", tier: 1, text: "GOAL! Ferreira scores." })]));
+  app.receive({ type: "analysis", cue_id: "x", clock: "1:48", t: 108, moment: "goal", reply_to: "g", text: "Look at the pass.",
+    receipts: { source: "template" }, followup: { text: "And the noise level jumped.", evidence: ["crowd@1"] } });
+  app.receive(feedItem("later", 120));
+  assert.deepEqual(app.order(), ["m-g", "m-x", "m-x-k", "m-later"]);
+  const k = app.html("m-x-k");
+  assert.ok(k.includes("<b>Kai</b>") && k.includes('href="#m-x"') && k.includes("And the noise level jumped."));
+  app.receive({ type: "analysis", cue_id: "y", clock: "1:58", t: 118, moment: "injury", text: "No follow-up." });
+  assert.equal(app.order().includes("m-y-k"), false);
+});
+
+test("chat text uses short dashes and an unknown icon shows nothing, not a dot", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("d", 10, { icon: "new_kind", text: "One thing — and another" })]));
+  const html = app.html("m-d");
+  assert.ok(html.includes("One thing - and another") && !html.includes("—"));
+  assert.ok(html.includes('<span class="ev" aria-hidden="true"></span>'));
+});
+
+test("an answer replies to the fan's question, quoting it", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([]));
+  app.ask("Who had the most key passes?");
+  app.receive({ type: "answer", id: "q1", speaker: "commentator", agent: "match_analyst", source: "local", text: "Brandt, 6." });
+  const html = app.html("m-q1");
+  assert.ok(html.includes('href="#m-u1"') && html.includes("↳ You"), html);
 });

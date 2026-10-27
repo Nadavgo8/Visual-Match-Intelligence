@@ -23,6 +23,7 @@ $("room-code").textContent = room;
 $("app-link").href = `/app?room=${encodeURIComponent(room)}`;
 
 let isHost = false;
+let wantDemo = params.has("demo");
 const session = openSession({ room, role: "tv", hostToken: hostTokenStore(room), onMessage, onStatus });
 const send = (m) => session.send(m);
 function onMessage(m) {
@@ -30,6 +31,11 @@ function onMessage(m) {
     waitingForState = true; isHost = m.host;
     onState(m.state);
     if (m.meters) onMeters(m.meters);
+    // /tv?demo plays the locked demo match; without it a new room starts on a random match.
+    if (wantDemo && isHost && m.state.demo_seed && m.state.seed !== m.state.demo_seed) {
+      wantDemo = false;
+      send({ cmd: "new_match", seed: m.state.demo_seed });
+    }
   }
   else if (m.type === "state") onState(m);
   else if (m.type === "frame" && !waitingForState) { frame = m; liveTime = m.t; renderMarker(); }
@@ -43,7 +49,7 @@ function onStatus(s) {
   if (s === "disconnected") { clearTransient(); $("agents").textContent = "disconnected, reconnecting…"; }
 }
 function hostControls() {
-  for (const el of document.querySelectorAll("#play, #speed, #scrub, #seed, #new, #chapters button")) el.disabled = !isHost;
+  for (const el of document.querySelectorAll("#play, #speed, #scrub, #seed, #new, #random, #chapters button")) el.disabled = !isHost;
 }
 
 function onState(s) {
@@ -177,6 +183,7 @@ $("scrub").onchange = (e) => { scrubbing = false; jump({ cmd: "seek", t: Number(
 $("overlay-on").onchange = (e) => $("overlay").classList.toggle("off", !e.target.checked);
 $("sound-on").onchange = (e) => { audio.unlock(); audio.enabled = e.target.checked; if (!e.target.checked) audio.crowd(0); };
 $("new").onclick = () => jump({ cmd: "new_match", seed: Number($("seed").value) });
+$("random").onclick = () => jump({ cmd: "new_match", seed: 1 + Math.floor(Math.random() * 99999) });
 
 // ---------- engine trace: what was shown, and what was left out and why ----------
 function onTrace(m) {
