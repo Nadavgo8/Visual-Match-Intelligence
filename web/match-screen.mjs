@@ -1,4 +1,4 @@
-import { FrameTimeline } from "./match-motion.mjs?v=3.18";
+import { FrameTimeline } from "./match-motion.mjs?v=3.26";
 import { MarkerState } from "./overlay-state.mjs";
 
 // Shared reset boundary for football drawing and accessibility presentation.

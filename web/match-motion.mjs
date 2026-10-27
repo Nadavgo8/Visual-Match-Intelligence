@@ -1,9 +1,30 @@
 // Presentation only: sample delivered positions; never infer a football outcome.
 const finite = Number.isFinite;
+const angle = a => finite(a) && Math.abs(a) <= Math.PI + 1e-9;
 export function validMotion(m){
-  return !!m && finite(m.heading) && Math.abs(m.heading)<=Math.PI && finite(m.speed) && m.speed>=0
-    && finite(m.distance) && m.distance>=0;
+  return !!m && angle(m.heading) && finite(m.speed) && m.speed>=0
+    && finite(m.distance) && m.distance>=0
+    && (m.facing===undefined||m.facing===null||angle(m.facing))
+    && (m.gait_cycles===undefined||(finite(m.gait_cycles)&&m.gait_cycles>=0));
 }
+// Source physical touch (generator 2.5): who touches the ball, with what, and when.
+export const CONTACT_EFFECTORS = new Set(["foot", "hands", "head"]);
+export function validContact(c){
+  return !!c && typeof c.kind === "string" && CONTACT_EFFECTORS.has(c.effector)
+    && finite(c.start_t) && finite(c.end_t) && c.end_t >= c.start_t
+    && Array.isArray(c.target) && c.target.length === 3 && c.target.every(finite)
+    && (c.heading===undefined||angle(c.heading));
+}
+// A strike delivered in the next buffered frame may show its approach early.
+// The renderer already draws behind the newest delivered frame; nothing is predicted.
+export const CONTACT_APPROACH = 0.15;
+function contactAt(a, b, t){
+  const at = c => ({...c, phase: c.end_t > c.start_t ? Math.min(1, (t - c.start_t) / (c.end_t - c.start_t)) : 1});
+  if (validContact(a) && (a.end_t > a.start_t ? t < a.end_t : true)) return at(a);
+  if (validContact(b) && b.end_t > b.start_t && t >= b.start_t - CONTACT_APPROACH && t < b.end_t) return at(b);
+  return undefined;
+}
+const blendAngle = (a, b, u) => { const d = Math.atan2(Math.sin(b - a), Math.cos(b - a)), r = a + d * u; return Math.atan2(Math.sin(r), Math.cos(r)); };
 export function validFrame(f) {
   return !!f && finite(f.t) && f.t >= 0 && typeof f.match_id === "string"
     && Array.isArray(f.ball) && f.ball.length === 2 && f.ball.every(finite)
@@ -14,7 +35,7 @@ export function validFrame(f) {
     && new Set(f.players.map(p => p.id)).size === f.players.length
     && f.players.every(p => typeof p.id === "string" && ["home", "away"].includes(p.team)
       && finite(p.x) && p.x >= 0 && p.x <= 105 && finite(p.y) && p.y >= 0 && p.y <= 68
-      && (p.motion===undefined||validMotion(p.motion)));
+      && (p.motion===undefined||validMotion(p.motion)) && (p.contact===undefined||validContact(p.contact)));
 }
 
 export function interpolate(a, b, t) {
@@ -31,14 +52,16 @@ export function interpolate(a, b, t) {
     players: a.players.map(p => {
       const q = next.get(p.id);
       if(!q)return p;
-      const {motion,...base}=p;
+      const {motion,contact,...base}=p;
       const result={...base,x:blend(p.x,q.x),y:blend(p.y,q.y)};
       if(validMotion(motion)&&validMotion(q.motion)){
-        const turn=Math.atan2(Math.sin(q.motion.heading-motion.heading),Math.cos(q.motion.heading-motion.heading));
-        const heading=motion.heading+turn*u;
-        result.motion={heading:Math.atan2(Math.sin(heading),Math.cos(heading)),
+        result.motion={heading:blendAngle(motion.heading,q.motion.heading,u),
           speed:blend(motion.speed,q.motion.speed),distance:blend(motion.distance,q.motion.distance)};
+        if(angle(motion.facing)&&angle(q.motion.facing)) result.motion.facing=blendAngle(motion.facing,q.motion.facing,u);
+        if(finite(motion.gait_cycles)&&finite(q.motion.gait_cycles)) result.motion.gait_cycles=blend(motion.gait_cycles,q.motion.gait_cycles);
       }
+      const touch=contactAt(contact,q.contact,t);
+      if(touch) result.contact=touch;
       return result;
     }) };
 }

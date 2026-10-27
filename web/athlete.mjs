@@ -1,5 +1,6 @@
 import * as T from "./vendor/three/three.module.js";
-import { footballGait, legAngles } from "./football-gait.mjs?v=3.23";
+import { footballGait, gaitCycleLength, legAngles } from "./football-gait.mjs?v=3.23";
+import { CONTACT_APPROACH } from "./match-motion.mjs?v=3.26";
 import { FootballActions, nearbyBallPose } from "./football-actions.mjs?v=3.11";
 
 export function validateAthlete(data) {
@@ -129,19 +130,27 @@ export class DetailedFootballers {
         actor = Object.assign(createAthlete(this.data, this.base, p, teams, this.document), { role: p.role, team: p.team, n: p.n });
         this.actors.set(p.id, actor); this.scene.add(actor.root);
       }
-      // Legacy source has distance only; keep a fixed metric cycle until the
-      // cumulative source gait phase is available (never divide by current speed).
       const pose = poses.get(p.id);
       const ball = frame.ball ?? [52.5, 34], look = Math.atan2(ball[0] - p.x, p.y - ball[1]);
       const holder = frame.possession?.holder_id === p.id;
-      const contact = contacts.get(p.id) ?? nearbyBallPose(frame,p), strength = contact?.weight ?? 0;
-      let facing = pose.speed > 0.1 || holder ? pose.heading : look;
+      // Generator 2.5 supplies facing, the cumulative gait cycle and each
+      // physical touch. The pose is then a pure function of source time, so
+      // pause, seek and reconnect give the same body. Legacy frames keep the
+      // cosmetic inference from two delivered observations.
+      const source = Number.isFinite(pose.gait);
+      const hit = source ? sourceTouch(pose.contact) : null;
+      const contact = source ? null : contacts.get(p.id) ?? nearbyBallPose(frame,p);
+      const strength = contact?.weight ?? 0;
+      let facing = source ? pose.facing : pose.speed > 0.1 || holder ? pose.heading : look;
       if(Number.isFinite(contact?.heading)) facing += Math.atan2(Math.sin(contact.heading-facing),Math.cos(contact.heading-facing))*strength;
       const travelAngle = pose.heading - facing;
       // A wide resting stance leaves less lateral reach than forward reach.
       // Shorten contact duration, not its cancellation speed or source travel.
       const supportSpan = .65 - .33*Math.abs(Math.sin(travelAngle));
-      const gait = footballGait(pose.speed,pose.distance/2.2+actor.phase,p.role === "GK",2.2,supportSpan);
+      // The source counts cycles with the same speed-dependent stride length,
+      // so the support foot cancels travel. Legacy: a fixed metric cycle.
+      const gait = source ? footballGait(pose.speed,pose.gait,p.role === "GK",gaitCycleLength(pose.speed),supportSpan)
+        : footballGait(pose.speed,pose.distance/2.2+actor.phase,p.role === "GK",2.2,supportSpan);
       actor.root.position.set(p.x - 52.5, gait.pelvis, 34 - p.y); actor.root.rotation.y = facing;
       const legTargets = [];
       for (const [side, sign] of [["L", 1], ["R", -1]]) {
@@ -160,16 +169,18 @@ export class DetailedFootballers {
         actor.joints[`upperarm01.${side}`].rotation.set(gait.armSwing * sign, 0, sign * (gait.armSpread - actor.armRest[side]));
         actor.joints[`lowerarm01.${side}`].rotation.set(actor.forearmRest[side]-gait.elbow,0,0);
       }
-      actor.joints.spine03.rotation.x = gait.lean + strength*.12;
+      actor.joints.spine03.rotation.x = gait.lean + (strength + (hit?.weight ?? 0))*.12;
       actor.joints.spine03.rotation.y = gait.twist;
       const lookDelta = Math.atan2(Math.sin(look - facing), Math.cos(look - facing));
-      actor.joints.head.rotation.y = holder ? 0 : Math.max(-0.5, Math.min(0.5, lookDelta));
+      actor.joints.head.rotation.y = holder || hit ? 0 : Math.max(-0.5, Math.min(0.5, lookDelta));
+      actor.joints.neck01.rotation.x = 0;
       actor.root.updateMatrixWorld(true);
       for (const {side,offset} of legTargets) {
         const hip=actor.joints[`upperleg01.${side}`].getWorldPosition(new T.Vector3());
         reachLeg(actor,side,hip.add(offset.applyQuaternion(actor.root.quaternion)));
       }
-      if(p.role === "GK" && frame.ball_in_play && frame.ball_height > .35 && frame.ball_height < 2.4
+      if (hit) applyTouch(actor, hit);
+      else if(!source && p.role === "GK" && frame.ball_in_play && frame.ball_height > .35 && frame.ball_height < 2.4
         && Math.hypot(ball[0]-p.x,ball[1]-p.y)<1.5) {
         const target = new T.Vector3(ball[0]-52.5,frame.ball_height+.16,34-ball[1]);
         for(const side of ["L","R"]) reachArm(actor,side,target);
@@ -180,6 +191,75 @@ export class DetailedFootballers {
   hide() { for (const actor of this.actors.values()) { actor.root.removeFromParent(); actor.dispose(); } this.actors.clear(); this.actions.reset(); }
   dispose() { this.hide(); this.base.dispose(); }
 }
+
+// Weight of a source touch: a short approach visible from the buffered frame,
+// full at the moment of contact, then a smooth follow-through. A held ball
+// (keeper's hands) stays at full weight; foot control is left to the gait.
+export function sourceTouch(contact) {
+  if (!contact) return null;
+  const duration = contact.end_t - contact.start_t;
+  if (!(duration > 0)) return contact.effector === "foot" ? null : {...contact, weight: 1};
+  const before = -contact.phase * duration;
+  const smooth = u => { const v = Math.max(0, Math.min(1, u)); return v * v * (3 - 2 * v); };
+  const weight = before > 0 ? smooth(1 - before / CONTACT_APPROACH) : 1 - smooth(contact.phase);
+  return weight > 1e-3 ? {...contact, weight} : null;
+}
+
+// The drawn ball centre for a source contact target [x, y, height].
+export const touchTarget = target => new T.Vector3(target[0] - 52.5, target[2] + .16, 34 - target[1]);
+export const BALL_RADIUS = .11;
+
+// Move the named effector onto the drawn ball. The tracked x/y root and the
+// ball never move; the body may crouch (feet stay planted) or jump vertically.
+// Foot: the nearer leg; hands: both arms after a forward lean; head: a lean
+// of spine and neck that brings the forehead to the ball.
+export function applyTouch(actor, touch) {
+  const ball = touchTarget(touch.target), w = touch.weight;
+  const world = name => actor.joints[name].getWorldPosition(new T.Vector3());
+  if (touch.effector === "foot") {
+    const side = actor.root.worldToLocal(ball.clone()).x >= 0 ? "L" : "R";
+    const hip = world(`upperleg01.${side}`);
+    // The ankle sits just behind the ball surface on the line from the hip.
+    const back = new T.Vector3(ball.x - hip.x, 0, ball.z - hip.z);
+    if (back.lengthSq() > 1e-8) back.normalize().multiplyScalar(BALL_RADIUS + .06);
+    const strike = ball.clone().sub(back); strike.y = Math.max(.08, ball.y - .04);
+    reachLeg(actor, side, world(`foot.${side}`).lerp(strike, w));
+    actor.root.updateMatrixWorld(true);
+    return;
+  }
+  const shoulders = () => world("upperarm01.L").add(world("upperarm01.R")).multiplyScalar(.5);
+  const point = touch.effector === "head" ? () => forehead(actor) : shoulders;
+  const reach = touch.effector === "head" ? BALL_RADIUS : ARM_REACH;
+  // Vertical body offset: jump for a high ball, crouch for a low one.
+  const height = point().y;
+  const rise = touch.effector === "head" ? Math.min(.5, Math.max(0, ball.y - height))
+    : ball.y < height - .55 ? Math.max(-.45, ball.y - (height - .55)) : ball.y > height + .5 ? Math.min(.45, ball.y - (height + .5)) : 0;
+  if (rise) {
+    const feet = rise < 0 ? ["L", "R"].map(side => [side, world(`foot.${side}`)]) : [];
+    actor.root.position.y += rise * w; actor.root.updateMatrixWorld(true);
+    for (const [side, foot] of feet) reachLeg(actor, side, foot);
+  }
+  // Search the forward lean that brings the effector within reach, then blend.
+  const spine = actor.joints.spine03, neck = actor.joints.neck01, base = spine.rotation.x;
+  const lean = touch.effector === "head" ? [-.3, .9] : [-.2, 1.2];
+  let best = 0, error = Infinity;
+  for (let i = 0; i <= 24; i++) {
+    const value = lean[0] + i * (lean[1] - lean[0]) / 24;
+    spine.rotation.x = base + value * .6; neck.rotation.x = value * .4; actor.root.updateMatrixWorld(true);
+    const d = Math.max(0, point().distanceTo(ball) - reach) + Math.abs(value) * 1e-3;
+    if (d < error) { error = d; best = value; }
+  }
+  spine.rotation.x = base + best * .6 * w; neck.rotation.x = best * .4 * w;
+  actor.root.updateMatrixWorld(true);
+  if (touch.effector === "hands") {
+    const across = new T.Vector3(1, 0, 0).applyQuaternion(actor.root.quaternion).multiplyScalar(BALL_RADIUS);
+    for (const [side, sign] of [["L", 1], ["R", -1]])
+      reachArm(actor, side, world(`wrist.${side}`).lerp(ball.clone().addScaledVector(across, sign), w));
+    actor.root.updateMatrixWorld(true);
+  }
+}
+const ARM_REACH = .55;
+export const forehead = actor => actor.joints.head.localToWorld(new T.Vector3(0, .08, .1));
 
 // Two-bone reach towards an observed nearby airborne ball. The keeper's centre
 // stays on tracking; this does not classify a save, catch, dive or goal.

@@ -1,5 +1,5 @@
 // Metres throughout. The renderer never supplies football facts or wall-clock motion.
-import {validMotion} from './match-motion.mjs?v=3.18';
+import {validMotion,validContact} from './match-motion.mjs?v=3.26';
 export const worldPosition = (x, y, height = 0) => [x - 52.5, height, 34 - y];
 // A 20 Hz transport at 32x delivers 1.6 source seconds between packets.
 // Match the sampler's two-second source-discontinuity boundary, not wall time.
@@ -16,7 +16,11 @@ export function playerPose(previous, player, t) {
   // source time must not depend on which frames this viewer previously saw.
   if(validMotion(player.motion)){
     const {heading,speed,distance}=player.motion,phase=distance/2.2*Math.PI*2;
-    return {t,x:player.x,y:player.y,heading,speed,distance,
+    // Generator 2.5 adds body facing, the cumulative gait cycle and the
+    // current physical touch. All are functions of source time only.
+    const facing=Number.isFinite(player.motion.facing)?player.motion.facing:heading;
+    const gait=Number.isFinite(player.motion.gait_cycles)?player.motion.gait_cycles:null;
+    return {t,x:player.x,y:player.y,heading,speed,distance,facing,gait,contact:validContact(player.contact)?player.contact:null,
       stride:Math.sin(phase)*Math.min(.65,speed*.09),
       knee:Math.max(0,-Math.sin(phase))*Math.min(.8,speed*.1),
       bob:Math.abs(Math.cos(phase))*Math.min(.04,speed*.005)};

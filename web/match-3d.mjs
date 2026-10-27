@@ -1,9 +1,9 @@
 import * as T from "./vendor/three/three.module.js";
 import { buildStadium } from "./stadium.mjs?v=3.22";
-import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.23";
+import { DetailedFootballers, loadAthlete } from "./athlete.mjs?v=3.26";
 import { updateCrowd, CrowdDynamics } from "./crowd.mjs?v=3.22";
 import { loadAtlasMetadata } from "./crowd-atlas.mjs?v=3.22";
-import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.22";
+import { SceneMotion, worldPosition, cameraView, qualitySettings } from "./scene-state.mjs?v=3.26";
 import {createBall,ballDrawScale} from "./ball-view.mjs?v=3.22";
 
 export async function prepareAssets() {
