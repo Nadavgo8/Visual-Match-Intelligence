@@ -41,8 +41,59 @@ def test_controlled_ball_matches_active_holder_and_quality(match):
         holder = frame["possession"]["holder_id"]
         if holder:
             player = next(p for p in frame["players"] if p["id"] == holder)
-            assert math.dist(frame["ball"], [player["x"], player["y"]]) < 0.02
+            assert math.dist(frame["ball"], [player["x"], player["y"]]) == pytest.approx(0.55, abs=0.015)
+            assert player["contact"]["effector"] in {"foot", "hands", "head"}
             assert frame["possession"]["id"] is not None
+
+
+def test_physical_control_has_a_real_root_to_ball_contact_offset(match):
+    tracker = Tracker(match)
+    contacts = 0
+    for knot in match.keyframes[::11]:
+        frame = tracker.frame(knot.t)
+        holder = frame["possession"]["holder_id"]
+        if holder:
+            player = next(p for p in frame["players"] if p["id"] == holder)
+            assert 0.35 <= math.dist(frame["ball"], (player["x"], player["y"])) <= 0.7
+            contacts += 1
+    assert contacts > 20
+
+
+def test_physical_source_velocity_is_continuous_across_every_path_node(match):
+    tracker = Tracker(match)
+    for knot in match.keyframes[::7]:
+        if knot.t < 0.05:
+            continue
+        before = {p["id"]: p for p in tracker.frame(knot.t - 0.05)["players"]}
+        for player in tracker.frame(knot.t + 0.05)["players"]:
+            if player["id"] not in before:
+                continue
+            a, b = before[player["id"]]["motion"], player["motion"]
+            va = (math.sin(a["heading"]) * a["speed"], -math.cos(a["heading"]) * a["speed"])
+            vb = (math.sin(b["heading"]) * b["speed"], -math.cos(b["heading"]) * b["speed"])
+            assert math.dist(va, vb) <= 0.8 + 1e-6, (knot.t, player["id"])
+
+
+def test_every_generated_action_has_an_actual_source_touch_at_its_reported_time(match):
+    tracker = Tracker(match)
+    required = {"pass", "shot", "set_piece", "save", "block", "clearance"}
+    seen = set()
+    for event in match.events:
+        if event["type"] not in required:
+            continue
+        seen.add(event["type"])
+        actions = tracker.contact_actions.get(event["player_id"], [])
+        assert any(a[0] == event["t"] for a in actions), (event["id"], event["type"], event["t"])
+        frame = tracker.frame(event["t"])
+        actor = next(p for p in frame["players"] if p["id"] == event["player_id"])
+        assert actor["contact"]["start_t"] == event["t"]
+        assert math.dist((actor["x"], actor["y"]), actor["contact"]["target"][:2]) == pytest.approx(0.55, abs=0.015), (
+            event["id"],
+            event["type"],
+            event["t"],
+            actor,
+        )
+    assert seen == required
 
 
 def test_all_restarts_link_to_stop_award_and_execution(match):
@@ -73,7 +124,8 @@ def test_penalty_execution_and_its_whistle_have_same_clock():
     sim.penalty("home")
     action=next(e for e in sim.events if e["type"]=="set_piece" and e["set_piece"]["kind"]=="penalty")
     whistle=next(e for e in sim.events if e["type"]=="whistle" and e["t"]==action["t"])
-    assert action["clock"]==whistle["clock"]=="2:01"
+    # Players walk to their marks first, so the kick is at least 1 s after the award.
+    assert action["clock"]==whistle["clock"] and action["t"]>=121
 
 
 @pytest.mark.parametrize("kind", ["kick_off", "throw_in", "goal_kick", "free_kick"])
@@ -131,7 +183,9 @@ def test_restart_ball_is_set_before_execution_and_does_not_drift_during_the_wait
 def test_source_motion_is_exactly_the_same_after_reverse_seek_or_a_fresh_tracker(match):
     tr = Tracker(match)
     expected = tr.frame(137.125)
-    assert all(set(p["motion"]) == {"speed", "heading", "distance"} for p in expected["players"])
+    assert all(
+        set(p["motion"]) == {"speed", "heading", "distance", "gait_cycles", "facing"} for p in expected["players"]
+    )
     assert all(0 <= p["motion"]["speed"] <= 9.00001 for p in expected["players"])
     tr.frame(match.duration)
     tr.frame(0)
