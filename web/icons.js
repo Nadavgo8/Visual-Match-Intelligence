@@ -30,5 +30,5 @@ export function bannerIcon(type) {
 
 export const FEED_ICONS = {
   goal: "⚽", card_yellow: "🟨", card_red: "🟥", var: "📺", sub: "🔁", penalty: "◎",
-  chance: "🎯", injury: "✚", clock: "⏱", whistle: "⏵", momentum: "↗",
+  chance: "🎯", injury: "✚", clock: "⏱", whistle: "⏵", momentum: "↗", big_chance: "❗", milestone: "🔢",
 };

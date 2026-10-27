@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -5,12 +6,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Rooms start on a random match by default; tests that don't pick a seed use the locked demo match.
+os.environ.setdefault("VMI_DEMO", "1")
+
 # Every test file belongs to exactly one layer (docs/implementation/12-QUALITY-AND-GIT-GATES.md §3.2).
 # A new file must be added here; collection fails otherwise, so `-m unit|contract|integration`
 # can never silently skip it.
 LAYERS = {
     "unit": {"test_atmosphere.py", "test_overlay.py", "test_generator_analytics.py", "test_coverage_gate.py",
-             "test_ci_config.py", "test_model_layer.py", "test_catch_up.py", "test_match_clock.py",
+             "test_ci_config.py", "test_model_layer.py", "test_catch_up.py", "test_match_clock.py", "test_voices.py",
              "test_full_match_actions.py", "test_ws_input.py"},
     "contract": {"test_contract_v2.py", "test_fixture_export.py", "test_scenarios.py", "test_schemas.py"},
     "integration": {"test_agents.py", "test_api.py", "test_engine.py", "test_generator.py",

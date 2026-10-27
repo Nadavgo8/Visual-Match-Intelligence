@@ -15,6 +15,7 @@ from . import rules
 POSITIONS = {"GK": "goalkeeper", "RB": "right-back", "CB": "centre-back", "LB": "left-back",
              "CM": "central midfielder", "DM": "defensive midfielder", "RW": "right winger",
              "ST": "striker", "LW": "left winger"}
+LEADER_CATEGORIES = ("goals", "shots", "shots_on_target", "key_passes", "xg", "passes_completed", "fouls")
 SHOWN_TYPES = {"shot", "card", "substitution", "var", "foul", "handball", "offside", "injury_stoppage", "period_end",
                "period_start", "added_time"}
 
@@ -190,10 +191,45 @@ class MatchTools:
                 "note": "the crowd sensor measures loudness only (last 10 min kept); missing intervals are not silence",
                 "evidence": [p["event_id"] for p in out if p["event_id"]]}
 
+    def get_leaders(self, category: str = "all") -> dict:
+        """Which players lead the match so far: goals, shots, shots on target, key passes, xG,
+        passes completed, fouls. category is one of those or "all"; returns the top 3 per category."""
+        m = self.m
+        stats: dict[str, dict] = {}
+        for e in m.events:
+            pid = e.get("player_id")
+            if not pid or pid not in m.players:
+                continue
+            s = stats.setdefault(pid, {k: 0 for k in LEADER_CATEGORIES} | {"_ev": []})
+            if e["type"] == "shot" and e["shot"].get("outcome") != "disallowed":
+                s["shots"] += 1
+                s["_ev"].append(e["id"])
+                outcome = e["shot"].get("outcome")
+                s["goals"] += outcome == "goal"
+                s["shots_on_target"] += outcome in ("goal", "saved")
+                s["xg"] = round(s["xg"] + (e["derived"].get("xg") or 0), 2)
+            elif e["type"] == "pass":
+                s["passes_completed"] += e["pass"].get("outcome") == "complete"
+                if e["derived"].get("key_pass"):
+                    s["key_passes"] += 1
+                    s["_ev"].append(e["id"])
+            elif e["type"] == "foul":
+                s["fouls"] += 1
+                s["_ev"].append(e["id"])
+        wanted = [c for c in LEADER_CATEGORIES if c == category] or list(LEADER_CATEGORIES)
+        out, evidence = {}, []
+        for cat in wanted:
+            top = sorted(((v[cat], pid) for pid, v in stats.items() if v[cat]), key=lambda x: (-x[0], x[1]))[:3]
+            out[cat] = [{"name": m.player_name(pid), "team": m.team_name(m.players[pid]["team"]), "value": val}
+                        for val, pid in top]
+            evidence += [i for _, pid in top for i in stats[pid]["_ev"]]
+        return {"leaders": out, "note": "match so far; xG counts only shots whose xG has arrived",
+                "evidence": sorted(set(evidence))}
+
     def get_rule(self, topic: str) -> dict:
         """Plain-language Laws of the Game explanation for a topic (offside, penalty, VAR, cards...)."""
         return rules.lookup(topic)
 
     def all(self) -> list:
         return [self.get_score_and_clock, self.get_events, self.get_team_stats, self.get_momentum,
-                self.get_attack_pattern, self.get_player, self.get_crowd_peaks, self.get_rule]
+                self.get_attack_pattern, self.get_player, self.get_leaders, self.get_crowd_peaks, self.get_rule]

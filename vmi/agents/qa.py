@@ -32,7 +32,7 @@ MAX_TOOL_CALLS = 6
 AGENT_OPTIONS = {"reasoning": {"effort": os.getenv("VMI_REASONING_EFFORT", "low")}}
 
 FOOTBALL_WORDS = re.compile(
-    r"\b(match|game|score|goal|shot|pass|foul|card|var|offside|penalty|referee|ref|whistle|half|minute|team|"
+    r"\b(match|game|scor\w*|goal|shot|pass|foul|card|var|offside|penalty|referee|ref|whistle|half|minute|team|"
     r"player|keeper|striker|defen\w*|attack\w*|win|winning|lose|losing|lead|draw|stats?|xg|possession|corner|"
     r"momentum|tactic\w*|formation|crowd|fans?|atmosphere|sub\w*|injur\w*|happen\w*|miss\w*|why|rule|ball|"
     r"press\w*|chance|save|kick|free|throw|book\w*|sent|red|yellow|added|time|left|who)\b", re.I)
@@ -58,6 +58,12 @@ def speaker_for(question: str, agent: str | None) -> str:
     if agent in ANALYST_AGENTS or MEANING_Q.search(question) or ANALYST_Q.search(question):
         return "analyst"
     return "commentator"
+
+
+LEADER_Q = re.compile(r"\b(most|top|lead\w*|led|best|highest|who has (had )?the)\b", re.I)
+LEADER_WORDS = [(r"key pass", "key_passes"), (r"on target", "shots_on_target"), (r"\bxg\b", "xg"),
+                (r"\bgoals?\b|scor\w*", "goals"), (r"shots?|attempts?", "shots"), (r"pass\w*", "passes_completed"),
+                (r"fouls?", "fouls")]
 
 
 class _Recorder:
@@ -203,6 +209,26 @@ class Assistant:
             return self._out("I can only help with this match: what happened, the rules, stats and tactics. "
                              "Try “why was that offside?” or “what did I miss?”", [], "router", [])
 
+        cat = next((c for pat, c in LEADER_WORDS if re.search(pat, ql)), None)
+        if cat and LEADER_Q.search(ql):
+            r = t.get_leaders(cat)
+            top = r["leaders"][cat]
+            label = cat.replace("_", " ").replace("xg", "xG")
+            if not top:
+                return self._out(f"Nobody has any {label} yet.", [], "match_analyst", ["get_leaders"])
+            first = top[0]
+            tied = [p for p in top if p["value"] == first["value"]]
+            rest = [p for p in top if p["value"] != first["value"]]
+            if len(tied) > 1:
+                who = [f"{p['name']} of {p['team']}" for p in tied]
+                names = ", ".join(who[:-1]) + f" and {who[-1]}"
+                text = f"{names} share the lead for {label}, with {first['value']} each."
+            else:
+                text = f"{first['name']} of {first['team']} leads for {label} with {first['value']}."
+            if rest:
+                text += " Next: " + ", ".join(f"{p['name']} {p['value']}" for p in rest) + "."
+            return self._out(text, r["evidence"], "match_analyst", ["get_leaders"])
+
         rule = rules.lookup(ql)
         asks_rule = re.search(r"\b(what is|what's an?|what does|how does|rule|explain|mean|why (was|is|did)|allowed|can a)\b", ql)
         # Rules expert
@@ -234,7 +260,7 @@ class Assistant:
             if p["shots"]:
                 bits.append(f"{p['shots']} shot{'s' if p['shots'] != 1 else ''}, {p['shots_on_target']} on target, "
                             f"{p['goals']} goal{'s' if p['goals'] != 1 else ''}"
-                            + (f" (synthetic xG {p['xg']})." if deep and p["xg"] is not None
+                            + (f" (xG {p['xg']})." if deep and p["xg"] is not None
                                else " (xG not yet available)." if deep else "."))
             if p["other"]:
                 bits.append("Also: " + "; ".join(p["other"][-3:]) + ".")
@@ -286,7 +312,7 @@ class Assistant:
             text += f", corners {hs['corners']}–{as_['corners']}, fouls {hs['fouls']}–{as_['fouls']}"
             text += f", yellow cards {hs['yellow_cards']}–{as_['yellow_cards']}"
             if deep or "xg" in ql:
-                text += (f", synthetic xG {hs['xg']}–{as_['xg']}"
+                text += (f", xG {hs['xg']}–{as_['xg']}"
                          if hs["xg"] is not None and as_["xg"] is not None else ", xG not yet available")
             text += f" ({h} first)."
             return self._out(text, st["evidence"], "match_analyst", ["get_team_stats"])
