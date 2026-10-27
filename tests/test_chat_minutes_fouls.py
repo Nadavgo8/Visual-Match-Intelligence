@@ -40,5 +40,9 @@ def test_foul_lines_name_the_fouler_and_the_free_kick_side(outputs):
     item = next(o for o in outs if o["kind"] == "feed" and o["icon"] == "foul" and not o["say"]["advantage"])
     line = chat_line(item, "basic")
     assert item["say"]["who"] in line
-    assert "his " not in line and "her " not in line
+    assert "his " not in line and "her " not in line and "fouls on" not in line
+    for advantage in (False, True):  # every phrasing, not just the one this cue picks
+        from vmi.agents.voices import _kai_options
+        for option in _kai_options("foul", {**item["say"], "advantage": advantage}):
+            assert "fouls on" not in option and "down on" not in option
 
