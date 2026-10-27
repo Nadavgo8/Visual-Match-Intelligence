@@ -421,7 +421,7 @@ class AttentionEngine:
         text = f"Shot by {who}: {outcome.replace('_', ' ') if outcome else 'result pending'}."
         if outcome == "goal":
             text = f"GOAL! {who} scores for {self.model.team_name(shot['team'])}."
-        deep = text + (f" xG {d['xg']} ({d['xg_method']})." if d.get("xg") is not None
+        deep = text + (f" xG {d['xg']}." if d.get("xg") is not None
                        else " xG not yet available.")
         old = self.shot_feeds.get(shot["id"])
         feed = self._feed(shot, TIER_BIG if outcome == "goal" or q.get("penalty") else TIER_ALL,

@@ -135,3 +135,12 @@ def test_half_time_report_names_clear_leaders_and_passes_the_validator():
             assert validate(sents, o["factpack"], roster) == []
             assert any(s["s"].startswith("Top players:") for s in sents)
             assert "synthetic" not in " ".join(s["s"] for s in sents).lower()
+
+
+def test_no_chat_text_or_model_fact_pack_mentions_the_xg_method(outs):
+    for o in outs:
+        if o["kind"] == "feed":
+            for depth in ("basic", "deep"):
+                assert "geometry" not in chat_line(o, depth) and "synthetic" not in chat_line(o, depth).lower()
+        else:
+            assert "method_version" not in str(o["factpack"]) and "geometry" not in str(o["factpack"])

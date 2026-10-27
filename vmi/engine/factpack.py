@@ -108,7 +108,7 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
         facts.append(f)
         if d.get("xg_id"):
             facts.append({"id": d["xg_id"], "type": "shot_xg", "shot_id": trigger["id"],
-                          "xg": d["xg"], "method_version": d["xg_method"]})
+                          "xg": d["xg"]})
         p = m.by_id.get(d.get("preparing_pass_id"))
         if p and d.get("assisted_by"):
             facts.append({"id": p["id"], "type": "assist", "by": _player(m, p["player_id"]),
