@@ -2,6 +2,12 @@
 
 נקודת המשך מרוכזת ועדכנית: [דוח סוף פרויקט ומכסה](FINAL-PROJECT-HANDOFF-2026-10-27.md).
 
+## Current pickup: Oct 27, night (Claude Code, one machine)
+
+- **Judges' link: https://vmi-match.azurewebsites.net** (Azure App Service, PR #40, `infra/deploy-appservice.sh`). Container Apps cannot build on the Free Trial (ACR Tasks refused). Checked live: health, a TV and a phone in one room, the phone can't control playback, reconnect. **Open:** the managed identity's two Foundry roles (command in `DEPLOY-VERCEL.md`). Until then answers show "written by code". Redeploy after each merge: zip `vmi`, `web`, `prompts` plus the lock file and `az webapp deploy` (run from PowerShell; Git Bash breaks `az.cmd` arguments that contain spaces).
+- Merged: #38 (cold loading), #40 (deploy). #32 (physical source): test fixes and sync pushed, CI then merge. #12 (3D): rig driven by source facing, gait and contacts. Against all 84 demo-match contacts, the boot, hands and forehead meet the drawn ball. Motion sequences checked in headless Chrome (pass: release, flight, reception; Ferreira's header: jump, contact, ball to goal), plus the crowd at quiet and goal moments.
+- Not yet done: a 30-minute soak, multi-room FPS on a real GPU, the video (plan §12).
+
 ## המשך 26.10 — שדרוג המשחק לפי 18 סעיפי המשתמש
 
 עדכון ביצוע 27.10: תיקוני תזמון ה־AI ב־PR #37 מוזגו ל־main
