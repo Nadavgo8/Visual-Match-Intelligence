@@ -343,7 +343,9 @@ def test_host_plays_changes_speed_and_loads_a_new_match_for_everyone():
             tv.send_text(json.dumps({"cmd": "speed", "value": 8}))
             assert until(tv, "state")["speed"] == 8
             tv.send_text(json.dumps({"cmd": "new_match", "seed": 7}))
-            snap = until(phone, "snapshot")
+            # The physical source takes seconds to generate off the event loop while
+            # the room keeps playing at 8x, so allow for the messages sent meanwhile.
+            snap = until(phone, "snapshot", limit=20000)
             assert snap["state"]["seed"] == 7 and snap["run_id"] == "r2" and snap["state"]["playing"] is False
             assert snap["feed"] == []
 
