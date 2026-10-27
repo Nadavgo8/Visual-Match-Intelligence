@@ -17,9 +17,9 @@ canvas { position:absolute; inset:0; width:100%; height:100%; }
 .momentum { position:relative; flex:1; height:.25em; background:var(--away); border-radius:2px; overflow:hidden; }
 .mom-fill { position:absolute; inset:0 auto 0 0; width:50%; background:var(--home); transition:width .4s linear; }
 .mom-mid { position:absolute; left:50%; top:0; bottom:0; width:1px; background:#101b29; }
-.edge-bar { position:absolute; top:3%; bottom:3%; width:clamp(3px,.34vw,6px); border-radius:6px; background:#c0dce51f; opacity:var(--signal-intensity); }
+.edge-bar { position:absolute; top:3%; bottom:3%; width:clamp(6px,.62vw,12px); border-radius:8px; background:#c0dce533; opacity:var(--signal-intensity); }
 .edge-bar.left { left:.45%; } .edge-bar.right { right:.45%; }
-.edge-bar i { position:absolute; bottom:0; width:100%; height:var(--edge-fill,100%); border-radius:inherit; background:linear-gradient(to top,#20bec4,var(--edge-color,#83939b)); filter:brightness(var(--edge-brightness,.4)); box-shadow:0 0 8px var(--edge-color,#83939b); transition:height .35s linear,filter .35s linear,box-shadow .35s linear; }
+.edge-bar i { position:absolute; bottom:0; width:100%; height:var(--edge-fill,100%); border-radius:inherit; background:linear-gradient(to top,#20bec4,var(--edge-color,#83939b)); filter:brightness(var(--edge-brightness,.4)); box-shadow:0 0 16px 2px var(--edge-color,#83939b); transition:height .35s linear,filter .35s linear,box-shadow .35s linear; }
 #atmosphere-edges[data-available="false"] .edge-bar { background:transparent; border:1px dashed #83939b; }
 #atmosphere-edges[data-available="false"] i { background:#83939b; box-shadow:none; opacity:.35; }
 .event-marker { position:absolute; top:3%; right:4.6%; width:7em; text-align:center; font-size:calc(1em * var(--symbol-size)); color:#f2f7f8; }

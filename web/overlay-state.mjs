@@ -8,7 +8,8 @@ const PRIORITY = { whistle: 0, kick_off: 1, stoppage: 2, foul: 3, offside: 3,
 export function edgePresentation(atmosphere) {
   const view = atmospherePresentation(atmosphere);
   return { ...view, height: view.value === null ? 100 : view.value * 100,
-    brightness: view.value === null ? 0.4 : 0.65 + view.value * 0.35,
+    // Bright enough to read at a glance from the sofa, even at a quiet level.
+    brightness: view.value === null ? 0.4 : 0.85 + view.value * 0.4,
     available: view.value !== null };
 }
 
