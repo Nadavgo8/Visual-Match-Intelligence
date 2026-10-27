@@ -24,14 +24,14 @@ It runs fully offline: without Foundry settings, the agents fall back to determi
 ```mermaid
 flowchart LR
   subgraph Generator["Seeded match generator (synthetic)"]
-    G[possession-chain sim<br/>private truth stays inside] --> F[event feed<br/>0.5–3 s late]
+    G[possession-chain sim<br/>private truth stays inside] --> F[event feed<br/>delayed linked shot xG]
     G --> W[whistle detections]
     G --> C[crowd level 1 Hz, noisy]
-    G --> T[tracking 10 Hz]
+    G --> T[tracking 20 Hz]
     G --> S[match state]
   end
-  F & W & C & S --> R[Replay clock<br/>delivery order]
-  R --> M[Match model<br/>derives xG, in-box, not-called,<br/>key passes, momentum]
+  F & W & C & T & S --> R[Replay clock<br/>delivery order]
+  R --> M[Match model<br/>derives in-box, not-called,<br/>key passes, momentum]
   M --> A[Attention Engine<br/>routing · timing · depth<br/>every decision has a why]
   A -->|banners, meters| TV[TV view]
   A -->|feed items| APP[Companion app]
@@ -48,9 +48,9 @@ flowchart LR
 
 **Deterministic numbers, AI for words.** Code decides what happened, what to show and when. The Foundry agents only word it, from a fact pack in which every fact has an event ID. A validator rejects any sentence whose evidence, numbers or names are not in the pack, or that claims *why* the crowd reacted (the sensor measures loudness only). On rejection or any agent error, a template writes the card, so the fan always gets a correct text. Every card and answer shows its receipts.
 
-**The Attention Engine** decides routing, timing and depth. In a typical generated match, about 1,550 feed and whistle records arrive; about 50 become banners, 30–40 become feed items and 7–11 become analysis cards, and the rest are left out with a reason. The TV view shows this trace live.
+**The Attention Engine** decides routing, timing and depth. Delivered records become selected event signals, companion items and stoppage analyses; omitted records retain a reason in the diagnostic trace. Presenter tools show this trace outside the viewing area.
 
-**Data realism.** The generator emits only what real sources produce today: an operator-logged event feed (fouls only when awarded, VAR phases, no xG), whistle detection from audio (no reason), a relative crowd level (no mood) and optical tracking. Everything interpretive is derived by the engine. Details: [docs/spec.md §6](docs/spec.md).
+**Data realism.** Synthetic source streams model an operator-logged event feed, whistle detections without a reason, relative crowd amplitude without a mood and optical tracking. Shot xG is a separate delayed generator event linked to its shot; the engine does not estimate it, and it never appears on the match screen. Other interpretation is derived from delivered evidence. Details: [docs/spec.md §6](docs/spec.md).
 
 ## Repository map
 

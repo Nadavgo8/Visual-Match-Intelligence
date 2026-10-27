@@ -93,18 +93,33 @@ def get_match(seed: int) -> Match:
 def chapters(match: Match) -> list[dict]:
     """Jump points for the replay controls (from the generated feed)."""
     out = []
+    by_id = {e["id"]: e for e in match.events}
     for e in match.events:
         label = None
+        start = e["t"]
         if e["type"] == "shot_result" and e["outcome"] == "goal":
             label = "Goal"
         elif e["type"] == "var" and e["var"]["phase"] == "check":
             label = "VAR check"
-        elif e["type"] == "card" and e["card"]["colour"] != "yellow":
-            label = "Red card"
+        elif e["type"] == "card":
+            if e["card"]["colour"] == "yellow":
+                label = "Yellow card"
+                offence = by_id.get(e.get("offence_id"))
+                if offence and offence["type"] in {"foul", "handball"}:
+                    label = "Foul / yellow card"
+                    start = min(start, offence["t"])
+            else:
+                label = "Red card"
+        elif e["type"] == "offside":
+            label = "Offside"
+            passes = [by_id[link] for link in e.get("related", [])
+                      if link in by_id and by_id[link]["type"] == "pass"]
+            if passes:
+                start = min(start, *(p["t"] for p in passes))
         elif e["type"] == "period_end":
             label = "Half-time" if e["period_end"]["period_no"] == 1 else "Full-time"
         if label:
-            out.append({"t": max(0.0, e["t"] - 20), "label": label, "clock": e["clock"]})
+            out.append({"t": max(0.0, start - 20), "label": label, "clock": e["clock"]})
     return out
 
 

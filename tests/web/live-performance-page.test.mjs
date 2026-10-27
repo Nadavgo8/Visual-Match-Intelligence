@@ -47,6 +47,43 @@ const edgeView=h=>{
   const edge=h.node('atmosphere-edges');return {fill:edge.style['--edge-fill'],color:edge.style['--edge-color'],
     transition:edge.style['--edge-transition'],available:edge.dataset.available,label:h.node('atmo-label').textContent};
 };
+const momentumView=h=>{
+  const fill=h.node('mom-fill');return {width:fill.style.width,transition:fill.style['--momentum-transition'],
+    available:fill.parentElement.dataset.available,label:fill.parentElement['aria-label']};
+};
+
+test('real TV momentum keeps live transitions but settles on pause, seek, reset, missing data and disconnect',async()=>{
+  const h=await harness();
+  const deliver=(t,share,now)=>{h.message({...meters(t,null),momentum:{home_index:share}});h.step(now);};
+  h.message({type:'state',...h.state,playing:true});h.message(frame(600));
+  deliver(600,.2,0);assert.equal(momentumView(h).transition,'none');
+  deliver(600,.8,20);assert.equal(momentumView(h).transition,'width .4s linear');
+  assert.equal(edgeView(h).available,'false','missing atmosphere must not invalidate measured momentum');
+  h.message({type:'state',...h.state,playing:false});
+  const paused=momentumView(h);assert.equal(paused.transition,'none');assert.equal(paused.width,'80.0%');
+  h.step(1000);assert.deepEqual(momentumView(h),paused);
+  h.node('scrub').onchange({target:{value:'20'}});
+  assert.deepEqual(momentumView(h),{width:'50.0%',transition:'none',available:'false',label:'Momentum unavailable'});
+  h.message({type:'state',...h.state,t:20});h.message(frame(20));deliver(20,.35,1020);
+  const sought=momentumView(h),direct=await harness();
+  direct.message({type:'snapshot',host:true,run_id:'r',state:{...direct.state,t:20},
+    meters:{...meters(20,null),momentum:{home_index:.35}}});direct.message(frame(20));direct.step(0);
+  assert.deepEqual(sought,momentumView(direct));assert.equal(sought.transition,'none');
+  h.message({type:'state',...h.state,t:20,playing:true});deliver(20,.7,1040);
+  assert.equal(momentumView(h).transition,'width .4s linear');
+  h.status('disconnected');assert.equal(momentumView(h).transition,'none');assert.equal(momentumView(h).width,'70.0%');
+  h.message({type:'state',...h.state,t:20,playing:true});
+  for(const bad of [null,undefined,NaN,Infinity,-.1,1.1,'0.5']) {
+    deliver(20,bad,1060);assert.equal(momentumView(h).available,'false');assert.equal(momentumView(h).transition,'none');
+  }
+  deliver(20,.5,1080);assert.equal(momentumView(h).available,'true');assert.equal(momentumView(h).transition,'none');
+  assert.equal(momentumView(h).label,'Seven-minute momentum: home 50 percent','measured balance differs from missing');
+  h.message({...meters(20,.4),momentum:null});h.step(1100);assert.equal(momentumView(h).available,'false');
+  assert.equal(edgeView(h).available,'true','missing momentum must not invalidate atmosphere');
+  h.message({type:'snapshot',host:true,run_id:'new',state:{...h.state,t:0}});
+  assert.equal(momentumView(h).transition,'none');assert.equal(momentumView(h).available,'false');
+  h.message(meters(0,.9,'r'));h.step(1120);assert.equal(momentumView(h).available,'false');
+});
 
 test('real TV entry settles edge bars on pause, seek, replacement run and missing data while preserving ordinary transitions',async()=>{
   const h=await harness();h.message({type:'state',...h.state,playing:true});h.message(frame(600));

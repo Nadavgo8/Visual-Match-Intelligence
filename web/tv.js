@@ -1,6 +1,6 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.24";
+import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.25";
 import { MatchScreen } from "./match-screen.mjs?v=3.18";
 import { createRenderer } from "./renderer-host.mjs?v=3.23";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
@@ -99,7 +99,8 @@ function onMeters(m) {
 function applyMeters(m) {
   scoreBug(m.score, m.clock);
   renderReplayTime($("scrub"), m.t, scrubbing);
-  renderMomentum($("mom-fill"), m.momentum?.home_index);
+  renderMomentum($("mom-fill"), m.momentum?.home_index,
+    {animate:screen.timeline.playing && !screen.waiting});
   const a = m.atmosphere;
   renderAtmosphere($("atmosphere-edges"), $("atmo-label"), a,
     {animate:screen.timeline.playing && !screen.waiting});
@@ -126,6 +127,7 @@ function clearMarkerElement() {
   $("event-marker").removeAttribute("data-cue");
 }
 function stopMeterAnimation() {
+  renderMomentum($("mom-fill"), appliedMeters?.momentum?.home_index, {animate:false});
   renderAtmosphere($("atmosphere-edges"), $("atmo-label"), appliedMeters?.atmosphere,
     {animate:false});
 }
@@ -148,7 +150,7 @@ function render(now) {
   const meters=frame ? meterTimeline.sample(frame.t,frame.run_id) : null;
   if(meters!==appliedMeters){
     if(meters)applyMeters(meters);
-    else {renderAtmosphere($("atmosphere-edges"),$("atmo-label"),null);renderer.setAtmosphere(null);audio.crowd(0);}
+    else {renderAtmosphere($("atmosphere-edges"),$("atmo-label"),null);renderMomentum($("mom-fill"),null);renderer.setAtmosphere(null);audio.crowd(0);}
     appliedMeters=meters;
   }
   const drawStart = performance.now();

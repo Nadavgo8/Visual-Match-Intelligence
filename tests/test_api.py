@@ -102,3 +102,37 @@ def test_browser_modules_are_served_as_javascript():
     for name in ("session.mjs", "atmosphere.mjs", "overlay-state.mjs", "app.js", "tv.js"):
         r = c.get(f"/static/{name}")
         assert r.status_code == 200 and "javascript" in r.headers["content-type"], (name, r.headers["content-type"])
+
+
+def test_presenter_chapters_include_the_build_up_to_linked_yellow_and_offside():
+    from types import SimpleNamespace
+
+    match = SimpleNamespace(events=[
+        {"id": "f", "type": "foul", "t": 30, "clock": "0:30"},
+        {"id": "c", "type": "card", "t": 48, "clock": "0:48", "card": {"colour": "yellow"},
+         "offence_id": "f"},
+        {"id": "p", "type": "pass", "t": 60, "clock": "1:00"},
+        {"id": "o", "type": "offside", "t": 67, "clock": "1:07", "related": ["p"]},
+        {"id": "g", "type": "shot_result", "t": 100, "clock": "1:40", "outcome": "goal"},
+        {"id": "r", "type": "card", "t": 120, "clock": "2:00", "card": {"colour": "red"}},
+    ])
+    assert chapters(match) == [
+        {"t": 10, "label": "Foul / yellow card", "clock": "0:48"},
+        {"t": 40, "label": "Offside", "clock": "1:07"},
+        {"t": 80, "label": "Goal", "clock": "1:40"},
+        {"t": 100, "label": "Red card", "clock": "2:00"},
+    ]
+
+
+def test_presenter_chapters_handle_missing_links_without_inventing_an_incident():
+    from types import SimpleNamespace
+
+    match = SimpleNamespace(events=[
+        {"id": "c", "type": "card", "t": 5, "clock": "0:05", "card": {"colour": "yellow"},
+         "offence_id": "missing"},
+        {"id": "o", "type": "offside", "t": 45, "clock": "0:45", "related": ["missing", "c"]},
+    ])
+    assert chapters(match) == [
+        {"t": 0, "label": "Yellow card", "clock": "0:05"},
+        {"t": 25, "label": "Offside", "clock": "0:45"},
+    ]

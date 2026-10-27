@@ -18,8 +18,10 @@ export function renderAtmosphere(edges, label, atmosphere, {animate = true} = {}
   label.textContent = view.label;
 }
 
-export function renderMomentum(fill, share) {
+export function renderMomentum(fill, share, {animate = true} = {}) {
   const available = Number.isFinite(share) && share >= 0 && share <= 1;
+  const continuous = animate && available && fill.parentElement.dataset.available === "true";
+  fill.style.setProperty("--momentum-transition", continuous ? "width .4s linear" : "none");
   fill.style.width = `${((available ? share : 0.5) * 100).toFixed(1)}%`;
   fill.parentElement.dataset.available = String(available);
   fill.parentElement.setAttribute("aria-label", available
