@@ -146,13 +146,33 @@ def test_certified_strong_turn_distance_and_gait_never_run_backward():
     arc_metrics(a, b, 0.9)
     arc_metrics(a, b, 0.1)
     assert arc_metrics(a, b, 0.69) == expected
-    for cell in _metric_curve(_metric_key(a, b)):
-        boundary = cell[0]
+    for cell in list(_metric_curve(_metric_key(a, b)).nodes.values()):
+        boundary = cell[1]
         left = arc_metrics(a, b, max(0, boundary - 1e-10))
         right = arc_metrics(a, b, min(1, boundary + 1e-10))
         for before, after in zip(left, right):
             assert after >= before - 1e-12
             assert after - before < 1e-6
+
+
+def test_non_dyadic_reversal_keeps_the_independent_integral_accuracy_requirement():
+    from vmi.generator.physics import arc_metrics
+
+    a = PathNode(0, 50, 34, 0, -8.01, 0)
+    b = PathNode(10, 54.45, 34, 0, 8.9, 0)
+    assert certified(a, b)
+    previous = sample([a, b], 0, distance=False)[:2]
+    distance = cycles = 0.0
+    dt = 10 / 40000
+    for index in range(1, 19001):
+        position = sample([a, b], index * dt, distance=False)[:2]
+        step = math.dist(previous, position)
+        distance += step
+        cycles += step / min(4.4, 0.8 + 0.5 * step / dt)
+        previous = position
+    actual = arc_metrics(a, b, 0.475)
+    assert actual[0] == pytest.approx(distance, abs=3e-5)
+    assert actual[1] == pytest.approx(cycles, abs=3e-5)
 
 
 @pytest.mark.parametrize("end_velocity", [(2.3911157157975858, -1.395977939455939), (-1.5, 2.0), None])
@@ -183,7 +203,7 @@ def test_source_integral_matches_dense_independent_position_measurement(end_velo
 
 
 def test_metric_cache_is_bounded_and_eviction_cannot_change_seek_phase():
-    from vmi.generator.physics import arc_metrics, _metric_curve, _metric_total
+    from vmi.generator.physics import arc_metrics, _metric_curve, _metric_plan
 
     a = PathNode(0, 10, 20, 0)
     b = PathNode(3, 12, 20, 0)
@@ -192,8 +212,8 @@ def test_metric_cache_is_bounded_and_eviction_cannot_change_seek_phase():
         end = PathNode(3, 12 + (i + 1) * 0.001, 20, 0)
         arc_metrics(a, end, 0.3)
     assert _metric_curve.cache_info().currsize <= 256
-    assert _metric_total.cache_info().currsize <= 256
-    assert all(len(_metric_curve(key)) <= 256 for key in ((3.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0),))
+    assert _metric_plan.cache_info().currsize <= 256
+    assert all(len(_metric_curve(key)) <= 8 * 511 for key in ((3.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0),))
     assert arc_metrics(a, b, 0.537) == expected
     nodes = through_velocities([a, b, PathNode(6, 14, 20, 0)])
     at = sample(nodes, 3)[2]
@@ -201,6 +221,123 @@ def test_metric_cache_is_bounded_and_eviction_cannot_change_seek_phase():
         near = sample(nodes, t)[2]
         assert near["distance"] == pytest.approx(at["distance"], abs=1e-6)
         assert near["gait_cycles"] == pytest.approx(at["gait_cycles"], abs=1e-6)
+
+
+def test_first_partial_query_builds_only_its_branch_and_all_nodes_are_bounded():
+    from vmi.generator.physics import arc_metrics, _metric_curve, _metric_key
+
+    a = PathNode(0, 50, 34, 0, -0.5502310440248639, 1.6246998777916524)
+    b = PathNode(5.9167718405420375, 48.86507710453219, 36.7320476955137, 0, 2.3911157157975858, -1.395977939455939)
+    _metric_curve.cache_clear()
+    direct = arc_metrics(a, b, 0.537)
+    curve = _metric_curve(_metric_key(a, b))
+    assert 1 <= len(curve) <= 9
+    for index in range(513):
+        arc_metrics(a, b, index / 512)
+    assert len(curve) <= 8 * 511
+    assert arc_metrics(a, b, 0.537) == direct
+    _metric_curve.cache_clear()
+    arc_metrics(a, b, 0.9)
+    arc_metrics(a, b, 0.1)
+    assert arc_metrics(a, b, 0.537) == direct
+
+
+def test_aggregate_node_budget_evicts_whole_curves_without_changing_seek(monkeypatch):
+    from vmi.generator import physics
+
+    cache = physics._CurveCache(max_nodes=16)
+    monkeypatch.setattr(physics, "_metric_curve", cache)
+    a, b = PathNode(0, 10, 20, 0, 0.2, 0), PathNode(3, 12, 21, 0, 0, 0.3)
+    expected = physics.arc_metrics(a, b, 0.537)
+    original = cache(physics._metric_key(a, b))
+    for index in range(20):
+        physics.arc_metrics(a, PathNode(3, 13 + index * 0.1, 21 + index * 0.03, 0, 0, 0.3), 0.537)
+        assert cache.retained_nodes <= 16
+        assert cache.retained_nodes == sum(len(entry[0]) for entry in cache.entries.values())
+    assert all(entry[0] is not original for entry in cache.entries.values())
+    misses = cache.cache_info().misses
+    assert physics.arc_metrics(a, b, 0.537) == expected
+    assert cache.cache_info().misses > misses
+
+
+def test_finalized_metric_summary_is_immutable_reloadable_and_not_inferred_from_raw_distance(monkeypatch):
+    import json
+    from dataclasses import asdict, replace
+    from vmi.generator import physics
+
+    raw = [PathNode(0, 10, 20, 999), PathNode(3, 12, 21, 777, 0.2, 0)]
+    assert sample(raw, 1.1)[2]["distance"] > 999
+    assert raw[1].incoming_metrics is None
+    nodes = through_velocities(raw)
+    expected = sample(nodes, 1.1)[2]
+    assert isinstance(nodes[1].incoming_metrics, tuple)
+    restored = [PathNode(**json.loads(json.dumps(asdict(node)))) for node in nodes]
+    assert isinstance(restored[1].incoming_metrics[2][0], tuple)
+    assert sample(restored, 1.1)[2] == expected
+    physics._metric_curve.cache_clear()
+    monkeypatch.setattr(physics, "_metric_plan", lambda key: pytest.fail("reconstructed finalized source summary"))
+    assert sample(restored, 1.1)[2] == expected
+    # Geometry changes invalidate an old summary rather than reusing stale truth.
+    with pytest.raises(pytest.fail.Exception, match="reconstructed"):
+        sample([restored[0], replace(restored[1], x=13)], 1.1)
+
+
+def test_zero_duration_source_nodes_do_not_construct_a_dividing_metric_summary():
+    nodes = through_velocities([PathNode(0, 10, 20, 0), PathNode(0, 10, 20, 0), PathNode(2, 12, 20, 0)])
+    assert nodes[1].incoming_metrics is None
+    assert nodes[1].distance == nodes[1].gait_cycles == 0
+    for t in (0, 0.5, 2):
+        x, y, motion = sample(nodes, t)
+        assert all(math.isfinite(value) for value in (x, y, motion["distance"], motion["gait_cycles"]))
+
+
+@pytest.mark.parametrize("travelled", [0.0, 0.0001, 8.0, 19.2, 20.0])
+def test_rest_endpoint_matches_independent_distance_and_cadence_across_stride_cap(travelled):
+    from vmi.generator.physics import arc_metrics
+
+    a, b = PathNode(0, 20, 34, 0), PathNode(4, 20 + travelled, 34, 0)
+    assert certified(a, b)
+    previous = sample([a, b], 0, distance=False)[:2]
+    distance = cycles = 0.0
+    dt = 4 / 10000
+    for index in range(1, 10001):
+        position = sample([a, b], index * dt, distance=False)[:2]
+        step = math.dist(previous, position)
+        distance += step
+        cycles += step / min(4.4, 0.8 + 0.5 * step / dt)
+        previous = position
+    actual = arc_metrics(a, b)
+    assert actual[0] == pytest.approx(distance, rel=1e-7, abs=1e-12)
+    assert actual[1] == pytest.approx(cycles, rel=1e-7, abs=1e-12)
+
+
+@pytest.mark.parametrize("travelled,start_speed,end_speed", [(8, 3, 3), (15, 3, 3), (0.0001, 0, 0)])
+def test_collinear_partial_primitives_match_dense_travel_and_stay_monotone_near_endpoints(
+    travelled, start_speed, end_speed
+):
+    from vmi.generator.physics import arc_metrics
+
+    a = PathNode(0, 20, 34, 0, start_speed, 0)
+    b = PathNode(5, 20 + travelled, 34, 0, end_speed, 0)
+    assert certified(a, b)
+    previous = sample([a, b], 0, distance=False)[:2]
+    distance = cycles = 0.0
+    dt = 5 / 20000
+    for index in range(1, 20001):
+        position = sample([a, b], index * dt, distance=False)[:2]
+        step = math.dist(previous, position)
+        distance += step
+        cycles += step / min(4.4, 0.8 + 0.5 * step / dt)
+        if index in (1000, 5000, 10000, 15000, 20000):
+            actual = arc_metrics(a, b, index / 20000)
+            assert actual[0] == pytest.approx(distance, abs=3e-5)
+            assert actual[1] == pytest.approx(cycles, abs=3e-5)
+        previous = position
+    points = sorted({0.0, 1.0, *(10**-i for i in range(1, 13)), *(1 - 10**-i for i in range(1, 13))})
+    values = [arc_metrics(a, b, u) for u in points]
+    for left, right in zip(values, values[1:]):
+        assert right[0] >= left[0] - 1e-12
+        assert right[1] >= left[1] - 1e-12
 
 
 def physical_fixture(ball_x=20, ball_y=30, holder="H9"):

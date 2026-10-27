@@ -288,3 +288,158 @@ the unapproved current simulation, not a replacement approved narrative. All 51
 Node tests passed in 1.70s; Ruff and `git diff --check` passed. The local focused
 command excluded the eight existing replay-heavy chat cases, which remain in the
 unchanged full CI gate. No complete current-head Python PASS is claimed.
+
+
+## Contact animation limit
+
+Current contact `start_t` is the actual touch. The optional 0.32-second action
+interval describes follow-through after that touch; it does not declare a
+pre-contact windup or body-preparation phase. Reachable actor movement and real
+ball release/contact are source facts, but full biomechanical preparation and
+release animation are not complete. A future preparation extension must be an
+explicit producer/consumer contract, not a renderer prediction of an upcoming
+pass or shot. The present work does not claim full animation or football-law
+acceptance.
+
+
+## Current numerical checkpoint after 762c6d6
+
+The initial synchronized checkpoint's unchanged full CI (40426603554) was
+cancelled after the 40-minute Python limit; coverage was skipped. Static and
+51 Node checks passed. This is a real open performance gate, not a complete
+Python PASS. The timeout, population tests and accuracy assertions are unchanged.
+
+The source now partitions integration at fixed speed extrema/zeroes and 7.2m/s
+stride-cap crossings. This fixes a separately reproduced non-dyadic reversal:
+its distance error was 6.8e-5 before the new regression, above the unchanged
+3e-5 independent reference requirement. On each smooth domain, positive partial
+CDF interpolation remains independent of sample history. Straight trajectories
+use stable scalar quadratic distance/cadence primitives; tiny-speed cadence uses
+a positive degree-eight polynomial whose integral is exact under Gauss8, with
+relative remainder below (.00625)^4. Generic canonical integration retains
+Gauss8 versus two half-interval Gauss8 estimates with a 5e-6 width-weighted
+internal error target; this is an estimator, not a formal error certificate.
+A regressive Gauss4/8 experiment was removed. External dense-reference tolerance
+is still 3e-5.
+
+Finalized PathNodes explicitly store immutable incoming metric summaries:
+geometry key, canonical domains, positive domain masses, total and optional
+collinear coefficients. Raw nodes have no summary. Geometry changes invalidate
+it; fixture JSON reload freezes its lists. These are stable private developer
+truth in player-paths.jsonl, never extra public tracking fields or viewer caches.
+Sampling reuses the summary without rebuilding canonical integrals or scanning
+past source history. Tests cover JSON parity, stale geometry and reconstruction
+failure, rather than inferring readiness from raw chord-distance fields.
+
+Partial trees are constructed only along the queried branch. At most eight
+fixed domains each have depth eight (511 possible nodes/domain); the retained
+cache is additionally a weighted whole-curve LRU with hard limits of 256 curves
+and 8,192 aggregate nodes. Eviction changes work only. Tests force a 16-node
+budget and require exact tuple equality after whole-curve eviction/rebuild.
+
+All 61 focused physical regressions passed in 14.56s. The independent read-only
+reviewer reran 28 synthetic curves in 10.09s: maximum observed distance error
+9.49e-6, gait error 9.59e-6, monotone domain/cell boundaries, pure seeks, cache
+bookkeeping and post-eviction equality. This is scoped numerical evidence, not
+all-match/law/visual acceptance.
+
+The final quiet seed-12 measurement constructed the same 1,000 tracking frames
+on a 20Hz source-time grid, 600.00 through 649.95 source seconds. These are
+Python frame-construction costs, not network delay, renderer CPU/GPU time or
+presented FPS:
+
+| Measurement | Current result |
+| --- | --- |
+| Generation / Tracker initialization | 34.716s / 0.431s |
+| Tracking-frame construction mean / p95 | 9.045ms / 15.948ms |
+| Tracking-frame construction p99 / maximum | 35.382ms / 66.132ms |
+| Source knots / path nodes | 3,270 / 32,935 |
+| Finalized summaries | 32,903 |
+| Peak retained partial nodes / budget | 6,267 / 8,192 |
+| Deep source objects / process RSS | 55.66MB / 178.16MB |
+
+The maximum fell from 738.50ms and p99 is below the nominal 50ms source interval.
+A 66ms individual call is not by itself a failure of the 500ms freshness or
+presented-FPS acceptance gate. Generation remains materially above the earlier
+approximately eight-second receipt, which was measured hours earlier; a matched
+old-algorithm control has not yet separated CPU conditions from algorithm cost.
+Finalized summaries added approximately 24.67MB of source objects. Generation
+runtime remains an open CI/P2 risk; the unchanged complete CI gate must decide
+actual current-head runtime. The memory cost and isolated maximum are reported
+measurements, not newly invented blocking thresholds. The actual action
+actor/ball audit found no geometry failures, and the frozen 2.2 benchmark hash
+remained unchanged. Receipt: out/physical-motion-profile-summary-final-seed12.json.
+No complete current-head Python/coverage gate, B4 or merge readiness is claimed.
+
+
+## Corrected seed-2 demo timeline
+
+The user authorized the faster reconciliation on Oct 27: keep seed 2 and update
+its locked narrative to corrected source 2.5.0. This supersedes the pending story
+decision described in the historical checkpoint above; it does not relax physics
+or causality assertions. Harbour City win 2-0. The feed contains three original
+goal results: Dumont's two count, while Marsh's later goal is explicitly cancelled.
+`test_demo_match.py` locks all three original results, the VAR decision, linked
+cancellation and final score; cancellation is never silently deleted from history.
+
+| Moment | Match clock | Source t | Delivered t | Source receipt |
+| --- | --- | --- | --- | --- |
+| Dumont header from a corner, first goal | 9:16 | 556.91 | 557.66 | aux_00175, shot evt_0139 |
+| Dumont header from a corner, second goal | 28:07 | 1687.64 | 1688.39 | aux_00480, shot evt_0385 |
+| Marsh goal initially reported | 70:15 | 4477.29 | 4478.04 | aux_01222, shot evt_0992 |
+| Goal review begins | 71:18 | 4539.72 | 4541.58 | evt_0993, var_0992 |
+| Goal cancelled; free kick to home | 71:57 | 4579.40 | 4580.15 | aux_01227, decision aux_01225 |
+| VAR outcome reported: overturned | 71:57 | 4579.40 | 4581.69 | evt_0994, var_0992 |
+
+For a short presenter sequence, show the two home goal receipts, seek before the
+away goal, then show its initial report followed by the delivered correction and
+the final 2-0 score. Keep the review outcome unknown until a corresponding feed
+packet arrives. Source time and match clock are different after period handling;
+use the source-t column for seeks rather than treating 70:15 as 4215 source seconds.
+The earlier penalty-overturn narrative is no longer this seed's script.
+
+Reproduce the locked full narrative offline:
+`VMI_OFFLINE=1 VMI_WARM_DEMO=0 python -m pytest tests/test_demo_match.py -q`.
+Raw checkpoint receipt: out/source25-final-demo-story.json (ignored developer
+artifact). This narrative update is user-authorized; it is not a fabricated
+physical-law, complete-CI or visual acceptance result.
+
+
+## Cold-seed integration gap
+
+`vmi/api/server.py:get_match` calls `generate_match` synchronously. That path is
+reached by `Room.reset` / async `Room.new_match` from the WebSocket handler.
+An uncached seed can therefore block the shared event loop for the generation
+duration; cached seeds avoid this work. The current approximately 34-second
+measurement makes this a concrete cold-seed responsiveness/freshness gap, not
+only a possible CI issue. The synchronous base path already existed. This source
+checkpoint does not change server/D2 ownership or claim full 500ms integration
+acceptance; source runtime and/or bounded worker integration still require a
+separate measured fix before that gate can pass.
+
+
+Focused checkpoint gates: physics/demo/fixture-export/action suites passed
+115 tests in 303.64s under isolated coverage. The approved seed-2 story is now
+GREEN with linked cancellation and score reconciliation. The scoped coverage
+report before the final zero-span guard showed physics 515 statements / six
+missed / 188 branches / seven partial (98% combined), and tracking 226 statements /
+32 missed / 116 branches / 16 partial (83% combined). This partial selection is
+not the full coverage gate. A final review reproduced a zero-duration raw-node
+summary division by zero (new test RED in 4.37s); the explicit guard retains zero
+metrics for that span and does not change ordinary generated source geometry.
+
+For comparison, the previously green f5dcb50 Linux CI population test took
+593.181s for 100 seeds, and its first 20-match fixture test took 118.865s.
+Those exact older CI receipts are useful controls, not current-head results.
+
+
+After the zero-span fix, all 62 physical regressions passed under isolated
+coverage in 49.42s. This final small selection covered physics 500/517 lines
+(96.71%) and 175/190 branches (92.11%); tracking 175/226 lines (77.43%) and
+78/116 branches (67.24%). The lower tracking total reflects selection scope,
+not a claimed full-gate regression. The earlier 115-test receipt was before
+this zero-span-only guard; ordinary generated paths have strictly increasing
+node times, so its profile/story data is unchanged. The exact committed head
+still requires the unchanged full CI suite. All 51 Node tests passed in 2.05s;
+Ruff format/check and `git diff --check` passed. No new local full-suite or
+100-seed run was started, and no gate, timeout or assertion was reduced.

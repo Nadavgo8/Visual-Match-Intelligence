@@ -1,6 +1,8 @@
 """Deterministic metric trajectories, planned before delivered tracking is sampled."""
 
 from bisect import bisect_right
+from collections import OrderedDict, namedtuple
+from threading import RLock
 from dataclasses import dataclass, replace
 from functools import lru_cache
 import math
@@ -35,6 +37,17 @@ class PathNode:
     heading: float | None = None
     facing: float | None = None
     gait_cycles: float = 0
+    # Canonical developer truth, never public tracking. Only finalized nodes
+    # carry (geometry, cuts, masses, total, polynomial); raw nodes have None.
+    incoming_metrics: tuple | None = None
+
+    def __post_init__(self):
+        if isinstance(self.incoming_metrics, list):
+
+            def freeze(value):
+                return tuple(freeze(item) for item in value) if isinstance(value, list) else value
+
+            object.__setattr__(self, "incoming_metrics", freeze(self.incoming_metrics))
 
 
 def progress(u):
@@ -128,7 +141,8 @@ def _quadrature(coefficients, lo, hi):
             6 * u * (1 - u) * rest if rest is not None else math.hypot((aa * u + bb) * u + cc, (dd * u + ee) * u + ff)
         )
         distance += weight * rate
-        cycles += weight * rate / min(4.4, 0.8 + 0.5 * rate * inverse_dt)
+        stride = 0.8 + 0.5 * rate * inverse_dt
+        cycles += weight * rate / (stride if stride < 4.4 else 4.4)
     scale = (hi - lo) / 2
     return scale * distance, scale * cycles
 
@@ -153,31 +167,160 @@ def _metric_coefficients(key):
     )
 
 
-@lru_cache(maxsize=256)
-def _metric_total(key):
-    """Accurate canonical endpoint; source planning need not build partial tables."""
-    coefficients = _metric_coefficients(key)
-    rest = coefficients[-1]
-    if rest == 0:
-        return 0.0, 0.0
+def _metric_cuts(coefficients):
+    """Fixed domains at speed extrema/zeros and the cadence stride-cap kink."""
+    aa, bb, cc, dd, ee, ff, inverse_dt, _ = coefficients
+    av, bv, cv = (aa, dd), (bb, ee), (cc, ff)
+    dot = lambda x, y: x[0] * y[0] + x[1] * y[1]
+    extrema = unit_roots((2 * dot(av, av), 3 * dot(av, bv), dot(bv, bv) + 2 * dot(av, cv), dot(bv, cv)))
+    points = sorted({0.0, 1.0, *(u for u in extrema if 0 < u < 1)})
+    threshold = (7.2 / inverse_dt) ** 2
+    evaluate = lambda u: ((aa * u + bb) * u + cc) ** 2 + ((dd * u + ee) * u + ff) ** 2 - threshold
+    crossings = []
+    for lo, hi in zip(points, points[1:]):
+        left = evaluate(lo)
+        if left * evaluate(hi) >= 0:
+            continue
+        for _ in range(36):
+            mid = (lo + hi) / 2
+            if left * evaluate(mid) <= 0:
+                hi = mid
+            else:
+                lo = mid
+        crossings.append((lo + hi) / 2)
+    cuts = []
+    for point in sorted([*points, *crossings]):
+        if not cuts or point - cuts[-1] > 1e-10:
+            cuts.append(point)
+    # Cubic extrema plus at most four quartic cap crossings: eight domains.
+    return tuple(cuts)
 
-    def integrate(lo, hi, whole, depth):
-        mid = (lo + hi) / 2
-        left, right = _quadrature(coefficients, lo, mid), _quadrature(coefficients, mid, hi)
-        fine = tuple(x + y for x, y in zip(left, right))
-        if depth == 8 or all(
-            abs(fine[i] - whole[i]) <= tolerance * (hi - lo) for i, tolerance in enumerate((1e-6, 1e-7))
+
+def _interval_metrics(coefficients, lo, hi):
+    """Accurate positive mass on a fixed interval, independent of the query."""
+
+    def integrate(left_u, right_u, whole, depth):
+        mid = (left_u + right_u) / 2
+        left = _quadrature(coefficients, left_u, mid)
+        right = _quadrature(coefficients, mid, right_u)
+        fine = left[0] + right[0], left[1] + right[1]
+        # Budget canonical integration below the independently tested 3e-5
+        # per-segment metric requirement, rather than 1e-7 per tiny interval.
+        if depth == 8 or (
+            abs(fine[0] - whole[0]) <= 5e-6 * (right_u - left_u)
+            and abs(fine[1] - whole[1]) <= 5e-6 * (right_u - left_u)
         ):
             return fine
-        first, last = integrate(lo, mid, left, depth + 1), integrate(mid, hi, right, depth + 1)
-        return tuple(x + y for x, y in zip(first, last))
+        first = integrate(left_u, mid, left, depth + 1)
+        last = integrate(mid, right_u, right, depth + 1)
+        return first[0] + last[0], first[1] + last[1]
 
-    cuts = [0.0, 1.0]
-    if rest is not None and 1.5 * rest / key[0] > 7.2:
-        root = math.sqrt(1 - 4 * 7.2 * key[0] / (6 * rest))
-        cuts = [0.0, (1 - root) / 2, (1 + root) / 2, 1.0]
-    parts = [integrate(lo, hi, _quadrature(coefficients, lo, hi), 0) for lo, hi in zip(cuts, cuts[1:])]
-    return (rest if rest is not None else sum(p[0] for p in parts), sum(p[1] for p in parts))
+    return integrate(lo, hi, _quadrature(coefficients, lo, hi), 0)
+
+
+def _collinear_polynomial(coefficients):
+    aa, bb, cc, dd, ee, ff, _, _ = coefficients
+    vectors = ((aa, dd), (bb, ee), (cc, ff))
+    direction = max(vectors, key=lambda v: math.hypot(*v))
+    length = math.hypot(*direction)
+    if length == 0:
+        return 0.0, 0.0, 0.0
+    ux, uy = direction[0] / length, direction[1] / length
+    if any(abs(x * uy - y * ux) > 1e-10 * max(1, math.hypot(x, y)) for x, y in vectors):
+        return None
+    return tuple(x * ux + y * uy for x, y in vectors)
+
+
+def _quadratic_roots(aa, bb, cc):
+    if abs(aa) < 1e-12:
+        return [-cc / bb] if abs(bb) > 1e-12 else []
+    discriminant = bb * bb - 4 * aa * cc
+    if discriminant < 0:
+        return []
+    value = -0.5 * (bb + math.copysign(math.sqrt(discriminant), bb))
+    return [value / aa, cc / value] if value else [-bb / (2 * aa)]
+
+
+def _collinear_cuts(polynomial, duration):
+    aa, bb, cc = polynomial
+    points = [0.0, 1.0]
+    if abs(aa) > 1e-12:
+        points.append(-bb / (2 * aa))
+    for level in (0.0, -7.2 * duration, 7.2 * duration):
+        points.extend(_quadratic_roots(aa, bb, cc - level))
+    cuts = []
+    for point in sorted(p for p in points if 0 <= p <= 1):
+        if not cuts or point - cuts[-1] > 1e-10:
+            cuts.append(point)
+    return tuple(cuts)
+
+
+def _reciprocal_quadratic(aa, bb, cc):
+    # Integral on [0,1]. Shift/scale before calling this to avoid subtracting
+    # almost equal logarithms or atan primitives on tiny partial intervals.
+    discriminant = 4 * aa * cc - bb * bb
+    middle = 2 * cc + bb
+    if abs(discriminant) <= 1e-12 * max(1, abs(4 * aa * cc), bb * bb):
+        return 2 / middle
+    if discriminant > 0:
+        root = math.sqrt(discriminant)
+        return 2 * math.atan2(root, middle) / root
+    root = math.sqrt(-discriminant)
+    return math.log1p(2 * root / (middle - root)) / root
+
+
+def _collinear_metrics(coefficients, polynomial, lo, hi):
+    width = hi - lo
+    if width <= 0:
+        return 0.0, 0.0
+    aa, bb, cc = polynomial
+    duration = 1 / coefficients[6]
+    mid = (lo + hi) / 2
+    sign = 1 if (aa * mid + bb) * mid + cc >= 0 else -1
+    aa, bb, cc = sign * aa, sign * bb, sign * cc
+    initial, slope = (aa * lo + bb) * lo + cc, 2 * aa * lo + bb
+    distance = max(0.0, width * (initial + slope * width / 2 + aa * width * width / 3))
+    speed = ((aa * mid + bb) * mid + cc) / duration
+    if speed >= 7.2:
+        return distance, distance / 4.4
+    maximum = max(abs((aa * u + bb) * u + cc) / duration for u in (lo, hi))
+    if maximum < 0.01:
+        # Four terms of the positive small-speed polynomial have relative
+        # error <=(.00625)^4. Gauss8 integrates its degree-eight polynomial
+        # exactly: changing partial nodes cannot create the old norm cusp bug.
+        cycles = 0.0
+        for x, weight in _GAUSS:
+            u = lo + width * (x + 1) / 2
+            rate = max(0.0, (aa * u + bb) * u + cc)
+            small = 0.625 * rate / duration
+            cycles += weight * rate / 0.8 * (1 - small + small * small - small * small * small)
+        return distance, cycles * width / 2
+    reciprocal = width * _reciprocal_quadratic(
+        0.5 * aa * width * width / duration, 0.5 * slope * width / duration, 0.8 + 0.5 * initial / duration
+    )
+    return distance, max(0.0, 2 * duration * (width - 0.8 * reciprocal))
+
+
+@lru_cache(maxsize=256)
+def _metric_plan(key):
+    """Canonical endpoint shared by source planning and every sampled CDF."""
+    coefficients = _metric_coefficients(key)
+    polynomial = _collinear_polynomial(coefficients)
+    cuts = _collinear_cuts(polynomial, key[0]) if polynomial is not None else _metric_cuts(coefficients)
+    parts = [
+        (
+            _collinear_metrics(coefficients, polynomial, lo, hi)
+            if polynomial is not None
+            else _interval_metrics(coefficients, lo, hi)
+        )
+        for lo, hi in zip(cuts, cuts[1:])
+    ]
+    total = tuple(sum(part[i] for part in parts) for i in (0, 1))
+    return key, cuts, tuple(parts), total, polynomial
+
+
+def _metric_total(key):
+    return _metric_plan(key)[3]
 
 
 def _positive_integral(fraction, width, total, left, right):
@@ -190,76 +333,161 @@ def _positive_integral(fraction, width, total, left, right):
     return min(total, max(0, value))
 
 
-@lru_cache(maxsize=256)
-def _metric_curve(key):
-    """At most 256 positive cells; bounded cache, independent of viewer history."""
-    coefficients = _metric_coefficients(key)
-    cells = []
-    rates = {}
+class _MetricCurve:
+    """Lazy positive CDF: at most eight domains of 511 query-independent nodes.
 
-    def rate(u):
-        cached = rates.get(u)
-        if cached is not None:
-            return cached
-        aa, bb, cc, dd, ee, ff, inverse_dt, rest = coefficients
+    Cache history changes only work performed. Node bounds, acceptance, positive
+    child masses and interpolation values depend solely on the source geometry.
+    """
+
+    def __init__(self, key, cache, plan):
+        self.key = key
+        self.cache = cache
+        self.coefficients = _metric_coefficients(key)
+        _, self.cuts, self.masses, self.total, self.polynomial = plan
+        masses = self.masses
+        sums = tuple(sum(mass[i] for mass in masses) for i in (0, 1))
+        prefix = [0.0, 0.0]
+        self.domains = []
+        for mass in masses:
+            normalized = tuple(self.total[i] * mass[i] / sums[i] if sums[i] else 0.0 for i in (0, 1))
+            self.domains.append((normalized, tuple(prefix)))
+            prefix = [prefix[i] + normalized[i] for i in (0, 1)]
+        self.nodes = {}
+
+    def __len__(self):
+        return len(self.nodes)
+
+    def rate(self, u):
+        aa, bb, cc, dd, ee, ff, inverse_dt, rest = self.coefficients
         value = (
             6 * u * (1 - u) * rest if rest is not None else math.hypot((aa * u + bb) * u + cc, (dd * u + ee) * u + ff)
         )
-        result = value, value / min(4.4, 0.8 + 0.5 * value * inverse_dt)
-        rates[u] = result
-        return result
+        return value, value / min(4.4, 0.8 + 0.5 * value * inverse_dt)
 
-    def divide(lo, hi, whole, depth):
-        width = hi - lo
-        # Positive Simpson cells reuse dyadic samples across subdivision. This
-        # avoids dozens of fresh Gauss evaluations on every cold render segment.
-        values = [rate(lo + width * j / 8) for j in range(9)]
+    def node(self, domain, depth, index, total):
+        identity = domain, depth, index
+        if identity in self.nodes:
+            return self.nodes[identity]
+        start, end = self.cuts[domain : domain + 2]
+        width = (end - start) * 2.0**-depth
+        lo, hi = start + index * width, start + (index + 1) * width
+        values = [self.rate(lo + width * j / 8) for j in range(9)]
         quarters = [
             tuple(width / 24 * (values[2 * j][i] + 4 * values[2 * j + 1][i] + values[2 * j + 2][i]) for i in (0, 1))
             for j in range(4)
         ]
-        total = tuple(sum(q[i] for q in quarters) for i in (0, 1))
-        left, right = rate(lo), rate(hi)
-        accurate = all(abs(total[i] - whole[i]) <= tol * width for i, tol in enumerate((1e-6, 1e-7)))
+        approximate = tuple(sum(q[i] for q in quarters) for i in (0, 1))
+        left, right = values[0], values[-1]
+        accurate = all(abs(approximate[i] - total[i]) <= 1e-5 for i in (0, 1))
         for j in (1, 2, 3):
-            for i, tol in enumerate((1e-5, 1e-5)):
+            for i in (0, 1):
                 expected = sum(q[i] for q in quarters[:j])
-                if abs(_positive_integral(j / 4, width, total[i], left[i], right[i]) - expected) > tol:
+                if abs(_positive_integral(j / 4, width, total[i], left[i], right[i]) - expected) > 1e-5:
                     accurate = False
-        if accurate or depth == 8:
-            cells.append((lo, hi, total, left, right))
-        else:
+        children = None
+        if not accurate and depth < 8:
             mid = (lo + hi) / 2
-            divide(lo, mid, tuple(quarters[0][i] + quarters[1][i] for i in (0, 1)), depth + 1)
-            divide(mid, hi, tuple(quarters[2][i] + quarters[3][i] for i in (0, 1)), depth + 1)
+            first = _interval_metrics(self.coefficients, lo, mid)
+            last = _interval_metrics(self.coefficients, mid, hi)
+            # Accurate positive half masses are normalized to their canonical
+            # parent. Coarse Simpson values must never become permanent prefixes.
+            first = tuple(total[i] * first[i] / (first[i] + last[i]) if first[i] + last[i] else 0.0 for i in (0, 1))
+            children = first, tuple(total[i] - first[i] for i in (0, 1))
+        result = lo, hi, total, left, right, children
+        self.nodes[identity] = result
+        self.cache.updated(self)
+        return result
 
-    divide(0.0, 1.0, _metric_total(key), 0)
-    # Partial and full requests use exactly the same cached canonical endpoint.
-    approximate = tuple(sum(cell[2][i] for cell in cells) for i in (0, 1))
-    canonical = _metric_total(key)
-    factors = tuple(canonical[i] / approximate[i] if approximate[i] else 0 for i in (0, 1))
-    cumulative = [0.0, 0.0]
-    table = []
-    for lo, hi, total, left, right in cells:
-        total = tuple(total[i] * factors[i] for i in (0, 1))
-        left, right = (tuple(value[i] * factors[i] for i in (0, 1)) for value in (left, right))
-        table.append((hi, lo, tuple(cumulative), total, left, right))
-        cumulative = [cumulative[i] + total[i] for i in (0, 1)]
-    return tuple(table)
+    def evaluate(self, u):
+        depth = index = 0
+        domain = min(bisect_right(self.cuts, u) - 1, len(self.domains) - 1)
+        total, prefix = self.domains[domain]
+        if self.polynomial is not None:
+            partial = _collinear_metrics(self.coefficients, self.polynomial, self.cuts[domain], u)
+            return tuple(
+                prefix[i] + min(total[i], partial[i] * total[i] / self.masses[domain][i])
+                if self.masses[domain][i]
+                else prefix[i]
+                for i in (0, 1)
+            )
+        while True:
+            lo, hi, total, left, right, children = self.node(domain, depth, index, total)
+            if children is None:
+                return tuple(
+                    prefix[i] + _positive_integral((u - lo) / (hi - lo), hi - lo, total[i], left[i], right[i])
+                    for i in (0, 1)
+                )
+            if u < (lo + hi) / 2:
+                total, index = children[0], index * 2
+            else:
+                prefix = [prefix[i] + children[0][i] for i in (0, 1)]
+                total, index = children[1], index * 2 + 1
+            depth += 1
+
+
+_CacheInfo = namedtuple("CacheInfo", "hits misses maxsize currsize")
+
+
+class _CurveCache:
+    """Whole-curve LRU bounded by entry count and aggregate retained nodes."""
+
+    def __init__(self, max_nodes=8192, max_curves=256):
+        self.max_nodes, self.max_curves = max_nodes, max_curves
+        self.entries = OrderedDict()
+        self.retained_nodes = self.hits = self.misses = 0
+        self.lock = RLock()
+
+    def __call__(self, key, plan=None):
+        with self.lock:
+            if key in self.entries:
+                self.hits += 1
+                self.entries.move_to_end(key)
+                return self.entries[key][0]
+            self.misses += 1
+            curve = _MetricCurve(key, self, plan if plan is not None else _metric_plan(key))
+            self.entries[key] = curve, 0
+            self.trim()
+            return curve
+
+    def trim(self):
+        while len(self.entries) > self.max_curves or self.retained_nodes > self.max_nodes:
+            _, (_, weight) = self.entries.popitem(last=False)
+            self.retained_nodes -= weight
+
+    def updated(self, curve):
+        with self.lock:
+            entry = self.entries.get(curve.key)
+            if entry is not None and entry[0] is curve:
+                weight = len(curve)
+                self.retained_nodes += weight - entry[1]
+                self.entries[curve.key] = curve, weight
+                self.entries.move_to_end(curve.key)
+                self.trim()
+
+    def cache_info(self):
+        with self.lock:
+            return _CacheInfo(self.hits, self.misses, self.max_curves, len(self.entries))
+
+    def cache_clear(self):
+        with self.lock:
+            self.entries.clear()
+            self.retained_nodes = self.hits = self.misses = 0
+
+
+_metric_curve = _CurveCache()
 
 
 def arc_metrics(a, b, u=1):
     if b.t <= a.t or u <= 0:
         return 0.0, 0.0
     key = _metric_key(a, b)
+    plan = b.incoming_metrics
+    if plan is None or plan[0] != key:
+        plan = _metric_plan(key)
     if u >= 1:
-        return _metric_total(key)
-    table = _metric_curve(key)
-    cell = table[min(bisect_right(table, u, key=lambda cell: cell[0]), len(table) - 1)]
-    hi, lo, prefix, total, left, right = cell
-    return tuple(
-        prefix[i] + _positive_integral((u - lo) / (hi - lo), hi - lo, total[i], left[i], right[i]) for i in (0, 1)
-    )
+        return plan[3]
+    return _metric_curve(key, plan).evaluate(u)
 
 
 def arc_length(a, b, u=1):
@@ -302,9 +530,14 @@ def through_velocities(nodes):
         None,
     )
     for i, node in enumerate(nodes):
+        metrics = None
         if i:
             previous = nodes[i - 1]
-            length, turns = arc_metrics(previous, node)
+            if node.t > previous.t:
+                metrics = _metric_plan(_metric_key(previous, node))
+                length, turns = metrics[3]
+            else:
+                length, turns = 0.0, 0.0
             total += length
             cycles += turns
             if math.dist((previous.x, previous.y), (node.x, node.y)) > 1e-8:
@@ -320,7 +553,9 @@ def through_velocities(nodes):
                 facing = math.atan2(dx, -dy)
         if facing is None:
             facing = heading
-        nodes[i] = replace(node, distance=total, heading=heading, facing=facing, gait_cycles=cycles)
+        nodes[i] = replace(
+            node, distance=total, heading=heading, facing=facing, gait_cycles=cycles, incoming_metrics=metrics
+        )
     return nodes
 
 

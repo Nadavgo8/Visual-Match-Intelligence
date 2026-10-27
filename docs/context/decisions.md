@@ -107,6 +107,9 @@ Calls made while writing spec v2 (Claude, Oct 22; Developer 1 can revisit them i
 - The story is locked by `tests/test_demo_match.py`, so a generator change that alters it fails CI. Changing the demo on purpose means updating that test and the demo script together. The model evaluation keeps its own frozen fixture (generator 2.2, seed 12).
 - Any seed still works; the seed only sets which match a room starts with.
 
+
+- **Later Oct 27, superseding the initial 2.4 narrative above:** the user authorized whichever reconciliation required less time/tokens. Developer 1 retained seed 2 and updated the explicit story to corrected source 2.5.0: Harbour City **2–0** Northvale Rovers; Dumont scores at 9:16 and 28:07, Marsh's 70:15 goal is cancelled at the 71:57 VAR decision. The test still locks every goal result and VAR outcome, now also checking the actual cancellation/result/shot links and reconciling counted goals with the final score. The frozen 2.2 evaluation match is unchanged. Reproducible source/delivery timeline: [D1 physical motion](../implementation/D1-PHYSICAL-MOTION.md#corrected-seed-2-demo-timeline).
+
 ## Unified match chat (Oct 27)
 
 - Nadav merged the app's Feed and Ask tabs into **one chronological chat** and approved **two named voices**, replacing "one commentator voice": **Kai** (commentator: what happened, labelled Fact) and **Ada** (analyst: what it means, labelled Interpretation; also answers rules questions). Nadav also explicitly overrode the 24-hour feature freeze for this change.
