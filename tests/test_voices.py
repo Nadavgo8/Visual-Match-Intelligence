@@ -144,3 +144,49 @@ def test_no_chat_text_or_model_fact_pack_mentions_the_xg_method(outs):
                 assert "geometry" not in chat_line(o, depth) and "synthetic" not in chat_line(o, depth).lower()
         else:
             assert "method_version" not in str(o["factpack"]) and "geometry" not in str(o["factpack"])
+
+
+def _period_pack(moment="half_time", home=None, away=None, goals=(), mom=None, leaders=None):
+    base = {"shots": 5, "shots_on_target": 2, "xg": 0.8, "possession": 0.5}
+    facts = [{"id": "stat:match", "type": "match_stats", "home": {**base, **(home or {})}, "away": {**base, **(away or {})}}]
+    facts += list(goals)
+    if leaders:
+        facts.append({"id": "stat:leaders", "type": "player_leaders", **leaders})
+    deep = [{"id": "stat:momentum", "type": "momentum_last_7_min", **mom}] if mom else []
+    return {"moment": moment, "teams": {"home": "Home FC", "away": "Away Town"}, "score": {"home": 0, "away": 0},
+            "minutes_left": 45, "facts": facts, "deep_context": deep, "context": {}}
+
+
+def test_a_level_goalless_half_reports_equal_shots_and_who_finished_stronger():
+    pack = _period_pack(mom={"home_share_pct": 40, "away_share_pct": 60})
+    text = " ".join(s["s"] for s in template(pack, "basic"))
+    assert "Half-time: Home FC 0–0 Away Town, no goals yet." in text
+    assert "Both sides had 5 shots; Home FC put 2 on target, Away Town 2." in text
+    assert "Possession was close: Home FC 50%, Away Town 50%." in text
+    assert "Away Town finished the half stronger, with 60% of the momentum" in text
+    assert "better chances" not in text  # equal xG names nobody
+
+
+def test_full_time_report_without_xg_or_momentum_and_a_one_sided_possession():
+    pack = _period_pack("full_time", home={"xg": None, "possession": 0.7, "shots": 9},
+                        away={"possession": 0.3, "shots": 3, "shots_on_target": 1})
+    sents = template(pack, "deep")
+    text = " ".join(s["s"] for s in sents)
+    assert "Full-time: Home FC 0–0 Away Town, no goals in this one." in text
+    assert "Home FC took more shots, 9 to 3, with 2 on target against 1 for Away Town." in text
+    assert "Possession: Home FC 70%, Away Town 30%." in text
+    assert "xG" not in text and "momentum" not in text
+    assert len(sents) <= 6
+
+
+def test_a_goal_without_an_assist_is_described_by_how_it_went_in_or_left_to_the_score():
+    from vmi.agents.explainer import _t_goal
+
+    def pack(**goal):
+        g = {"id": "g1", "type": "goal", "team": "Home FC", "scorer": {"name": "Ola", "position": "ST"},
+             "penalty": False, **goal}
+        return {"moment": "goal", "teams": {"home": "Home FC", "away": "Away Town"}, "score": {"home": 1, "away": 0},
+                "minutes_left": 30, "facts": [g], "deep_context": [], "context": {"scoring_team_now": "leading"}}
+    assert _t_goal(pack(body_part="head"), "basic", None)[0]["s"] == "Ola did it with a header."
+    plain = _t_goal(pack(), "basic", None)
+    assert len(plain) == 1 and plain[0]["s"].startswith("That puts Home FC ahead")
