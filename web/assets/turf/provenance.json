@@ -1,0 +1,12 @@
+{
+  "asset": "Grass004",
+  "author": "Lennart Demes / ambientCG",
+  "license": "CC0-1.0",
+  "source": "https://ambientcg.com/view?id=Grass004",
+  "archiveURL": "https://ambientcg.com/get?file=Grass004_1K-JPG.zip",
+  "archiveSHA256": "4b63495f459db8481f4d5144e4e9069345c81cf898cc71f2216f5dd3bb344469",
+  "files": {
+    "color.jpg": "9e1c60da44b34a9738b1256ba827541f097dc583521b1d281e61b5f4b4217bc5",
+    "normal.jpg": "8014a81d896a5c589b60612a769bc39eb1213e48d96f6146f485ea36e9e9610f"
+  }
+}

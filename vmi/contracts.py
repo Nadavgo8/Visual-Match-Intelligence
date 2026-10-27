@@ -3,11 +3,14 @@
 import math
 
 VERSION = "2.0"
-LINK_PARENTS = {"shot_result": {"shot_id": "shot"}, "shot_xg": {"shot_id": "shot"},
-                "goal_cancelled": {"shot_id": "shot", "result_id": "shot_result", "decision_id": "referee_decision"},
-                "referee_decision": {"trigger_event_id": None, "stoppage_id": "play_stopped"},
-                "restart_awarded": {"decision_id": "referee_decision", "stoppage_id": "play_stopped"},
-                "restart_taken": {"restart_id": "restart_awarded", "stoppage_id": "play_stopped"}}
+LINK_PARENTS = {
+    "shot_result": {"shot_id": "shot"},
+    "shot_xg": {"shot_id": "shot"},
+    "goal_cancelled": {"shot_id": "shot", "result_id": "shot_result", "decision_id": "referee_decision"},
+    "referee_decision": {"trigger_event_id": None, "stoppage_id": "play_stopped"},
+    "restart_awarded": {"decision_id": "referee_decision", "stoppage_id": "play_stopped"},
+    "restart_taken": {"restart_id": "restart_awarded", "stoppage_id": "play_stopped"},
+}
 
 
 def _number(value) -> bool:
@@ -36,14 +39,54 @@ def validate_record(rec: dict, match_id: str) -> None:
             raise ValueError("invalid measurement confidence")
         if stream == "tracking":
             for player in rec.get("players", []):
-                if "motion" not in player:
-                    continue
-                motion = player["motion"]
-                if (not isinstance(motion, dict) or set(motion) != {"heading", "speed", "distance"}
+                if "motion" in player:
+                    motion = player["motion"]
+                    if (
+                        not isinstance(motion, dict)
+                        or not {"heading", "speed", "distance"} <= set(motion)
+                        or set(motion) - {"heading", "speed", "distance", "facing", "gait_cycles"}
                         or not all(_number(value) for value in motion.values())
                         or not -math.pi <= motion["heading"] <= math.pi
-                        or motion["speed"] < 0 or motion["distance"] < 0):
-                    raise ValueError("invalid source player motion")
+                        or not -math.pi <= motion.get("facing", 0) <= math.pi
+                        or motion["speed"] < 0
+                        or motion["distance"] < 0
+                        or motion.get("gait_cycles", 0) < 0
+                    ):
+                        raise ValueError("invalid source player motion")
+                if "contact" in player:
+                    contact = player["contact"]
+                    fields = {"kind", "effector", "start_t", "end_t", "target", "phase", "heading"}
+                    if (
+                        not isinstance(contact, dict)
+                        or set(contact) != fields
+                        or not isinstance(contact["kind"], str)
+                        or contact["kind"]
+                        not in {"control", "receive", "release", "save", "throw", "block", "challenge"}
+                        or not isinstance(contact["effector"], str)
+                        or contact["effector"] not in {"foot", "hands", "head"}
+                        or not all(_number(contact[k]) for k in ("start_t", "end_t", "phase", "heading"))
+                        or not 0 <= contact["start_t"] <= contact["end_t"]
+                        or contact["start_t"] > rec["t"] + 0.005001
+                        or rec["t"] > contact["end_t"] + 0.005001
+                        or not 0 <= contact["phase"] <= 1
+                        or not -math.pi <= contact["heading"] <= math.pi
+                        or not isinstance(contact["target"], list)
+                        or len(contact["target"]) != 3
+                        or not all(_number(value) for value in contact["target"])
+                        or not -5 <= contact["target"][0] <= 110
+                        or not -5 <= contact["target"][1] <= 73
+                        or not 0 <= contact["target"][2] <= 30
+                        or (
+                            contact["kind"] == "control"
+                            and (contact["start_t"] != contact["end_t"] or contact["phase"] != 1)
+                        )
+                        or (contact["kind"] != "control" and contact["start_t"] == contact["end_t"])
+                        or abs(
+                            contact["start_t"] + (contact["end_t"] - contact["start_t"]) * contact["phase"] - rec["t"]
+                        )
+                        > 0.005001
+                    ):
+                        raise ValueError("invalid source player contact")
         return
     if not isinstance(rec.get("id"), str) or not rec["id"]:
         raise ValueError("event id is required")
@@ -52,16 +95,34 @@ def validate_record(rec: dict, match_id: str) -> None:
     kind = rec.get("type")
     if not isinstance(kind, str) or not kind:
         raise ValueError("event type is required")
-    if kind in {"pass", "shot", "foul", "handball", "dribble", "carry", "set_piece", "whistle", "substitution", "card", "var",
-                "offside", "injury_stoppage", "period_start", "period_end", "added_time"}:
+    if kind in {
+        "pass",
+        "shot",
+        "foul",
+        "handball",
+        "dribble",
+        "carry",
+        "set_piece",
+        "whistle",
+        "substitution",
+        "card",
+        "var",
+        "offside",
+        "injury_stoppage",
+        "period_start",
+        "period_end",
+        "added_time",
+    }:
         # Some qualifier-free events intentionally have no nested payload.
         if kind not in {"offside", "injury_stoppage"} and not isinstance(rec.get(kind), dict):
             raise ValueError(f"{kind} payload is required")
     if kind == "dribble" and rec["dribble"].get("outcome") not in {"complete", "failed", "interrupted", "unresolved"}:
         raise ValueError("unknown dribble outcome")
-    if kind == "dribble" and (not isinstance(rec["dribble"].get("defender_id"), str)
-                              or not rec["dribble"]["defender_id"]
-                              or rec["dribble"]["defender_id"] == rec.get("player_id")):
+    if kind == "dribble" and (
+        not isinstance(rec["dribble"].get("defender_id"), str)
+        or not rec["dribble"]["defender_id"]
+        or rec["dribble"]["defender_id"] == rec.get("player_id")
+    ):
         raise ValueError("dribble requires a distinct identified defender")
     if kind == "handball" and rec["handball"].get("offence") is not True:
         raise ValueError("handball record requires a reported offence")
@@ -81,5 +142,12 @@ def validate_record(rec: dict, match_id: str) -> None:
     elif "xg" in rec:
         raise ValueError("xG is allowed only in shot_xg")
     if kind == "referee_decision" and rec.get("decision") not in {
-            "penalty", "no_penalty", "free_kick", "kick_off", "goal_kick", "corner", "throw_in"}:
+        "penalty",
+        "no_penalty",
+        "free_kick",
+        "kick_off",
+        "goal_kick",
+        "corner",
+        "throw_in",
+    }:
         raise ValueError("unknown referee decision")

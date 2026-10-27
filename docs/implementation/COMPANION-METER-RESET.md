@@ -1,5 +1,15 @@
 # Companion meter reset — 26 October 2026
 
+## Final verification
+
+PR #31 was squash merged to **8df01f18cb9c8e28dd1c91f002f85959ec25c5fd**.
+Post-merge CI **40299302501** passed all four checks: **453 Python tests in
+436.66s, 40 Node tests**, Python coverage **92.88% lines / 88.31% branches**.
+The merged tree matched tested head `ed747879`; 15 focused companion Node
+tests also passed on main. Browser recheck showed measured 29% atmosphere
+and 67% home momentum replaced by unavailable values at 0:00 after loading
+seed 13. Status **DONE**; the initial pending entries below are historical.
+
 ## Finding and scope
 
 During the D1 3D integration audit, replacing seed 12 at 2:09 with seed 13

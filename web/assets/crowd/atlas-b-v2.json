@@ -1,0 +1,187 @@
+{
+  "width": 1774,
+  "height": 887,
+  "identities": 6,
+  "sprites": [
+    {
+      "rect": [
+        123,
+        12,
+        139,
+        255
+      ],
+      "height": 1.28,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        407,
+        13,
+        129,
+        255
+      ],
+      "height": 1.28,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        675,
+        5,
+        150,
+        263
+      ],
+      "height": 1.28,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        962,
+        12,
+        131,
+        257
+      ],
+      "height": 1.28,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        1239,
+        7,
+        150,
+        261
+      ],
+      "height": 1.28,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        1526,
+        13,
+        132,
+        256
+      ],
+      "height": 1.28,
+      "pose": "seated"
+    },
+    {
+      "rect": [
+        126,
+        280,
+        128,
+        311
+      ],
+      "height": 1.78,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        405,
+        284,
+        125,
+        308
+      ],
+      "height": 1.78,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        682,
+        277,
+        135,
+        315
+      ],
+      "height": 1.78,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        965,
+        283,
+        125,
+        309
+      ],
+      "height": 1.78,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        1243,
+        278,
+        138,
+        313
+      ],
+      "height": 1.78,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        1529,
+        284,
+        126,
+        308
+      ],
+      "height": 1.78,
+      "pose": "standing"
+    },
+    {
+      "rect": [
+        89,
+        581,
+        198,
+        303
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        373,
+        583,
+        187,
+        301
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        635,
+        579,
+        224,
+        306
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        923,
+        585,
+        211,
+        300
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        1207,
+        587,
+        216,
+        297
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    },
+    {
+      "rect": [
+        1497,
+        591,
+        192,
+        294
+      ],
+      "height": 2.08,
+      "pose": "raised"
+    }
+  ]
+}

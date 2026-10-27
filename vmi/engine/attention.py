@@ -372,6 +372,8 @@ class AttentionEngine:
                     self._expect("penalty", 6)
                     self.penalty_pending = True
                     txt = "VAR: PENALTY given. The decision is overturned."
+                elif v["outcome"] == "overturned" and v["incident"] == "goal":
+                    txt = "VAR: goal disallowed. The decision is overturned."
                 else:
                     txt = f"VAR: {v['incident']} — the decision stands."
                 out.append(self._feed(ev, TIER_BIG, "var", txt, txt, team=None))
@@ -417,15 +419,20 @@ class AttentionEngine:
     def _shot_feed(self, shot: dict) -> dict:
         q, d = shot["shot"], shot["derived"]
         outcome = q.get("outcome")
+        goal_receipt = outcome in {"goal", "disallowed"}
         who = self.model.player_name(shot["player_id"])
         text = f"Shot by {who}: {outcome.replace('_', ' ') if outcome else 'result pending'}."
         if outcome == "goal":
             text = f"GOAL! {who} scores for {self.model.team_name(shot['team'])}."
+        elif outcome == "disallowed":
+            text = f"Goal disallowed: {who}'s goal for {self.model.team_name(shot['team'])} does not count."
         deep = text + (f" xG {d['xg']}." if d.get("xg") is not None
                        else " xG not yet available.")
         old = self.shot_feeds.get(shot["id"])
-        feed = self._feed(shot, TIER_BIG if outcome == "goal" or q.get("penalty") else TIER_ALL,
-                          "goal" if outcome == "goal" else "chance", text, deep)
+        # A correction must reach the same audience and retain the receipt topic
+        # to which existing analysis replies; it is not a new ordinary chance.
+        feed = self._feed(shot, TIER_BIG if goal_receipt or q.get("penalty") else TIER_ALL,
+                          "goal" if goal_receipt else "chance", text, deep)
         if old:
             feed["cue_id"] = old["cue_id"]
             feed["reply_to"] = old["reply_to"]

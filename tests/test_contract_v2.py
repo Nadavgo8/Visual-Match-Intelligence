@@ -83,6 +83,112 @@ def test_unknown_result_and_xg_stay_missing_and_feed_upserts(match):
     assert engine.ingest(xg(match), 15) == []
 
 
+@pytest.mark.parametrize("result_first", [False, True])
+@pytest.mark.parametrize("cancel_before_analysis", [False, True])
+def test_cancelled_goal_keeps_its_receipt_topic_priority_and_links(tiny_match, result_first, cancel_before_analysis):
+    from vmi.engine.attention import visible_to
+
+    fixture = tiny_match
+    engine = AttentionEngine(MatchModel(fixture.meta))
+    source = shot(fixture) | {"delivered_t": 12 if result_first else 10.5}
+    goal = result(fixture) | {"delivered_t": 11.5}
+    outputs = []
+    for record in ([goal, source] if result_first else [source, goal]):
+        outputs += engine.ingest(record, record["delivered_t"])
+        if record is goal and result_first:
+            assert engine.model.score == {"home": 0, "away": 0}
+            assert not any(o["kind"] == "feed" for o in outputs)
+    feeds = [o for o in outputs if o["kind"] == "feed"]
+    original = feeds[-1]
+    assert original["icon"] == "goal" and engine.model.score["home"] == 1
+    analyses = [] if cancel_before_analysis else engine.release_analysis(20)
+
+    start = 15 if cancel_before_analysis else 30
+    for record in [event(fixture, "offside", "off", t=10, delivered_t=start),
+                   event(fixture, "play_stopped", "stop", t=start-1, delivered_t=start, trigger_event_id="off"),
+                   event(fixture, "referee_decision", "decision", t=start, delivered_t=start+1,
+                         trigger_event_id="off", stoppage_id="stop", decision="free_kick", team="away"),
+                   event(fixture, "goal_cancelled", "cancel", t=start+1, delivered_t=start+2,
+                         shot_id="s1", result_id="r1", decision_id="decision")]:
+        correction_outputs = engine.ingest(record, record["delivered_t"])
+    correction = next(o for o in correction_outputs if o["kind"] == "feed")
+    assert correction["cue_id"] == original["cue_id"] and correction["update"]
+    assert correction["reply_to"] == original["reply_to"]
+    assert correction["icon"] == "goal" and visible_to(correction, "big")
+    assert "disallowed" in correction["text"]["basic"].lower()
+    assert {"s1", "cancel"}.issubset(correction["evidence"])
+    assert engine.model.score == {"home": 0, "away": 0}
+    if cancel_before_analysis:
+        assert not any(o["kind"] == "analysis" for o in engine.release_analysis(20))
+    else:
+        assert analyses[0]["reply_to"] == correction["cue_id"]
+        assert analyses[0]["factpack"]["score"] == {"home": 1, "away": 0}
+    assert original["icon"] == "goal" and "GOAL!" in original["text"]["basic"]
+    enrichment = engine.ingest(xg(fixture) | {"delivered_t": start+3}, start+3)[0]
+    assert enrichment["icon"] == "goal" and enrichment["cue_id"] == correction["cue_id"]
+    assert visible_to(enrichment, "big") and "disallowed" in enrichment["text"]["basic"].lower()
+    assert enrichment["xg"] == 0.24 and engine.model.score["home"] == 0
+
+
+@pytest.fixture
+def tiny_match():
+    from types import SimpleNamespace
+    from vmi.generator.teams import make_teams
+
+    # Explicit tiny delivered-data fixture; no full match or model/provider call.
+    return SimpleNamespace(meta={"schema_version": "2.0", "match_id": "cancelled-goal-order",
+        "teams": {side: {"name": team.name, "players": [vars(p) | {"starter": True} for p in team.players]}
+                  for side, team in make_teams().items()}})
+
+
+@pytest.mark.parametrize("incident,outcome", [("goal", "stands"), ("goal", "overturned"),
+                                              ("penalty", "stands"), ("penalty", "overturned")])
+def test_var_decision_feed_reports_the_delivered_outcome(tiny_match, incident, outcome):
+    engine = AttentionEngine(MatchModel(tiny_match.meta))
+    record = event(tiny_match, "var", "var-decision", t=30, var={"review_id": "review-1",
+        "phase": "decision", "incident": incident, "original_decision": "goal" if incident == "goal" else "no_penalty",
+        "outcome": outcome})
+    feed = next(o for o in engine.ingest(record, 31) if o["kind"] == "feed")
+    basic, deep = feed["text"]["basic"].lower(), feed["text"]["deep"].lower()
+    for text in (basic, deep):
+        assert ("overturned" in text) is (outcome == "overturned")
+        assert ("decision stands" in text) is (outcome == "stands")
+        if outcome == "overturned":
+            assert ("goal disallowed" if incident == "goal" else "penalty given") in text
+
+
+@pytest.mark.parametrize("result_first", [False, True])
+def test_short_replay_goal_analysis_stays_linked_to_its_corrected_goal_receipt(tiny_match, result_first):
+    from vmi.generator.match import Match
+    from vmi.generator.motion import Keyframe
+
+    source = shot(tiny_match) | {"delivered_t": 12 if result_first else 10.5}
+    goal = result(tiny_match) | {"delivered_t": 11.5}
+    events = [source, goal,
+              event(tiny_match, "offside", "off", t=10, delivered_t=30),
+              event(tiny_match, "play_stopped", "stop", t=29, delivered_t=30, trigger_event_id="off"),
+              event(tiny_match, "referee_decision", "decision", t=30, delivered_t=31,
+                    trigger_event_id="off", stoppage_id="stop", decision="free_kick", team="away"),
+              event(tiny_match, "goal_cancelled", "cancel", t=31, delivered_t=32,
+                    shot_id="s1", result_id="r1", decision_id="decision"),
+              xg(tiny_match) | {"delivered_t": 33}]
+    replay = Replay(Match(tiny_match.meta | {"end_t": 35}, events=events,
+                          keyframes=[Keyframe(0, 52.5, 34, None, False), Keyframe(35, 52.5, 34, None, False)]))
+    ready = max(source["delivered_t"], goal["delivered_t"])
+    outputs = replay.advance(ready - 0.0001)
+    assert replay.model.score == {"home": 0, "away": 0}
+    outputs += replay.advance(31.999)
+    assert replay.model.score == {"home": 1, "away": 0}
+    outputs += replay.advance(35)
+    assert replay.model.score == {"home": 0, "away": 0}
+    latest = {o["cue_id"]: o for o in outputs if o["kind"] == "feed"}
+    analyses = [o for o in outputs if o["kind"] == "analysis"]
+    assert len(analyses) == 1 and analyses[0]["moment"] == "goal"
+    target = latest[analyses[0]["reply_to"]]
+    assert target["icon"] == "goal" and target["speaker"] == "commentator"
+    assert "disallowed" in target["text"]["basic"].lower() and "cancel" in target["evidence"]
+
+
 def test_missing_source_buffer_is_bounded_and_expires(match):
     m = MatchModel(match.meta)
     for n in range(260):

@@ -1,23 +1,24 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { MarkerState, edgePresentation } from "./overlay-state.mjs";
+import { renderAtmosphere, renderMomentum, renderReplayTime } from "./meter-view.mjs?v=3.25";
+import { MatchScreen } from "./match-screen.mjs?v=3.26";
+import { createRenderer } from "./renderer-host.mjs?v=3.26";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
-import { prependTrace } from "./trace-view.mjs";
+import { prependTrace, clearTrace } from "./trace-view.mjs?v=3.3";
+import {MeterTimeline} from "./meter-timeline.mjs?v=3.15";
+import {FrameMetrics} from "./frame-metrics.mjs?v=3.16";
+import {LivePerformance,canvasVisibleRatio} from "./live-performance.mjs?v=3.19";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
-const canvas = $("pitch");
-const ctx = canvas.getContext("2d");
-const W = canvas.width, H = canvas.height;
-const PX = 105, PY = 68, M = 60; // pitch metres, margin px
-const sx = (x) => M + (x / PX) * (W - 2 * M);
-const sy = (y) => H - M - (y / PY) * (H - 2 * M); // y up, like the data
-
-let state = null, frame = null, teams = null;
+if(params.get('performance')==='live')$('presenter-tools').open=true;
+const meterTimeline=new MeterTimeline();let appliedMeters=null;
+const livePerformance=new LivePerformance();
+const screen = new MatchScreen(resetVisualState);
+const renderer = await createRenderer($("pitch"), $("renderer-note"));
+let state = null, teams = null;
 const audio = new SyntheticAudio();
-const markers = new MarkerState();
-let liveTime = 0, waitingForState = false;
 
 $("room-code").textContent = room;
 $("app-link").href = `/app?room=${encodeURIComponent(room)}`;
@@ -27,10 +28,14 @@ let wantDemo = params.has("demo");
 const session = openSession({ room, role: "tv", hostToken: hostTokenStore(room), onMessage, onStatus });
 const send = (m) => session.send(m);
 function onMessage(m) {
+  const started=livePerformance.capture.active?performance.now():null;
+  let acceptedFrame=false;
+  try {
   if (m.type === "snapshot") {
-    waitingForState = true; isHost = m.host;
-    onState(m.state);
-    if (m.meters) onMeters(m.meters);
+    isHost = m.host;
+    $("connection-note").textContent = "";
+    onState({ ...m.state, run_id: m.run_id }, true);
+    if (m.meters) onMeters({...m.meters,run_id:m.run_id});
     // /tv?demo plays the locked demo match; without it a new room starts on a random match.
     if (wantDemo && isHost && m.state.demo_seed && m.state.seed !== m.state.demo_seed) {
       wantDemo = false;
@@ -38,24 +43,32 @@ function onMessage(m) {
     }
   }
   else if (m.type === "state") onState(m);
-  else if (m.type === "frame" && !waitingForState) { frame = m; liveTime = m.t; renderMarker(); }
+  else if (m.type === "frame") {acceptedFrame=screen.frame(m,performance.now());if(acceptedFrame)renderMarker();}
   else if (m.type === "banner") onBanner(m);
   else if (m.type === "meters") onMeters(m);
   else if (m.type === "trace") onTrace(m);
-  else if (m.type === "error") $("agents").textContent = m.message;
+  else if (m.type === "error") {$("agents").textContent = m.message;livePerformance.invalidate(`Server error: ${m.message}`);}
+  } finally {if(started!==null&&(m.type!=="frame"||acceptedFrame))livePerformance.message(m,performance.now(),performance.now()-started);}
 }
 function onStatus(s) {
-  // No frames arrive while disconnected; never animate play that wasn't delivered.
-  if (s === "disconnected") { clearTransient(); $("agents").textContent = "disconnected, reconnecting…"; }
+  if (s === "disconnected") {
+    livePerformance.invalidate("WebSocket disconnected during the measurement.");
+    screen.freeze(performance.now());
+    stopMeterAnimation();
+    isHost = false; hostControls();
+    $("connection-note").textContent = "Connection lost. Replay paused; reconnecting…";
+    $("agents").textContent = "disconnected, reconnecting…";
+  }
 }
 function hostControls() {
-  for (const el of document.querySelectorAll("#play, #speed, #scrub, #seed, #new, #random, #chapters button")) el.disabled = !isHost;
+  for (const el of document.querySelectorAll("#play, #speed, #scrub, #seed, #new, #random, #chapters button, #live-perf")) el.disabled = !isHost;
 }
 
-function onState(s) {
-  if (waitingForState || (state && (state.seed !== s.seed || s.t < liveTime - 0.01 || Math.abs(s.t - liveTime) > Math.max(3, s.speed * 0.3)))) clearTransient();
-  waitingForState = false; liveTime = s.t;
+function onState(s, snapshot = false) {
+  const now = performance.now();
+  if (snapshot) screen.snapshot(s, now); else screen.sync(s, now);
   state = s;
+  if (!s.playing) stopMeterAnimation();
   teams = s.teams;
   document.documentElement.style.setProperty("--home", teams.home.colour);
   document.documentElement.style.setProperty("--away", teams.away.colour);
@@ -64,6 +77,7 @@ function onState(s) {
   $("play").textContent = s.playing ? "❚❚ Pause" : "▶ Play";
   $("speed").value = String(s.speed);
   $("scrub").max = Math.floor(s.duration);
+  renderReplayTime($("scrub"), s.t, scrubbing);
   $("seed").value = s.seed;
   $("agents").textContent = s.agents === "foundry" ? `Microsoft Foundry (${s.model})` : "local (offline)";
   const ch = $("chapters");
@@ -76,6 +90,7 @@ function onState(s) {
   }
   hostControls();
   scoreBug(s.score, s.clock);
+  if(livePerformance.state(s)){send({cmd:"speed",value:1});send({cmd:"play"});}
 }
 
 function scoreBug(score, clock) {
@@ -85,31 +100,27 @@ function scoreBug(score, clock) {
 }
 
 function onMeters(m) {
+  meterTimeline.push(m,state?.run_id);
+}
+function applyMeters(m) {
   scoreBug(m.score, m.clock);
-  if (!scrubbing) $("scrub").value = Math.floor(m.t);
-  const share = m.momentum.home_index;
-  $("mom-fill").style.width = `${(share * 100).toFixed(1)}%`;
-  $("mom-label").textContent = "Momentum";
-  $("mom-fill").parentElement.setAttribute("aria-label", `Seven-minute momentum: home ${Math.round(share * 100)} percent`);
-  const a = m.atmosphere, view = edgePresentation(a), el = $("atmosphere-edges");
-  el.style.setProperty("--edge-color", view.color);
-  el.style.setProperty("--edge-fill", `${view.height}%`);
-  el.style.setProperty("--edge-brightness", String(view.brightness));
-  el.dataset.available = String(view.available);
-  el.setAttribute("aria-label", `${view.label}; both sides show the same atmosphere`);
-  el.title = view.label;
-  $("atmo-label").title = a.why;
-  $("atmo-label").textContent = view.label;
-  audio.crowd(a.crowd ?? 0);
+  renderReplayTime($("scrub"), m.t, scrubbing);
+  renderMomentum($("mom-fill"), m.momentum?.home_index,
+    {animate:screen.timeline.playing && !screen.waiting});
+  const a = m.atmosphere;
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), a,
+    {animate:screen.timeline.playing && !screen.waiting});
+  audio.crowd(a?.crowd ?? 0);
+  renderer.setAtmosphere(a);
 }
 
 function onBanner(b) {
-  if (waitingForState || !markers.accept(b, liveTime)) return;
+  if (!screen.accept(b)) return;
   if (!b.update) audio.whistle(b.banner);
   renderMarker();
 }
 function renderMarker() {
-  const cue = markers.at(liveTime), el = $("event-marker");
+  const cue = screen.marker(), el = $("event-marker");
   el.hidden = !cue;
   if (!cue) return;
   if (el.dataset.cue === cue.cue_id && el.dataset.kind === cue.banner) return;
@@ -117,58 +128,72 @@ function renderMarker() {
   $("event-icon").innerHTML = bannerIcon(cue.banner);
   $("event-label").textContent = cue.label;
 }
-function clearTransient() {
-  markers.clear(); $("event-marker").hidden = true;
+function clearMarkerElement() {
+  $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
-  frame = null; shown = null;
 }
-function jump(command) { clearTransient(); waitingForState = true; send(command); }
-
-// ---------- pitch ----------
-function drawPitch() {
-  for (let i = 0; i < 12; i++) {
-    ctx.fillStyle = i % 2 ? "#226b35" : "#1f6431";
-    ctx.fillRect((W / 12) * i, 0, W / 12 + 1, H);
-  }
-  ctx.strokeStyle = "rgba(255,255,255,0.75)";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(sx(0), sy(PY), sx(PX) - sx(0), sy(0) - sy(PY));
-  line(52.5, 0, 52.5, PY);
-  ctx.beginPath(); ctx.arc(sx(52.5), sy(34), (9.15 / PX) * (W - 2 * M), 0, 2 * Math.PI); ctx.stroke();
-  for (const [x0, dir] of [[0, 1], [PX, -1]]) {
-    rect(x0, 13.84, x0 + dir * 16.5, 54.16);
-    rect(x0, 24.84, x0 + dir * 5.5, 43.16);
-    dot(x0 + dir * 11, 34, 3, "rgba(255,255,255,0.8)");
-    ctx.lineWidth = 5; line(x0, 30.34, x0, 37.66); ctx.lineWidth = 3;
-  }
+function stopMeterAnimation() {
+  renderMomentum($("mom-fill"), appliedMeters?.momentum?.home_index, {animate:false});
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), appliedMeters?.atmosphere,
+    {animate:false});
 }
-function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(sx(x1), sy(y1)); ctx.lineTo(sx(x2), sy(y2)); ctx.stroke(); }
-function rect(x1, y1, x2, y2) { ctx.strokeRect(Math.min(sx(x1), sx(x2)), sy(Math.max(y1, y2)), Math.abs(sx(x2) - sx(x1)), Math.abs(sy(y2) - sy(y1))); }
-function dot(x, y, r, c) { ctx.beginPath(); ctx.arc(sx(x), sy(y), r, 0, 2 * Math.PI); ctx.fillStyle = c; ctx.fill(); }
+function resetVisualState() {
+  meterTimeline.reset();appliedMeters=null;
+  scrubbing = false;
+  clearTrace($("trace-list"), $("trace-sum"));
+  clearMarkerElement();
+  renderAtmosphere($("atmosphere-edges"), $("atmo-label"), null);
+  renderMomentum($("mom-fill"), null);
+  renderer.setAtmosphere(null); audio.crowd(0);
+}
+function jump(command) { screen.beginJump(); send(command); }
 
-let shown = null;
-function render() {
-  drawPitch();
-  if (frame && teams) {
-    // ease towards the latest frame so 10 Hz updates look smooth
-    if (!shown) shown = structuredClone(frame);
-    const k = 0.35;
-    const map = new Map(shown.players.map((p) => [p.id, p]));
-    shown.players = frame.players.map((p) => {
-      const q = map.get(p.id);
-      return q ? { ...p, x: q.x + (p.x - q.x) * k, y: q.y + (p.y - q.y) * k } : p;
-    });
-    shown.ball = [shown.ball[0] + (frame.ball[0] - shown.ball[0]) * k, shown.ball[1] + (frame.ball[1] - shown.ball[1]) * k];
-    for (const p of shown.players) {
-      const home = p.team === "home";
-      dot(p.x, p.y, 15, home ? teams.home.colour : teams.away.colour);
-      ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
-      ctx.fillStyle = home ? "#fff" : "#1a1a1a";
-      ctx.font = "700 14px Inter, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(p.n, sx(p.x), sy(p.y) + 1);
-    }
-    dot(shown.ball[0] + 0.25, shown.ball[1] - 0.25, 7, "rgba(0,0,0,0.35)");
-    dot(shown.ball[0], shown.ball[1], 7, "#fff");
+// Football rendering and accessibility overlays have independent lifecycles.
+let fpsStart = 0, fpsCount = 0, drawMs = 0;
+const frameMetrics = new FrameMetrics();
+function render(now) {
+  const frame = screen.sample(now);
+  const meters=frame ? meterTimeline.sample(frame.t,frame.run_id) : null;
+  if(meters!==appliedMeters){
+    if(meters)applyMeters(meters);
+    else {renderAtmosphere($("atmosphere-edges"),$("atmo-label"),null);renderMomentum($("mom-fill"),null);renderer.setAtmosphere(null);audio.crowd(0);}
+    appliedMeters=meters;
+  }
+  const drawStart = performance.now();
+  renderer.draw(frame, teams);
+  const canvas = renderer.canvas;
+  const drawElapsed=performance.now()-drawStart;
+  const liveResult=livePerformance.phase==="seek"||livePerformance.phase==="play"||livePerformance.phase==="capture" ? livePerformance.observe(now,{frame,state,drawMs:drawElapsed,environment:{
+    visible:document.visibilityState==="visible",focused:document.hasFocus(),viewport:[innerWidth,innerHeight],
+    css:[canvas.clientWidth,canvas.clientHeight],buffer:[canvas.width,canvas.height],dpr:devicePixelRatio,
+    renderer:renderer.mode,quality:canvas.dataset.quality,camera:canvas.dataset.camera,run:frame?.run_id,speed:state?.speed,
+    sceneVisible:canvasVisibleRatio(canvas.getBoundingClientRect(),innerWidth,innerHeight)>=.95,
+    visualSignals:$("overlay-on").checked,reducedMotion:$("reduce-motion").checked}}):null;
+  if(liveResult){
+    liveResult.scene={actors:canvas.dataset.actors,drawCalls:canvas.dataset.drawCalls,triangles:canvas.dataset.triangles};
+    $("live-perf-result").textContent=JSON.stringify(liveResult,null,2);$("live-perf-result").hidden=false;
+    $("copy-live-perf").disabled=false;$("live-perf-status").textContent=liveResult.valid
+      ? `Finished: ${liveResult.fps.toFixed(1)} render submissions FPS. Result is not proof of presented frames.`:liveResult.reason;
+    send({cmd:"pause"});
+    $("copy-live-perf").scrollIntoView({block:'start',behavior:'instant'});
+  }
+  frameMetrics.observe(now, !!frame && !!state?.playing && document.visibilityState === "visible" && document.hasFocus(),
+    `${frame?.run_id}/${renderer.mode}/${canvas.dataset.quality}/${canvas.dataset.camera}/${canvas.width}x${canvas.height}`);
+  drawMs += drawElapsed;
+  if (frame) canvas.dataset.simTime = frame.t.toFixed(3);
+  else delete canvas.dataset.simTime;
+  fpsCount++;
+  if (now - fpsStart >= 2000) {
+    $("render-status").textContent = `${Math.round(fpsCount * 1000 / (now - fpsStart))} FPS | ${(drawMs / fpsCount).toFixed(1)} ms draw | ${renderer.mode}`;
+    const cadence = frameMetrics.report();
+    $("frame-metrics").textContent = cadence
+      ? `${(cadence.durationMs / 1000).toFixed(1)}s active visible window: ${cadence.fps.toFixed(1)} FPS · frame p50 ${cadence.p50Ms.toFixed(1)} / p95 ${cadence.p95Ms.toFixed(1)} / max ${cadence.maxMs.toFixed(1)} ms`
+      : "Cadence: need 10 seconds playing in a visible, focused tab with unchanged display settings.";
+    const pct=value=>Number.isFinite(value) ? `${Math.round(value*100)}%` : "unavailable";
+    const a=meters?.atmosphere,available=canvas.dataset.crowdAvailable==="true";
+    $("scene-diagnostics").textContent=`Source ${frame?.t?.toFixed(2) ?? "—"}s · run ${frame?.run_id ?? "—"} · C ${pct(a?.crowd)} · T ${pct(a?.attack)} · A ${pct(a?.level)} · pose targets (seated / seated raised / standing raised): `
+      +(available ? [canvas.dataset.crowdSeated,canvas.dataset.crowdSeatedRaised,canvas.dataset.crowdStanding].map(v=>pct(Number(v))).join(" / ") : "unavailable");
+    fpsCount = 0; drawMs = 0; fpsStart = now;
   }
   requestAnimationFrame(render);
 }
@@ -176,6 +201,26 @@ requestAnimationFrame(render);
 
 // ---------- controls ----------
 let scrubbing = false;
+let liveDprQuery=null;
+const invalidateLiveDpr=()=>livePerformance.invalidate("Device pixel ratio changed.");
+$("live-perf").onclick=()=>{
+  if(!isHost||livePerformance.phase==="capture"||livePerformance.phase==="seek"||livePerformance.phase==="play")return;
+  $("render-quality").value="high";renderer.setQuality("high");$("camera-view").value="broadcast";renderer.setCamera("broadcast");
+  $("overlay-on").checked=true;$("overlay").classList.remove("off");
+  // Controls are below the scene. Bring the match back into view before
+  // measuring, rather than rendering a mostly offscreen canvas.
+  $("stage").scrollIntoView({block:'start',behavior:'instant'});
+  liveDprQuery?.removeEventListener("change",invalidateLiveDpr);liveDprQuery=matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+  liveDprQuery.addEventListener("change",invalidateLiveDpr);
+  livePerformance.prepare(state.seed,performance.now());$("live-perf-result").hidden=true;$("copy-live-perf").disabled=true;
+  $("live-perf-status").textContent="Preparing live replay at 10:00. Keep the tab visible; warmup + measurement takes about 23 seconds.";
+  jump({cmd:"seek",t:600});
+};
+$("copy-live-perf").onclick=async()=>{try{await navigator.clipboard.writeText($("live-perf-result").textContent);$("live-perf-status").textContent="Live result copied.";}
+  catch{$("live-perf-status").textContent="Copy unavailable; select the visible JSON result.";}};
+window.addEventListener("blur",()=>livePerformance.invalidate("The tab lost focus."));
+window.addEventListener("resize",()=>livePerformance.invalidate("The viewport changed."));
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState!=="visible")livePerformance.invalidate("The tab was hidden.");});
 $("play").onclick = () => { audio.unlock(); send({ cmd: state?.playing ? "pause" : "play" }); };
 $("speed").onchange = (e) => send({ cmd: "speed", value: Number(e.target.value) });
 $("scrub").oninput = () => { scrubbing = true; };
@@ -183,7 +228,8 @@ $("scrub").onchange = (e) => { scrubbing = false; jump({ cmd: "seek", t: Number(
 $("overlay-on").onchange = (e) => $("overlay").classList.toggle("off", !e.target.checked);
 $("sound-on").onchange = (e) => { audio.unlock(); audio.enabled = e.target.checked; if (!e.target.checked) audio.crowd(0); };
 $("new").onclick = () => jump({ cmd: "new_match", seed: Number($("seed").value) });
-$("random").onclick = () => jump({ cmd: "new_match", seed: 1 + Math.floor(Math.random() * 99999) });
+// The server picks a random match it has already built, so it opens at once.
+$("random").onclick = () => jump({ cmd: "new_match", random: true });
 
 // ---------- engine trace: what was shown, and what was left out and why ----------
 function onTrace(m) {
@@ -200,6 +246,10 @@ function displaySettings() {
   $("stage").style.setProperty("--signal-intensity", $("signal-intensity").value);
   $("stage").style.setProperty("--symbol-size", $("symbol-size").value);
   $("stage").classList.toggle("reduce-motion", $("reduce-motion").checked);
+  renderer.setReducedMotion($("reduce-motion").checked);
 }
+$("render-quality").onchange = e => renderer.setQuality(e.target.value);
+$("camera-view").onchange = e => renderer.setCamera(e.target.value);
+window.addEventListener("pagehide", event => { if (!event.persisted) renderer.dispose(); });
 for (const id of ["signal-intensity", "symbol-size", "reduce-motion"]) $(id).addEventListener("input", displaySettings);
 displaySettings();

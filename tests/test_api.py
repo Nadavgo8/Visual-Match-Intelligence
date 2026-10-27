@@ -64,9 +64,75 @@ def test_v2_companion_hides_future_chapters_and_upserts_shot_items():
         assert initial["state"]["chapters"] == [] and initial["state"]["duration"] is None
 
 
+def test_3d_assets_are_served_locally_and_state_identifies_source_match():
+    room = Room("3d-source-identity", 12)
+    assert room.state("tv")["match_id"] == room.tracker.frame(0)["match_id"]
+    original = room.state("tv")["match_id"]
+    room.reset(13)
+    assert room.state("tv")["match_id"] != original
+    client = TestClient(app)
+    for asset in ("match-3d.mjs", "stadium.mjs", "athlete.mjs", "crowd.mjs", "renderer-host.mjs",
+                  "match-screen.mjs", "meter-view.mjs", "crowd-atlas.mjs", "football-gait.mjs", "football-actions.mjs",
+                  "vendor/three/three.module.js", "vendor/three/three.core.js"):
+        response = client.get("/static/" + asset)
+        assert response.status_code == 200
+        assert "javascript" in response.headers["content-type"]
+    athlete = client.get("/static/assets/athlete/athlete.json")
+    assert athlete.status_code == 200 and athlete.json()["height"] == 1.85
+    crowd = client.get("/static/assets/crowd/spectators-v1.png")
+    assert crowd.status_code == 200 and crowd.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert "image/png" in crowd.headers["content-type"]
+    atlas = client.get("/static/assets/crowd/atlas.json")
+    assert atlas.status_code == 200 and len(atlas.json()["sprites"]) == 12
+    for group in ("a", "b"):
+        crowd = client.get(f"/static/assets/crowd/spectators-{group}-v2.png")
+        assert crowd.status_code == 200 and crowd.content.startswith(b"\x89PNG\r\n\x1a\n")
+        assert "image/png" in crowd.headers["content-type"]
+        atlas = client.get(f"/static/assets/crowd/atlas-{group}-v2.json")
+        assert atlas.status_code == 200
+        assert atlas.json()["identities"] == 6 and len(atlas.json()["sprites"]) == 18
+    for image in ("color", "normal"):
+        response = client.get(f"/static/assets/turf/{image}.jpg")
+        assert response.status_code == 200 and response.content.startswith(b"\xff\xd8")
+
+
 def test_browser_modules_are_served_as_javascript():
     # Browsers refuse module scripts whose MIME type isn't JavaScript; the OS mapping for .mjs varies.
     c = TestClient(app)
     for name in ("session.mjs", "atmosphere.mjs", "overlay-state.mjs", "app.js", "tv.js"):
         r = c.get(f"/static/{name}")
         assert r.status_code == 200 and "javascript" in r.headers["content-type"], (name, r.headers["content-type"])
+
+
+def test_presenter_chapters_include_the_build_up_to_linked_yellow_and_offside():
+    from types import SimpleNamespace
+
+    match = SimpleNamespace(events=[
+        {"id": "f", "type": "foul", "t": 30, "clock": "0:30"},
+        {"id": "c", "type": "card", "t": 48, "clock": "0:48", "card": {"colour": "yellow"},
+         "offence_id": "f"},
+        {"id": "p", "type": "pass", "t": 60, "clock": "1:00"},
+        {"id": "o", "type": "offside", "t": 67, "clock": "1:07", "related": ["p"]},
+        {"id": "g", "type": "shot_result", "t": 100, "clock": "1:40", "outcome": "goal"},
+        {"id": "r", "type": "card", "t": 120, "clock": "2:00", "card": {"colour": "red"}},
+    ])
+    assert chapters(match) == [
+        {"t": 10, "label": "Foul / yellow card", "clock": "0:48"},
+        {"t": 40, "label": "Offside", "clock": "1:07"},
+        {"t": 80, "label": "Goal", "clock": "1:40"},
+        {"t": 100, "label": "Red card", "clock": "2:00"},
+    ]
+
+
+def test_presenter_chapters_handle_missing_links_without_inventing_an_incident():
+    from types import SimpleNamespace
+
+    match = SimpleNamespace(events=[
+        {"id": "c", "type": "card", "t": 5, "clock": "0:05", "card": {"colour": "yellow"},
+         "offence_id": "missing"},
+        {"id": "o", "type": "offside", "t": 45, "clock": "0:45", "related": ["missing", "c"]},
+    ])
+    assert chapters(match) == [
+        {"t": 0, "label": "Yellow card", "clock": "0:05"},
+        {"t": 25, "label": "Offside", "clock": "0:45"},
+    ]

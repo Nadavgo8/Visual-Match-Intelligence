@@ -1,0 +1,34 @@
+import { FrameTimeline } from "./match-motion.mjs?v=3.26";
+import { MarkerState } from "./overlay-state.mjs";
+
+// Shared reset boundary for football drawing and accessibility presentation.
+export class MatchScreen {
+  constructor(onReset = () => {}) {
+    this.onReset = onReset;
+    this.timeline = new FrameTimeline(); this.markers = new MarkerState();
+    this.liveTime = 0; this.state = null; this.waiting = false;
+  }
+  // Reconnect/resync replaces even a same-run, same-time snapshot. No old pose
+  // or marker survives while we wait for its first delivered tracking frame.
+  snapshot(state, now) { this.beginJump(); return this.sync(state, now); }
+  sync(state, now) {
+    const old = this.state;
+    const reset = this.waiting || (old && (old.seed !== state.seed
+      || old.match_id !== state.match_id || old.run_id !== state.run_id
+      || state.t < this.liveTime - 0.01
+      || state.t > this.liveTime + Math.max(1, this.timeline.speed * 0.3)));
+    if (reset) { this.markers.clear(); this.onReset(); }
+    this.timeline.sync(state, now);
+    this.waiting = false; this.state = state; this.liveTime = state.t;
+    return !!reset;
+  }
+  frame(frame, now) {
+    if (!this.timeline.push(frame, now)) return false;
+    this.liveTime = frame.t; return true;
+  }
+  beginJump() { this.waiting = true; this.timeline.beginJump(); this.markers.clear(); this.onReset(); }
+  accept(cue) { return !this.waiting && this.markers.accept(cue, this.liveTime); }
+  marker() { return this.markers.at(this.liveTime); }
+  sample(now) { return this.timeline.sample(now); }
+  freeze(now) { this.timeline.freeze(now); }
+}

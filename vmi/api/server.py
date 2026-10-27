@@ -43,6 +43,7 @@ from ..engine import derive
 from ..engine.attention import visible_to
 from ..engine.replay import Replay
 from ..generator.match import Match, generate_match
+from ..generator.scenarios import generate_demo_match
 from ..generator.tracking import Tracker
 
 log = logging.getLogger("vmi")
@@ -58,12 +59,24 @@ def demo_mode() -> bool:
     return os.getenv("VMI_DEMO") == "1"
 
 
+# Random matches built ahead of time, so a new room or "Random match" opens at once:
+# the physical source takes seconds per match to generate.
+POOL_SIZE = int(os.getenv("VMI_POOL_SIZE", "6"))
+_pool: list[int] = []
+
+
+def ready_seed(exclude: int | None = None) -> int:
+    """A random match that is already built, else a fresh random seed."""
+    ready = [s for s in _pool if s != exclude and s in _match_cache]
+    return random.choice(ready) if ready else random.randint(1, MAX_SEED)
+
+
 def new_room_seed(requested: int | None) -> int:
     """The match a new room starts with: the one asked for, the demo match in demo mode,
-    otherwise a fresh random match each time."""
+    otherwise a random match (a pre-built one when available)."""
     if requested:
         return requested
-    return DEMO_SEED if demo_mode() else random.randint(1, MAX_SEED)
+    return DEMO_SEED if demo_mode() else ready_seed()
 TICK_HZ = 20
 SPEEDS = [1, 2, 4, 8, 16, 32]
 DEFAULT_PROFILE = {"depth": "basic", "team": None, "amount": "balanced"}
@@ -93,6 +106,8 @@ async def lifespan(_app):
     # Pre-writing the demo match's analyses only pays off when the demo will be played.
     if os.getenv("VMI_WARM_DEMO", "1" if demo_mode() else "0") == "1":
         warm.append(asyncio.create_task(warm_demo()))
+    if os.getenv("VMI_PREBUILD", "1") == "1":
+        warm.append(asyncio.create_task(prebuild_matches()))
     if _client is not None and os.getenv("VMI_WARM_FOUNDRY", "1") == "1":
         warm.append(asyncio.create_task(warm_foundry()))
     try:
@@ -124,9 +139,12 @@ def get_match(seed: int) -> Match:
         return match
     with _match_lock:
         if seed not in _match_cache:
-            _match_cache[seed] = generate_match(seed)
+            _match_cache[seed] = generate_demo_match(seed) if seed == 2 else generate_match(seed)
             while len(_match_cache) > MATCH_CACHE_MAX:
-                del _match_cache[next(iter(_match_cache))]
+                # Evict the oldest match that isn't the demo or a pre-built one.
+                pinned = {DEMO_SEED, *_pool}
+                old = next((k for k in _match_cache if k not in pinned), next(iter(_match_cache)))
+                del _match_cache[old]
         return _match_cache[seed]
 
 
@@ -162,18 +180,33 @@ async def prepare_match(seed: int) -> Match:
 def chapters(match: Match) -> list[dict]:
     """Jump points for the replay controls (from the generated feed)."""
     out = []
+    by_id = {e["id"]: e for e in match.events}
     for e in match.events:
         label = None
+        start = e["t"]
         if e["type"] == "shot_result" and e["outcome"] == "goal":
             label = "Goal"
         elif e["type"] == "var" and e["var"]["phase"] == "check":
             label = "VAR check"
-        elif e["type"] == "card" and e["card"]["colour"] != "yellow":
-            label = "Red card"
+        elif e["type"] == "card":
+            if e["card"]["colour"] == "yellow":
+                label = "Yellow card"
+                offence = by_id.get(e.get("offence_id"))
+                if offence and offence["type"] in {"foul", "handball"}:
+                    label = "Foul / yellow card"
+                    start = min(start, offence["t"])
+            else:
+                label = "Red card"
+        elif e["type"] == "offside":
+            label = "Offside"
+            passes = [by_id[link] for link in e.get("related", [])
+                      if link in by_id and by_id[link]["type"] == "pass"]
+            if passes:
+                start = min(start, *(p["t"] for p in passes))
         elif e["type"] == "period_end":
             label = "Half-time" if e["period_end"]["period_no"] == 1 else "Full-time"
         if label:
-            out.append({"t": max(0.0, e["t"] - 20), "label": label, "clock": e["clock"]})
+            out.append({"t": max(0.0, start - 20), "label": label, "clock": e["clock"]})
     return out
 
 
@@ -196,7 +229,7 @@ class Room:
         self.name = name
         self.seed = seed
         self.clients: list[Client] = []
-        self.speed = 4
+        self.speed = 1 if seed == 2 else 4
         self.playing = False
         self.task: asyncio.Task | None = None
         self.host_token: str | None = None
@@ -301,7 +334,7 @@ class Room:
 
     def state(self, role: str = "app") -> dict:
         m = self.replay.model
-        return {"type": "state", "room": self.name, "seed": self.seed, "t": round(self.replay.now, 2),
+        return {"type": "state", "room": self.name, "seed": self.seed, "match_id": self.match.meta["match_id"], "t": round(self.replay.now, 2),
                 "duration": self.match.duration if role == "tv" else None, "playing": self.playing, "speed": self.speed,
                 "clock": m.clock, "period": m.period, "score": m.score,
                 "teams": {s: {k: v for k, v in tm.items() if k != "players"} for s, tm in self.match.meta["teams"].items()},
@@ -510,6 +543,22 @@ async def warm_demo(seed: int = DEMO_SEED):
 WARM_QUESTIONS = ("What's the score?", "Who is in control?")
 
 
+async def prebuild_matches(size: int | None = None) -> list[int]:
+    """Build the demo match, then a pool of random matches, one at a time on the
+    source worker, so rooms never wait for a cold match."""
+    size = POOL_SIZE if size is None else size
+    await prepare_match(DEMO_SEED)
+    rng = random.Random()
+    while len(_pool) < min(size, MATCH_CACHE_MAX - 2):
+        seed = rng.randint(1, MAX_SEED)
+        if seed == DEMO_SEED or seed in _pool:
+            continue
+        await prepare_match(seed)
+        _pool.append(seed)
+    log.info("pre-built demo match %d and random matches %s", DEMO_SEED, _pool)
+    return list(_pool)
+
+
 async def warm_foundry(seed: int = DEMO_SEED) -> list[str]:
     """Ask the model once per answer path at startup, before any viewer does.
 
@@ -602,6 +651,9 @@ async def control(room: Room, cmd: str, msg: dict):
             raise ValueError("invalid seek time")
         await room.seek(float(msg.get("t", 0)))
     elif cmd == "new_match":
+        if msg.get("random") is True:
+            await room.new_match(ready_seed(exclude=room.seed))
+            return
         if isinstance(msg.get("seed"), bool):
             raise ValueError("invalid seed")
         await room.new_match(int(msg.get("seed", DEMO_SEED)))

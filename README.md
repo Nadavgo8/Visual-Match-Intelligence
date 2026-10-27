@@ -6,12 +6,12 @@ Built for the Microsoft *Inside the Game* hackathon. **All matches, teams and pl
 
 | TV view (the broadcast) | Companion app (phone) |
 |---|---|
-| 2D replay with **whistle banners by type** (Foul, Offside, Penalty, Stoppage, Kick-off, Half-time, Full-time), each in its own fixed place; a **crowd surge** banner; one **atmosphere indicator**; a **momentum bar**. Nothing else. | **One match chat** with two voices: **Kai** (commentator) calls goals, VAR, cards and subs as facts; **Ada** (analyst) adds stoppage analysis in 2–3 sentences with receipts, replying to the moment it explains, and stays quiet otherwise. Ask either of them about this match, the rules, stats and tactics; code picks who answers. No notifications. Two depth levels from a 3-question onboarding. |
+| Source-driven **3D football replay**, skinned human athletes, locally licensed turf, an original stadium and a crowd driven by delivered crowd amplitude. Broadcast/full-pitch cameras, shadows and a low-power setting. Two identical **atmosphere edge bars**, one **round event marker** and **momentum** under the score. Presenter diagnostics stay outside the viewing area. Labelled 2D fallback if WebGL2 is unavailable. | **One match chat** with two voices: **Kai** (commentator) calls goals, VAR, cards and subs as facts; **Ada** (analyst) adds stoppage analysis in 2–3 sentences with receipts, replying to the moment it explains, and stays quiet otherwise. Ask either of them about this match, the rules, stats and tactics; code picks who answers. No notifications. Two depth levels from a 3-question onboarding. |
 
 ## Run it
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-lock.txt
 uvicorn vmi.api.server:app --reload
 # open http://localhost:8000 → TV view on a laptop, Companion on a phone (same room code)
 pytest -q
@@ -24,14 +24,14 @@ It runs fully offline: without Foundry settings, the agents fall back to determi
 ```mermaid
 flowchart LR
   subgraph Generator["Seeded match generator (synthetic)"]
-    G[possession-chain sim<br/>private truth stays inside] --> F[event feed<br/>0.5–3 s late]
+    G[possession-chain sim<br/>private truth stays inside] --> F[event feed<br/>delayed linked shot xG]
     G --> W[whistle detections]
     G --> C[crowd level 1 Hz, noisy]
-    G --> T[tracking 10 Hz]
+    G --> T[tracking 20 Hz]
     G --> S[match state]
   end
-  F & W & C & S --> R[Replay clock<br/>delivery order]
-  R --> M[Match model<br/>derives xG, in-box, not-called,<br/>key passes, momentum]
+  F & W & C & T & S --> R[Replay clock<br/>delivery order]
+  R --> M[Match model<br/>derives in-box, not-called,<br/>key passes, momentum]
   M --> A[Attention Engine<br/>routing · timing · depth<br/>every decision has a why]
   A -->|banners, meters| TV[TV view]
   A -->|feed items| APP[Companion app]
@@ -48,9 +48,9 @@ flowchart LR
 
 **Deterministic numbers, AI for words.** Code decides what happened, what to show and when. The Foundry agents only word it, from a fact pack in which every fact has an event ID. A validator rejects any sentence whose evidence, numbers or names are not in the pack, or that claims *why* the crowd reacted (the sensor measures loudness only). On rejection or any agent error, a template writes the card, so the fan always gets a correct text. Every card and answer shows its receipts.
 
-**The Attention Engine** decides routing, timing and depth. In a typical generated match, about 1,550 feed and whistle records arrive; about 50 become banners, 30–40 become feed items and 7–11 become analysis cards, and the rest are left out with a reason. The TV view shows this trace live.
+**The Attention Engine** decides routing, timing and depth. Delivered records become selected event signals, companion items and stoppage analyses; omitted records retain a reason in the diagnostic trace. Presenter tools show this trace outside the viewing area.
 
-**Data realism.** The generator emits only what real sources produce today: an operator-logged event feed (fouls only when awarded, VAR phases, no xG), whistle detection from audio (no reason), a relative crowd level (no mood) and optical tracking. Everything interpretive is derived by the engine. Details: [docs/spec.md §6](docs/spec.md).
+**Data realism.** Synthetic source streams model an operator-logged event feed, whistle detections without a reason, relative crowd amplitude without a mood and optical tracking. Shot xG is a separate delayed generator event linked to its shot; the engine does not estimate it, and it never appears on the match screen. Other interpretation is derived from delivered evidence. Details: [docs/spec.md §6](docs/spec.md).
 
 ## Repository map
 
@@ -73,4 +73,4 @@ flowchart LR
 
 ## Status
 
-v1 works locally end to end on the demo seed (12). In progress ([build spec v2](docs/spec.md)): a 3D match screen, atmosphere edge bars and round event markers in place of the banners above, a "What did I miss?" summary in the app, and a zero-cost choice of model and hosting. Foundry and Azure deployment are wired but have not run against a live subscription.
+The D1-04 task branch includes skinned athletes, CC0 turf maps and source-driven crowd motion; PR #12 remains under review with physical integration and visual-reference acceptance open. A previous LIVE baseline exceeded 30 FPS on the documented test machine, but does not certify newer graphics. See [implementation, licenses and evidence](docs/implementation/D1-04-MATCH-3D.md). Crowd motion illustrates delivered amplitude, without inferring emotions or independently validating the atmosphere formula. The merged D1 baseline includes generator v2, atmosphere, momentum, accessibility signals and causal-clock fixes. Current Developer 2 model and deployment status is recorded in the [model decision](docs/implementation/11-MODEL-DECISION.md) and [D2 handoff](docs/implementation/HANDOFF-D2.md). No extra-cost service is authorized.
