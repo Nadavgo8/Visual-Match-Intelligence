@@ -18,6 +18,7 @@ import logging
 import math
 import mimetypes
 import os
+import random
 import secrets
 import time
 from collections import deque
@@ -35,6 +36,7 @@ from . import catchup
 from .messages import decode_command
 from ..agents.llm import explainer_agent, foundry_client
 from ..agents.qa import Assistant
+from ..agents.voices import chat_line, kai_followup
 from ..engine import derive
 from ..engine.attention import visible_to
 from ..engine.replay import Replay
@@ -47,6 +49,20 @@ WEB = Path(__file__).resolve().parents[2] / "web"
 # Browsers only run ES modules served as JavaScript; some OS registries map .mjs to text/plain.
 mimetypes.add_type("text/javascript", ".mjs")
 DEMO_SEED = int(os.getenv("VMI_DEMO_SEED", "2"))
+MAX_SEED = 99999
+
+
+def demo_mode() -> bool:
+    """VMI_DEMO=1 (set before recording): every new room plays the locked demo match."""
+    return os.getenv("VMI_DEMO") == "1"
+
+
+def new_room_seed(requested: int | None) -> int:
+    """The match a new room starts with: the one asked for, the demo match in demo mode,
+    otherwise a fresh random match each time."""
+    if requested:
+        return requested
+    return DEMO_SEED if demo_mode() else random.randint(1, MAX_SEED)
 TICK_HZ = 20
 SPEEDS = [1, 2, 4, 8, 16, 32]
 DEFAULT_PROFILE = {"depth": "basic", "team": None, "amount": "balanced"}
@@ -70,7 +86,8 @@ def _telemetry():
 @asynccontextmanager
 async def lifespan(_app):
     _telemetry()
-    if os.getenv("VMI_WARM_DEMO", "1") == "1":
+    # Pre-writing the demo match's analyses only pays off when the demo will be played.
+    if os.getenv("VMI_WARM_DEMO", "1" if demo_mode() else "0") == "1":
         asyncio.create_task(warm_demo())
     yield
 
@@ -237,7 +254,7 @@ class Room:
                 "clock": m.clock, "period": m.period, "score": m.score,
                 "teams": {s: {k: v for k, v in tm.items() if k != "players"} for s, tm in self.match.meta["teams"].items()},
                 "chapters": chapters(self.match) if role == "tv" else [], "agents": "foundry" if _client else "local",
-                "model": _model_name}
+                "model": _model_name, "demo_seed": DEMO_SEED}
 
     # ---------- playback ----------
     def ensure_loop(self):
@@ -343,7 +360,7 @@ class Room:
     def feed_msg(self, o: dict, profile: dict) -> dict:
         return {"type": "feed", "cue_id": o["cue_id"], "clock": o["clock"], "t": o["t"], "icon": o["icon"],
                 "team": o["team"], "mine": bool(profile.get("team") and o["team"] == profile["team"]),
-                "text": o["text"][profile["depth"]], "evidence": o["evidence"], "tier": o["tier"],
+                "text": chat_line(o, profile["depth"]), "evidence": o["evidence"], "tier": o["tier"],
                 "update": o.get("update", False), "delivered": o["delivered"],
                 "speaker": o.get("speaker", "commentator"), "reply_to": o.get("reply_to")}
 
@@ -388,6 +405,7 @@ class Room:
         res = self.texts[key]
         msg = {"type": "analysis", "cue_id": a["cue_id"], "clock": a["clock"], "t": a["t"], "moment": a["moment"],
                "speaker": "analyst", "reply_to": a.get("reply_to"),
+               "followup": kai_followup(a["cue_id"], a["factpack"]),
                "text": res["text"], "sentences": res["sentences"], "receipts": {
                    "source": res["source"], "model": res["model"], "latency_ms": res["latency_ms"],
                    "validation": res["validation"], "rejected": res.get("rejected")},
@@ -515,7 +533,7 @@ async def ws(websocket: WebSocket, room_name: str, role: Literal["tv", "app"] = 
         if len(rooms) >= MAX_ROOMS:
             await websocket.close(code=1013, reason="too many rooms; try again later")
             return
-        room = rooms[room_name] = Room(room_name, seed or DEMO_SEED)
+        room = rooms[room_name] = Room(room_name, new_room_seed(seed))
     if room.expiry:
         room.expiry.cancel()
         room.expiry = None

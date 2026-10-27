@@ -68,6 +68,24 @@ def _deep_context(m: MatchModel, team: str | None) -> list[dict]:
     return facts
 
 
+def _leaders(m: MatchModel) -> dict:
+    """The player with the most shots and the most key passes so far; a tie names nobody."""
+    shots: dict[str, int] = {}
+    kps: dict[str, int] = {}
+    for e in m.events:
+        if e["type"] == "shot" and e["shot"].get("outcome") != "disallowed":
+            shots[e["player_id"]] = shots.get(e["player_id"], 0) + 1
+        elif e["type"] == "pass" and e["derived"].get("key_pass"):
+            kps[e["player_id"]] = kps.get(e["player_id"], 0) + 1
+    out = {}
+    for key, counts in (("shots", shots), ("key_passes", kps)):
+        ranked = sorted(counts.values(), reverse=True)
+        if ranked and (len(ranked) == 1 or ranked[0] > ranked[1]):
+            pid = max(counts, key=counts.get)
+            out[key] = {"player": _player(m, pid), "team": m.team_name(m.players[pid]["team"]), "value": counts[pid]}
+    return out
+
+
 def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
     team = trigger.get("team")
     pack: dict = {
@@ -90,7 +108,7 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
         facts.append(f)
         if d.get("xg_id"):
             facts.append({"id": d["xg_id"], "type": "shot_xg", "shot_id": trigger["id"],
-                          "xg": d["xg"], "method_version": d["xg_method"]})
+                          "xg": d["xg"]})
         p = m.by_id.get(d.get("preparing_pass_id"))
         if p and d.get("assisted_by"):
             facts.append({"id": p["id"], "type": "assist", "by": _player(m, p["player_id"]),
@@ -150,6 +168,9 @@ def build_factpack(m: MatchModel, kind: str, trigger: dict) -> dict:
             elif e["type"] == "card" and e["card"]["colour"] != "yellow":
                 facts.append({"id": e["id"], "type": "red_card", "minute": derive.minute_of(e["clock"]),
                               "player": _player(m, e["player_id"])})
+        leaders = _leaders(m)
+        if leaders:
+            facts.append({"id": "stat:leaders", "type": "player_leaders", **leaders})
         best = max((e for e in m.events if e["type"] == "shot" and e["shot"].get("outcome") in
                     {"saved", "blocked", "post", "off_target"}),
                    key=lambda e: e["derived"].get("xg") or 0, default=None)
