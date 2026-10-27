@@ -60,7 +60,7 @@ python -m vmi.mcp_server               # engine tools over MCP
 Shared setup, test layers, coverage gate, schemas and CI (for every tool, not only Claude): `docs/implementation/02-SETUP-AND-GIT.md`.
 
 - Runs fully offline: without `FOUNDRY_PROJECT_ENDPOINT` + `FOUNDRY_MODEL` (or with `VMI_OFFLINE=1`), every agent falls back to a deterministic local implementation with the same tools and receipts.
-- Env: `VMI_DEMO_SEED` (default **12**; the score and sequence depend on the recorded generator version, so inspect generated metadata instead of assuming the historical 2–1 narrative), `VMI_WARM_DEMO` (pre-writes demo analysis cache), `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+- Env: `VMI_DEMO_SEED` (default **2**, chosen 27.10: Harbour City 2–1 Northvale Rovers; VAR overturns a no-penalty call at 37:16, Dumont scores the penalty 37:58, Ferreira 43:34, Marsh 65:08 with a VAR goal check that stands at 66:38. The story is locked by `tests/test_demo_match.py`; a generator change that alters it fails CI), `VMI_WARM_DEMO` (pre-writes demo analysis cache), `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 - Layout: `vmi/generator/` seeded match + tracking · `vmi/engine/` derivations, match model (momentum weights in `model.py`), Attention Engine, fact packs, replay clock · `vmi/agents/` Explainer workflow, Router / Match analyst / Rules expert, read-only tools · `vmi/api/server.py` · `web/` TV + companion · `prompts/` agent instructions · `infra/deploy.sh` ACA + App Insights + managed identity · `tests/`.
 - **Build spec (source of truth for behaviour): `docs/spec.md` v2.** It describes the target; the code still implements v1. README has the architecture diagram.
 
@@ -79,6 +79,7 @@ Open: see `docs/context/decisions.md`, "Still open".
 | `docs/implementation/VMI-FINAL-PLAN-F.md` | Work plan (Hebrew, Oct 22): goals, zero-cost rule, split, contracts, generator, tasks D1-01…05 and D2-00…06, gates, git, AI prompts, tests, demo. **Start here for "what next".** |
 | `docs/implementation/12-QUALITY-AND-GIT-GATES.md` | Mandatory review and unit-test gates per branch and stage; two-developer Git workflow, CI setup requirements, evidence templates and improvement log. Read before executing a task. |
 | `docs/implementation/02-SETUP-AND-GIT.md` | Shared setup (locked install), test layers, coverage gate, v2 JSON Schemas, CI checks and their enforcement status |
+| `docs/implementation/DEPLOY-VERCEL.md` | Vercel deploy runbook: Foundry login via a service principal, the shared-room risk, 2-minute tests, and the Azure Container Apps fallback |
 | `docs/context/product-doc-2026-10-21.pdf` | Six-page product doc (Hebrew) with design illustrations: edge bars, markers, app, engine, research basis |
 | `docs/spec.md` | Build spec v2: behaviour, formulas, data realism, sync, targets |
 | `docs/context/decisions.md` | Every decision, the 4-round interview, the Oct 21–22 changes, open items. **Start here for "why".** |

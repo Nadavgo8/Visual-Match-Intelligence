@@ -4,6 +4,11 @@
 
 ## המשך נוכחי — מגוון משחק מלא וקבלה חזותית
 
+- סנכרון PR #12 ל־main`ab53c72`: פתרון README(3D+Kai/Ada) ו־TV
+  (seed2+כלי מציג), בלי לדרוס את עבודת השותף.175/175 Node עברו ב־12.895s,
+  בדיקות סיפור2.4 עברו2/2 ב־18.08s. ב־PR #32 נמצא גם handball שתויג
+  כמגע רגל בקרקע; נדרש רצף שחרור/טיסה/יד במקור ורגרסיה, לא רק label.
+
 - תצוגה3.24: בוטלה זחילת פסים אחרי pause/seek/reset/ניתוק/missing,
   עם מעבר עדין רגיל שנשמר. ASTRA כתב וההורה סקר והריץ164/164 Node
   ב־11.708s, Ruff ו־whitespace עברו. בדיקת compositor חזותית עדיין פתוחה
@@ -111,13 +116,14 @@
 | D1-03 | DONE | [PR #6](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/6), main ‏52ad4a5; ‏174 בדיקות Python עברו ב־64.47s ו־3 בדיקות Node אחרי המיזוג; smoke עבר |
 | D1-04 — תלת־ממד ורמת הייחוס | IN_PROGRESS — FUNCTIONAL_GATES | [PR #12](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/12), `codex/d1-match-3d`; main המאומת fb61a8e משולב. CI על 88a3133 עבר בארבעת ה־checks; יש תוספת מדידת cadence ועדכון היקף המחייבים בדיקה על HEAD חדש. 30FPS וקבלת תנועה משולבת עדיין פתוחים. החלטת המשתמש מ־26.10 מאפשרת מיזוג תפקודי אחרי השערים וליטוש חזותי בהמשך; אין טענת השלמת חזון |
 | D1-05 | DONE | [PR #8](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/8) מוזג ל־56732ff; שני פסים זהים, סמל יחיד, תזמון ונגישות נכללים בבדיקות main המעודכנות |
-| D2-00 | IN_REVIEW (הכרעה) | נבחר מסלול Azure Free Trial (spending limit On). Foundry `gpt-5-mini`: 60/60 תשובות מודל, p95 חם 11.9s, 59/59 תוך 20s, שני דגלים שגויים. ממתין לביקורת `review.csv` של שני המפתחים. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
+| D2-00 | DONE | הוכרע 26.10: Foundry `gpt-5-mini` (2025-08-07), שני המפתחים אישרו. 60/60 תשובות מודל, p95 חם 11.9s. הפצה: מפתח 1 ב־Vercel. [11-MODEL-DECISION](11-MODEL-DECISION.md) |
 | D2-01 | DONE | [PR #13](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/13) מוזג ל־9918ede; CI ראשון: ארבעת ה־checks עברו (כיסוי ב־CI ‏90.32% שורות / 83.71% ענפים); אחרי המיזוג: 268 Python ו־15 Node עברו מקומית, ריצת push ל־main הצליחה. הגנת `main` פעילה: ארבעה required checks, strict, גם למנהלים, בלי force push. PR #14 עם כשל מכוון קיבל BLOCKED ונסגר בלי מיזוג. [הקמה](02-SETUP-AND-GIT.md) |
 | D2-02 | DONE | [PR #15](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/15) מוזג ל־9063ca5; ארבעת ה־checks עברו (הריצה הראשונה נכשלה בשער הכיסוי ונוספו 5 בדיקות; שורות קריטיות שהשתנו 100%, ענפים 97.14%); אחרי המיזוג: 285 Python ו־21 Node עברו על main. [חוזה](D2-02-SESSION.md) |
 | D2-03 | DONE | [PR #18](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/18) מוזג ל־8924791; ארבעת ה־checks עברו; אחרי המיזוג 311 Python ו־27 Node עברו על main |
 | D2-04 | DONE | [PR #19](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/19) מוזג ל־5414521; ארבעת ה־checks עברו (שורות קריטיות שהשתנו 96.30%, ענפים 100%) |
-| D2-05 | MERGED_CORE / WAITING_D2-00 | השלד מוזג ב־[PR #20](https://github.com/Nadavgo8/Visual-Match-Intelligence/pull/20) ל־7074cf5: snapshot קפוא, מגבלת 20s, תוויות מקור והמתנת הסבר לעצירה. חיבור מודל קבוע, אנליסט משמעות וכותב כסוכני מודל עדיין ממתינים להכרעת D2-00; אין PR שלד פתוח |
+| D2-05 | IN_REVIEW | `codex/d2-05-model-agents`: אנליסט משמעות (נתיב של קריאת מודל אחת), נתב ככותב, בדיקת תווית Interpretation, reasoning effort נמוך; בבדיקה חיה כל התשובות live ב־3.9–12.3s. [העברת D2](HANDOFF-D2.md) |
 | D2-06 | WAITING_DEPENDENCY | הכרעת מסלול הפצה ב־D2-00 |
+| צ'אט משחק מאוחד | IN_REVIEW | `feat/unified-chat`: Feed ו־Ask הוחלפו בצ'אט כרונולוגי אחד עם Kai (פרשן, עובדות, טקסט בקוד) ו־Ada (אנליסטית, פרשנות); תשובות ביניהם רק לפי כללי המנוע, עומק עד שני דילוגים; ניתוב שאלות בקוד. הוקפאת הפיצ'רים בוטלה במפורש ע"י Nadav ב־27.10. [החלטה](../context/decisions.md) |
 
 ## הרשאות ורצף העבודה
 

@@ -5,10 +5,10 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%231fa2a8%22/%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f14">
-<title>VMI · Companion</title>
+<title>VMI · Match chat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/app.css?v=20261026-meter-reset">
+<link rel="stylesheet" href="/static/app.css?v=20261027-chat">
 </head>
 <body>
 <header class="top">
@@ -19,30 +19,22 @@
   <button id="settings-btn" class="icon-btn" aria-label="Settings">⚙</button>
 </header>
 
-<nav class="tabs" role="tablist">
-  <button role="tab" id="tab-feed" class="on" aria-selected="true">Feed</button>
-  <button role="tab" id="tab-ask" aria-selected="false">Ask</button>
-</nav>
+<p class="cast small"><span aria-hidden="true">🎙</span> <b>Kai</b> commentates · <span aria-hidden="true">📊</span> <b>Ada</b> analyses · <span class="demo">Demo · synthetic match</span></p>
 
 <main>
-  <section id="feed-view" aria-live="polite">
-    <button id="catch-up" class="catch-up">What did I miss?</button>
-    <div id="catch-up-result" class="card" role="status" hidden></div>
-    <ol id="feed" class="feed"></ol>
-    <p id="feed-empty" class="empty">Waiting for kick-off. Big moments and stoppage analysis will appear here. No notifications, ever.</p>
-  </section>
-
-  <section id="ask-view" hidden>
-    <ol id="chat" class="chat"></ol>
-    <div class="suggest" id="suggest">
-      <button data-catch-up>What did I miss?</button><button>Why was that offside?</button><button>Who's on top?</button><button>Match stats</button>
-    </div>
-    <form id="ask-form" class="ask">
-      <input id="q" autocomplete="off" placeholder="Ask about this match, the rules, stats…" maxlength="400" aria-label="Your question">
-      <button type="submit">Ask</button>
-    </form>
-  </section>
+  <ol id="chat" class="chat" role="log" aria-live="off" aria-label="Match chat"></ol>
+  <p id="chat-empty" class="empty">Waiting for kick-off. Kai calls the big moments as they happen; Ada adds analysis only when there's something worth saying. Ask either of them anything below. No notifications, ever.</p>
+  <div id="announce" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 </main>
+
+<div class="composer">
+  <button id="jump" class="jump" hidden>New messages ↓</button>
+  <div class="suggest" id="suggest" aria-label="Suggested questions"></div>
+  <form id="ask-form" class="ask">
+    <input id="q" autocomplete="off" placeholder="Ask Kai or Ada about this match…" maxlength="400" aria-label="Your question">
+    <button type="submit">Send</button>
+  </form>
+</div>
 
 <dialog id="onboard">
   <form method="dialog" id="onboard-form">
@@ -71,6 +63,6 @@
   </form>
 </dialog>
 
-<script type="module" src="/static/app.js?v=20261026-meter-reset"></script>
+<script type="module" src="/static/app.js?v=20261027-chat"></script>
 </body>
 </html>

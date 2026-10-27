@@ -1,10 +1,12 @@
-"""The "Ask" chat: a router that hands each question to the Match analyst or the
-Rules expert, or declines it.
+"""The "Ask" chat: one commentator voice over several agents.
 
-With Foundry configured, these are three Agent Framework agents: the router uses
-the two specialists as tools (agent-as-tool handoff), and the specialists use the
-read-only engine tools. Without Foundry, the same roles run as deterministic
-code over the same tools, so the chat always works.
+With Foundry configured, these are Agent Framework agents. The router calls the specialists as
+tools (agent-as-tool handoff) and then writes the final answer in the commentator's voice:
+- match analyst: the facts, through the read-only engine tools;
+- rules expert: the Laws of the Game, linked to this match;
+- meaning analyst: what the match analyst's facts suggest, always labelled as interpretation.
+Code then checks the evidence, numbers and labels. Without Foundry, the same roles run as
+deterministic code over the same tools, so the chat always works.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import asyncio
 import copy
 import functools
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -25,12 +28,36 @@ from .tools import MatchTools
 
 PROMPTS = Path(__file__).resolve().parents[2] / "prompts"
 MAX_TOOL_CALLS = 6
+# gpt-5-mini reasons before answering; low effort keeps the agent chain inside the 20 s limit.
+AGENT_OPTIONS = {"reasoning": {"effort": os.getenv("VMI_REASONING_EFFORT", "low")}}
 
 FOOTBALL_WORDS = re.compile(
     r"\b(match|game|score|goal|shot|pass|foul|card|var|offside|penalty|referee|ref|whistle|half|minute|team|"
     r"player|keeper|striker|defen\w*|attack\w*|win|winning|lose|losing|lead|draw|stats?|xg|possession|corner|"
     r"momentum|tactic\w*|formation|crowd|fans?|atmosphere|sub\w*|injur\w*|happen\w*|miss\w*|why|rule|ball|"
     r"press\w*|chance|save|kick|free|throw|book\w*|sent|red|yellow|added|time|left|who)\b", re.I)
+
+
+# Questions about meaning go to the meaning analyst with facts gathered in code.
+MEANING_Q = re.compile(r"\b(on top|dominat\w*|who'?s (better|winning the battle)|in control|pressure|"
+                       r"what (changed|does (it|that|this) mean)|why does (it|that|this) matter|"
+                       r"how (are|is) .{1,30} (doing|playing)|momentum)\b", re.I)
+
+
+# Two voices in one chat. Kai, the commentator, says what happened; Ada, the analyst, says what
+# it means, and also answers rules questions. The choice is made in code from the question and
+# the agent that answered, so a fan never has to pick who to ask.
+ANALYST_AGENTS = {"meaning_analyst", "rules_expert", "both"}
+ANALYST_Q = re.compile(r"\b(why|how come|dominat\w*|on top|better|in control|pressure|tactic\w*|formation|"
+                       r"momentum|chang\w*|mean\w*|matter\w*|turning point|influential|dangerous|expect\w*|"
+                       r"predict\w*|think|maintain|rules?|laws?|allowed|offside|handball|explain)\b", re.I)
+
+
+def speaker_for(question: str, agent: str | None) -> str:
+    """'analyst' for interpretation and rules, 'commentator' for what happened."""
+    if agent in ANALYST_AGENTS or MEANING_Q.search(question) or ANALYST_Q.search(question):
+        return "analyst"
+    return "commentator"
 
 
 class _Recorder:
@@ -71,9 +98,10 @@ class Assistant:
         fallback_reason = None
         if self.client is not None:
             try:
-                res = await asyncio.wait_for(frozen._agents(question, profile), timeout=TOTAL_TIMEOUT_S)
+                path = frozen._meaning if MEANING_Q.search(question) else frozen._agents
+                res = await asyncio.wait_for(path(question, profile), timeout=TOTAL_TIMEOUT_S)
                 if res:
-                    return self._finish(res, frozen, t0)
+                    return self._finish(res, frozen, t0, question)
                 fallback_reason = "agent answer failed validation"
             except asyncio.TimeoutError:
                 fallback_reason = "timeout"
@@ -82,16 +110,49 @@ class Assistant:
         res = frozen._local(question, profile)
         if fallback_reason:
             res["fallback_reason"] = fallback_reason
-        return self._finish(res, frozen, t0)
+        return self._finish(res, frozen, t0, question)
 
     @staticmethod
-    def _finish(res: dict, frozen: "Assistant", t0: float) -> dict:
+    def _finish(res: dict, frozen: "Assistant", t0: float, question: str = "") -> dict:
+        res["speaker"] = speaker_for(question, res.get("agent"))
         res["latency_ms"] = round((time.perf_counter() - t0) * 1000)
         res["answer_kind"] = "live" if res.get("source") == "agent" else "template"  # never present code as AI
         res["snapshot_clock"] = frozen.m.clock
         return res
 
     # ------------------------------------------------------------ Foundry agents
+    def meaning_facts(self) -> dict:
+        """The data tools' facts for a 'what does it mean' question, gathered in code (no model call)."""
+        m = self.m
+        facts = {"score_and_clock": self.tools.get_score_and_clock(), "momentum": self.tools.get_momentum(),
+                 "last_15_minutes": self.tools.get_team_stats(15),
+                 "attack_patterns": [self.tools.get_attack_pattern(side, 15) for side in ("home", "away")],
+                 "recent_events": self.tools.get_events(max(0, derive.minute_of(m.clock) - 15), 130)}
+        facts["evidence"] = sorted({e for f in facts.values() for e in
+                                    (f.get("evidence", []) if isinstance(f, dict) else
+                                     [x for g in f for x in g.get("evidence", [])])})
+        return facts
+
+    async def _meaning(self, question: str, profile: dict) -> dict | None:
+        """Data tools (code) -> meaning analyst (one model call) -> code checks. One hop, so an
+        interpretation fits the 20 s limit; the router's longer chain didn't."""
+        from agent_framework import Agent
+
+        facts = self.meaning_facts()
+        agent = Agent(self.client, (PROMPTS / "meaning_analyst.md").read_text(), default_options=AGENT_OPTIONS, name="meaning_analyst")
+        msg = json.dumps({"question": question, "depth": profile.get("depth", "basic"), "facts": facts},
+                         ensure_ascii=False)
+        resp = await agent.run(msg)
+        text = resp.text.strip()
+        data = json.loads(text[text.find("{"): text.rfind("}") + 1])
+        answer, cited = data.get("answer", "").strip(), data.get("evidence", [])
+        if check_agent_answer(answer, cited, "meaning_analyst", set(facts["evidence"]), [facts]):
+            return None
+        return {"text": answer, "evidence": [e for e in cited if e in facts["evidence"]],
+                "agent": "meaning_analyst", "source": "agent", "model": self.model_name,
+                "tool_calls": ["get_score_and_clock", "get_momentum", "get_team_stats", "get_attack_pattern",
+                               "get_events"], "validation": "passed"}
+
     async def _agents(self, question: str, profile: dict) -> dict | None:
         from agent_framework import Agent
 
@@ -102,14 +163,20 @@ class Assistant:
                f"{self.m.team_name(fav) if fav in ('home', 'away') else 'neutral'}. "
                f"Live: {self.m.team_name('home')} {self.m.score['home']}–{self.m.score['away']} "
                f"{self.m.team_name('away')}, clock {self.m.clock}.")
-        analyst = Agent(self.client, (PROMPTS / "match_analyst.md").read_text(), name="match_analyst",
+        analyst = Agent(self.client, (PROMPTS / "match_analyst.md").read_text(), default_options=AGENT_OPTIONS, name="match_analyst",
                         description="Answers questions about this match: events, stats, players, momentum, tactics.",
                         tools=rec.tools)
-        rules_agent = Agent(self.client, (PROMPTS / "rules_expert.md").read_text(), name="rules_expert",
+        rules_agent = Agent(self.client, (PROMPTS / "rules_expert.md").read_text(), default_options=AGENT_OPTIONS, name="rules_expert",
                             description="Explains the Laws of the Game and this app's indicators, linked to this match.",
                             tools=[t for t in rec.tools if t.__name__ in ("get_rule", "get_events")])
-        router = Agent(self.client, (PROMPTS / "router.md").read_text(), name="router",
-                       tools=[analyst.as_tool(name="ask_match_analyst"), rules_agent.as_tool(name="ask_rules_expert")])
+        # The meaning analyst gathers nothing itself: it reasons only over the facts the router passes
+        # on from the match analyst, so its view can't bring in new numbers or events.
+        meaning = Agent(self.client, (PROMPTS / "meaning_analyst.md").read_text(), default_options=AGENT_OPTIONS, name="meaning_analyst",
+                        description="Explains what the match analyst's facts suggest, labelled as interpretation.",
+                        tools=[])
+        router = Agent(self.client, (PROMPTS / "router.md").read_text(), default_options=AGENT_OPTIONS, name="router",
+                       tools=[analyst.as_tool(name="ask_match_analyst"), rules_agent.as_tool(name="ask_rules_expert"),
+                              meaning.as_tool(name="ask_meaning_analyst")])
         resp = await router.run(f"{ctx}\n\nQuestion: {question}")
         text = resp.text.strip()
         data = json.loads(text[text.find("{"): text.rfind("}") + 1])
@@ -117,17 +184,7 @@ class Assistant:
         if data.get("declined"):
             return {"text": answer, "evidence": [], "agent": "router", "source": "agent",
                     "model": self.model_name, "tool_calls": rec.calls, "validation": "passed"}
-        # receipts check: cited IDs must come from tool results; numbers must too
-        problems = [f"unknown evidence {e}" for e in cited if e not in rec.evidence]
-        allowed = set()
-        for o in rec.outputs:
-            for n in re.findall(r"\d+(?:\.\d+)?", json.dumps(o)):
-                allowed.add(n.rstrip("0").rstrip(".") if "." in n else n)
-        for n in re.findall(r"(?<![\w.])\d+(?:\.\d+)?", answer):
-            k = n.rstrip("0").rstrip(".") if "." in n else n
-            if k not in allowed and k not in {"1", "2", "3", "7", "11", "40", "30"}:
-                problems.append(f"number {n} not in tool results")
-        if problems or not answer:
+        if check_agent_answer(answer, cited, data.get("agent"), rec.evidence, rec.outputs):
             return None
         return {"text": answer, "evidence": [e for e in cited if e in rec.evidence],
                 "agent": data.get("agent", "router"), "source": "agent", "model": self.model_name,
@@ -265,6 +322,27 @@ class Assistant:
     def _out(self, text, evidence, agent, calls) -> dict:
         return {"text": text, "evidence": evidence, "agent": agent, "source": "local", "model": None,
                 "tool_calls": calls, "validation": "passed"}
+
+
+def _norm_number(n: str) -> str:
+    return n.rstrip("0").rstrip(".") if "." in n else n
+
+
+def check_agent_answer(answer: str, cited: list, agent: str | None, evidence: set[str],
+                       outputs: list[dict]) -> list[str]:
+    """Problems with the agents' final answer; empty means it may be shown.
+
+    Cited ids must come from tool results, numbers must appear in tool results, and an answer that
+    used the meaning analyst must keep its view marked as interpretation."""
+    problems = [] if answer else ["empty answer"]
+    problems += [f"unknown evidence {e}" for e in cited if e not in evidence]
+    allowed = {_norm_number(n) for o in outputs for n in re.findall(r"\d+(?:\.\d+)?", json.dumps(o))}
+    for n in re.findall(r"(?<![\w.])\d+(?:\.\d+)?", answer):
+        if _norm_number(n) not in allowed and _norm_number(n) not in {"1", "2", "3", "7", "11", "40", "30"}:
+            problems.append(f"number {n} not in tool results")
+    if agent in ("meaning_analyst", "several") and "interpretation" not in answer.lower():
+        problems.append("interpretation is not labelled")
+    return problems
 
 
 def _first_sentences(text: str, n: int) -> str:

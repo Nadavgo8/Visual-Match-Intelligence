@@ -92,19 +92,31 @@ test("valid JSON with the wrong storage shape is discarded and replaced by durab
 async function appHarness() {
   const companion = await import("../../web/companion.mjs");
   const {atmospherePresentation} = await import("../../web/atmosphere.mjs");
-  const nodes = new Map(); let receive;
-  const element = () => ({ innerHTML: "", addEventListener() {}, scrollIntoView() {},
-    attributes: {}, setAttribute(k,v) { this.attributes[k]=v; },
-    appendChild() {}, style: { setProperty() {} }, classList: { toggle() {} } });
-  const node = id => { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); };
-  const doc = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); },
+  const nodes = new Map(); let receive; const sent = [];
+  const win = { addEventListener() {}, scrollY: 0, innerHeight: 0, scrollTo() { win.scrolled = (win.scrolled ?? 0) + 1; } };
+  // A small DOM: enough tree behaviour to check where chat messages land.
+  const element = () => ({ _html: "", get innerHTML() { return this._html; },
+    set innerHTML(v) { this._html = v; if (v === "") this.children.length = 0; },
+    textContent: "", id: "", className: "", hidden: false, children: [], parentNode: null,
+    addEventListener() {}, scrollIntoView() {}, attributes: {}, setAttribute(k,v) { this.attributes[k]=v; },
+    appendChild(c) { return this.insertBefore(c, null); },
+    insertBefore(c, ref) { c.remove(); const i = ref ? this.children.indexOf(ref) : -1;
+      if (i < 0) this.children.push(c); else this.children.splice(i, 0, c); c.parentNode = this; return c; },
+    remove() { if (this.parentNode) { const a = this.parentNode.children; a.splice(a.indexOf(this), 1); this.parentNode = null; } },
+    replaceWith(n) { const p = this.parentNode; if (!p) return; p.children[p.children.indexOf(this)] = n; n.parentNode = p; this.parentNode = null; },
+    querySelector() { return null; }, style: { setProperty() {} }, classList: { toggle() {} } });
+  const inChat = id => nodes.get("chat")?.children.find((c) => c.id === id);
+  const node = id => { const c = inChat(id); if (c) return c; if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); };
+  const doc = { getElementById: node,
     addEventListener() {}, createElement: element, documentElement: element(), querySelector: selector => node(selector) };
   const src = readFileSync(new URL("../../web/app.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
   const context = { ...companion, FEED_ICONS: {}, atmospherePresentation, URLSearchParams,
     location: { search: "?room=qa" }, localStorage: memoryStorage(), document: doc,
-    window: { addEventListener() {} }, openSession(options) { receive = options.onMessage; return { send() { return true; } }; } };
+    window: win, openSession(options) { receive = options.onMessage; return { send(m) { sent.push(m); return true; } }; } };
   runInNewContext(src, context);
-  return { receive, node, html: id => nodes.get(id).innerHTML, receipts: context.receiptsHtml };
+  const ask = (q) => { node("q").value = q; node("ask-form").onsubmit({ preventDefault() {} }); };
+  return { receive, node, win, doc, sent, ask, html: id => node(id).innerHTML, receipts: context.receiptsHtml,
+    order: () => node("chat").children.map((c) => c.id) };
 }
 
 const meterSample = { type:'meters', score:{home:1,away:0}, clock:'2:09',
@@ -143,7 +155,7 @@ test("answer metadata from a model is literal text, including unknown agent name
   const payload = '<img src=x onerror="bad()"> &';
   app.receive({ type: "answer", id: "q1", agent: payload, source: "agent", model: payload,
     text: payload, evidence: [payload], tool_calls: [payload], fallback_reason: payload, latency_ms: payload });
-  const html = app.html("q1");
+  const html = app.html("m-q1");
   assert.equal(html.includes("<img"), false);
   assert.ok(html.includes("&lt;img src=x onerror=&quot;bad()&quot;&gt; &amp;"));
   assert.ok(html.includes("<details")); // receipts remain structured and usable
@@ -152,10 +164,10 @@ test("answer metadata from a model is literal text, including unknown agent name
 test("known agent labels and answer deduplication remain intact", async () => {
   const app = await appHarness();
   app.receive({ type: "answer", id: "q1", agent: "match_analyst", source: "local", text: "First", latency_ms: 12 });
-  const html = app.html("q1");
-  assert.ok(html.includes("Match analyst (local) · 12 ms"));
+  const html = app.html("m-q1");
+  assert.ok(html.includes("Kai via match analyst (local) · 12 ms"));
   app.receive({ type: "answer", id: "q1", agent: "router", text: "Replacement" });
-  assert.equal(app.html("q1"), html);
+  assert.equal(app.html("m-q1"), html);
 });
 
 test("analysis receipt metadata and attribute values cannot introduce HTML", async () => {
@@ -166,4 +178,123 @@ test("analysis receipt metadata and attribute values cannot introduce HTML", asy
   assert.equal(html.includes("<svg"), false);
   assert.ok(html.includes("&lt;svg"));
   assert.ok(html.includes("✓ passed"));
+});
+
+// ---------- unified match chat ----------
+import { SPEAKERS, insertIndex, isNearBottom, speakerOf, suggestionsFor } from "../../web/companion.mjs";
+
+const feedItem = (cue, t, extra = {}) => ({ type: "feed", cue_id: cue, clock: `${Math.floor(t / 60)}:00`, t, delivered: t,
+  icon: "chance", team: "home", text: `item ${cue}`, evidence: [`e_${cue}`], tier: 3, speaker: "commentator", reply_to: null, ...extra });
+const snapshotWith = (feed, run_id = "r1") => ({ ...emptySnapshot(run_id), feed });
+
+test("two named voices, told apart by name, role and label as well as colour", () => {
+  assert.deepEqual([SPEAKERS.commentator.name, SPEAKERS.commentator.label], ["Kai", "Fact"]);
+  assert.deepEqual([SPEAKERS.analyst.name, SPEAKERS.analyst.label], ["Ada", "Interpretation"]);
+  assert.equal(speakerOf("<script>"), SPEAKERS.commentator);  // unknown speakers fall back to the commentator
+});
+
+test("chat order: oldest first, and equal times keep arrival order", () => {
+  assert.equal(insertIndex([], 5), 0);
+  assert.equal(insertIndex([1, 3, 5], 4), 2);
+  assert.equal(insertIndex([1, 3, 3, 5], 3), 3);  // after the existing 3s
+  assert.equal(insertIndex([1, 3], 9), 2);
+});
+
+test("following means the bottom of the chat is within 80 px", () => {
+  assert.equal(isNearBottom(920, 1000), true);
+  assert.equal(isNearBottom(919, 1000), false);
+  assert.equal(isNearBottom(0, 0), true);
+});
+
+test("suggested questions follow the latest big moment, at most three, never repeated", () => {
+  assert.deepEqual(suggestionsFor("sub"), ["What changed after the substitution?", "Who's on top?", "Why was that offside?"]);
+  assert.deepEqual(suggestionsFor(null), ["Who's on top?", "Why was that offside?", "Match stats"]);
+  for (const icon of ["goal", "penalty", "var", "card_red", "card_yellow", "momentum", "unknown"]) {
+    const s = suggestionsFor(icon);
+    assert.ok(s.length <= 3 && new Set(s).size === s.length, icon);
+  }
+});
+
+test("Kai, Ada and the fan share one chronological chat; a question sits after what the fan had seen", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("b", 20), feedItem("a", 10)]));
+  assert.deepEqual(app.order(), ["m-a", "m-b"]);
+  app.ask("Who scored?");
+  assert.equal(JSON.stringify(app.sent.at(-1)), JSON.stringify({ cmd: "ask", q: "Who scored?", id: "q1" }));
+  app.receive(feedItem("c", 30, { speaker: "analyst", icon: "momentum", text: "Home are on top right now." }));
+  assert.deepEqual(app.order(), ["m-a", "m-b", "m-u1", "m-q1", "m-c"]);
+  assert.ok(app.html("m-c").includes("<b>Ada</b>") && app.html("m-c").includes("Interpretation"));
+  app.receive({ type: "answer", id: "q1", speaker: "analyst", agent: "meaning_analyst", source: "agent", model: "m",
+    text: "Home lead through Dumont.", latency_ms: 5 });
+  assert.deepEqual(app.order(), ["m-a", "m-b", "m-u1", "m-q1", "m-c"]);  // answered in place, nothing moved
+  assert.ok(app.html("m-q1").includes("<b>Ada</b>") && app.html("m-q1").includes("Interpretation · live answer"));
+  assert.equal(app.node("announce").textContent, "Ada answered: Home lead through Dumont.");
+});
+
+test("Ada's analysis quotes and links the commentator message it replies to", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("g", 100, { icon: "goal", tier: 1, text: "GOAL! Dumont scores." })]));
+  app.receive({ type: "analysis", cue_id: "x", clock: "1:48", t: 108, moment: "goal", reply_to: "g", speaker: "analyst",
+    text: "That restores the lead.", sentences: [], facts: [], receipts: { source: "template", validation: "passed", latency_ms: 0 } });
+  const html = app.html("m-x");
+  assert.ok(html.includes('href="#m-g"') && html.includes("<b>Ada</b>") && html.includes("After the goal · interpretation"));
+  app.receive({ type: "analysis", cue_id: "y", clock: "1:50", t: 110, moment: "goal", reply_to: "missing",
+    text: "No target.", sentences: [], facts: [], receipts: { source: "template", validation: "passed", latency_ms: 0 } });
+  assert.equal(app.html("m-y").includes("class=\"reply\""), false);  // a reply to something not shown has no quote
+});
+
+test("reading older messages: live updates show a new-messages button instead of scrolling", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("a", 10)]));
+  app.doc.documentElement.scrollHeight = 2000; app.win.innerHeight = 500; app.win.scrollY = 0; app.win.scrolled = 0;
+  app.receive(feedItem("b", 20));
+  app.receive(feedItem("c", 30));
+  assert.equal(app.node("jump").hidden, false);
+  assert.equal(app.node("jump").textContent, "2 new messages ↓");
+  assert.equal(app.win.scrolled, 0);
+  app.receive({ ...feedItem("c", 30), text: "item c (xG 0.3)", update: true });  // late xG: not a new message
+  assert.equal(app.node("jump").textContent, "2 new messages ↓");
+  app.win.scrollY = 1500;  // back at the bottom: new messages follow automatically
+  app.receive(feedItem("d", 40));
+  assert.equal(app.win.scrolled, 1);
+  assert.equal(app.node("jump").hidden, true);
+});
+
+test("tier-1 moments are emphasised and announced; quieter items are not announced", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([]));
+  app.receive(feedItem("p", 50, { tier: 1, icon: "penalty", text: "Penalty to Home!" }));
+  assert.ok(app.node("m-p").className.includes("tier1"));
+  assert.equal(app.node("announce").textContent, "Kai, 0:00: Penalty to Home!");
+  app.receive(feedItem("s", 60, { tier: 3, text: "Shot saved." }));
+  assert.equal(app.node("announce").textContent, "Kai, 0:00: Penalty to Home!");
+  assert.ok(app.html("suggest").includes("Why was it a penalty?"));
+});
+
+test("a reconnect keeps the fan's questions; a jump to a new run restarts the chat with a notice", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("a", 10)], "r1"));
+  app.ask("What happened?");
+  app.receive(snapshotWith([feedItem("a", 10), feedItem("b", 20)], "r1"));
+  assert.deepEqual(app.order(), ["m-a", "m-u1", "m-q1", "m-b"]);
+  app.receive(snapshotWith([feedItem("z", 900)], "r2"));
+  assert.deepEqual(app.order(), ["m-n2", "m-z"]);
+  assert.ok(app.node("m-n2").textContent.includes("chat started again"));
+  app.receive({ type: "answer", id: "q1", text: "late", source: "local" });  // answer for the old run: nowhere to go
+  assert.deepEqual(app.order().length, 2);
+});
+
+test("chat text from the feed is literal, never HTML", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([feedItem("h", 10, { text: '<img src=x onerror="bad()">', clock: "<b>", reply_to: "a\"b" })]));
+  assert.equal(app.html("m-h").includes("<img"), false);
+  assert.ok(app.html("m-h").includes("&lt;img"));
+});
+
+test("Ada's rules answers are labelled Rules, not interpretation", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([]));
+  app.ask("Was that offside?");
+  app.receive({ type: "answer", id: "q1", speaker: "analyst", agent: "rules_expert", source: "local", text: "Law 11.", latency_ms: 1 });
+  assert.ok(app.html("m-q1").includes("Rules · written by code") && app.html("m-q1").includes("<b>Ada</b>"));
 });
