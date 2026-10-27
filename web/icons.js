@@ -28,10 +28,6 @@ export function bannerIcon(type) {
   return `<svg viewBox="0 0 25 25" aria-hidden="true">${WHISTLE}${BADGES[type] ?? ""}</svg>`;
 }
 
-export const FEED_ICONS = {
-  goal: "⚽", card_yellow: "🟨", card_red: "🟥", var: "📺", sub: "🔁", penalty: "◎",
-  chance: "🎯", injury: "✚", clock: "⏱", whistle: "⏵", momentum: "↗", big_chance: "❗", milestone: "🔢",
-};
 
 // Companion chat icons: line style, currentColor, no emoji (they render differently per phone).
 const FEED_GLYPHS = {

@@ -88,8 +88,8 @@ export class CatchUpCheckpoints {
 // ---------- unified match chat ----------
 // Two named voices: Kai says what happened (logged facts), Ada says what it means (interpretation).
 export const SPEAKERS = Object.freeze({
-  commentator: Object.freeze({ name: "Kai", role: "Commentator", avatar: "🎙", label: "Fact" }),
-  analyst: Object.freeze({ name: "Ada", role: "Analyst", avatar: "📊", label: "Interpretation" }),
+  commentator: Object.freeze({ name: "Kai", role: "Commentator", label: "Fact" }),
+  analyst: Object.freeze({ name: "Ada", role: "Analyst", label: "Interpretation" }),
 });
 export const speakerOf = (key) => SPEAKERS[key] ?? SPEAKERS.commentator;
 
@@ -127,30 +127,40 @@ export function suggestionsFor(icon, max = 3) {
 }
 
 // ---------- match chat layout ----------
-// How a feed item is drawn: the biggest moments as a logged-event card, routine facts as a
-// one-line timeline row, everything else as a chat bubble. Who said it is shown in all three.
+// How a feed item is drawn: the biggest moments as a logged-event card (with its reply quote,
+// if any), routine facts as a one-line timeline row, everything else as a chat bubble. Who
+// said it is shown in all three. A routine reply stays a bubble so its quote has room.
 export function feedLayout(f) {
-  if (f?.speaker === "analyst" || f?.reply_to) return "bubble";
+  if (f?.speaker === "analyst") return "bubble";
   if (f?.tier === 1) return "card";
-  return f?.tier >= 3 ? "row" : "bubble";
+  return f?.tier >= 3 && !f?.reply_to ? "row" : "bubble";
+}
+
+// The match minute for a card or row: "37:58" -> "37'"; added time ("45+2'") is already a minute.
+export function minuteOf(clock) {
+  const c = String(clock ?? "").trim();
+  if (!c) return "";
+  return c.includes("'") ? c : `${c.split(":")[0]}'`;
 }
 
 export const EVENT_LABELS = Object.freeze({
-  goal: "Goal", penalty: "Penalty", var: "VAR", card_red: "Red card", card_yellow: "Yellow card",
+  goal: "Goal", penalty: "Penalty", chance: "Shot", big_chance: "Big chance", var: "VAR", card_red: "Red card", card_yellow: "Yellow card",
   whistle: "Whistle", sub: "Substitution", injury: "Injury", clock: "Added time",
 });
-// Tone of a logged-event card: a goal is warm, a review or sending-off is tense, the rest calm.
+// Tone of a logged-event card: a goal is warm; a review, sending-off, penalty or the penalty
+// kick itself (a tier-1 "chance") is tense; the rest calm.
+const TENSE = new Set(["var", "card_red", "penalty", "chance"]);
 export function eventTone(icon) {
   if (icon === "goal") return "goal";
-  return icon === "var" || icon === "card_red" || icon === "penalty" ? "tense" : "calm";
+  return TENSE.has(icon) ? "tense" : "calm";
 }
 
 // Up to three letters for a crest: "Harbour City" -> "HC", "Northvale Rovers" -> "NR".
 export function teamInitials(name) {
-  const words = String(name ?? "").match(/[A-Za-z0-9]+/g) ?? [];
+  const words = String(name ?? "").match(/[\p{L}\p{N}]+/gu) ?? [];
   if (!words.length) return "?";
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return words.slice(0, 3).map((w) => w[0]).join("").toUpperCase();
+  return words.slice(0, 3).map((w) => [...w][0]).join("").toUpperCase();
 }
 
 // Dark or white text on a team colour, whichever has more contrast (WCAG relative luminance).

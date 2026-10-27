@@ -1,7 +1,7 @@
 import { AVATARS, feedIcon } from "./icons.js?v=3";
 import { atmospherePresentation, litSegments } from "./atmosphere.mjs?v=2";
 import { openSession } from "./session.mjs?v=1.1";
-import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, EVENT_LABELS, FeedStore, eventTone, feedLayout, insertIndex, isNearBottom, normaliseProfile, readableText, scopeOf, speakerOf, suggestionsFor, teamInitials } from "./companion.mjs?v=1.3";
+import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, EVENT_LABELS, FeedStore, eventTone, feedLayout, insertIndex, isNearBottom, minuteOf, normaliseProfile, readableText, scopeOf, speakerOf, suggestionsFor, teamInitials } from "./companion.mjs?v=1.3";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -85,6 +85,7 @@ function onMeters(m) {
   $("clock").textContent = m.clock;
   renderMeters(m.atmosphere, m.momentum);
 }
+let litShown = null;
 function renderMeters(atmosphere, momentum) {
   const chip = $("atmo-chip");
   const a = atmospherePresentation(atmosphere);
@@ -93,7 +94,10 @@ function renderMeters(atmosphere, momentum) {
   chip.setAttribute("aria-label", a.label);
   document.querySelector(".strip").style.setProperty("--atmo", a.percent === null ? "var(--muted)" : a.color);
   const lit = litSegments(a.value);
-  $("atmo-segs").innerHTML = Array.from({ length: 10 }, (_, i) => `<span${i < lit ? ' class="on"' : ""}></span>`).join("");
+  if (lit !== litShown) {  // meters tick often: redraw only when a segment changes
+    litShown = lit;
+    $("atmo-segs").innerHTML = Array.from({ length: 10 }, (_, i) => `<span${i < lit ? ' class="on"' : ""}></span>`).join("");
+  }
   const available = Number.isFinite(momentum?.home_index);
   const value = available ? Math.min(1, Math.max(0, momentum.home_index)) : .5;
   $("mom").style.width = `${(value * 100).toFixed(0)}%`;
@@ -173,7 +177,7 @@ function agentHtml(speakerKey, clock, label, inner) {
   return `<span class="avatar" aria-hidden="true">${AVATARS[key]}</span><div class="body">${header(key, clock, label)}`
     + `<div class="bubble">${inner}</div></div>`;
 }
-const minute = (clock) => esc(String(clock ?? "").split(":")[0]) + "'";
+
 // A reply quotes what it answers, linked to it, so the thread reads like a conversation.
 function replyQuote(replyTo) {
   const target = replyTo && entries.get(replyTo);
@@ -193,18 +197,19 @@ function addFeed(f, fresh) {
   const isNew = feedStore.upsert(f) === "insert" && fresh;
   const speaker = f.speaker === "analyst" ? "analyst" : "commentator";
   const layout = feedLayout(f);
+  const kai = esc(speakerOf("commentator").name);
   let li;
   if (layout === "card") {
     li = document.createElement("li");
     li.className = `msg event ${eventTone(f.icon)} tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
     li.innerHTML = `<div class="head"><span class="label">${feedIcon(f.icon, 16)}${esc(EVENT_LABELS[f.icon] ?? "Big moment")}</span>`
-      + `<span class="min">${minute(f.clock)}</span></div><p class="txt">${esc(f.text)}</p>`
-      + `<div class="foot who"><b>Kai</b><span>· Fact · logged match event</span></div>`;
+      + `<span class="min">${esc(minuteOf(f.clock))}</span></div>${replyQuote(f.reply_to)}<p class="txt">${esc(f.text)}</p>`
+      + `<div class="foot who"><b>${kai}</b><span>· Fact · logged match event</span></div>`;
   } else if (layout === "row") {
     li = document.createElement("li");
     li.className = `msg row tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
-    li.innerHTML = `<span class="min">${minute(f.clock)}</span><span class="ic">${feedIcon(f.icon)}</span>`
-      + `<span class="who sr-only"><b>Kai</b>, fact, ${esc(f.clock)}: </span><span class="txt">${esc(f.text)}</span>`;
+    li.innerHTML = `<span class="min" aria-hidden="true">${esc(minuteOf(f.clock))}</span><span class="ic">${feedIcon(f.icon)}</span>`
+      + `<span class="who sr-only"><b>${kai}</b>, fact, ${esc(f.clock)}: </span><span class="txt">${esc(f.text)}</span>`;
   } else {
     li = agentItem(speaker, `tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`);
     li.innerHTML = agentHtml(speaker, f.clock, speaker === "analyst" ? "Interpretation" : "Fact",

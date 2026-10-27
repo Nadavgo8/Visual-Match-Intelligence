@@ -130,6 +130,9 @@ test('a replacement snapshot without measurements clears prior atmosphere and mo
   assert.equal(app.node('atmo-chip').textContent,'38%');
   assert.equal(app.node('atmo-chip').attributes['aria-label'],'Atmosphere 38%');
   assert.equal(app.node('atmo-segs').innerHTML.split('class="on"').length-1,4);  // 4 of 10 segments lit
+  app.node('atmo-segs').innerHTML='kept';
+  app.receive({...meterSample,atmosphere:{available:true,level:.41}});
+  assert.equal(app.node('atmo-segs').innerHTML,'kept');  // same lit count: segments are not rebuilt
   assert.equal(app.node('mom').style.width,'73%');
   app.receive(emptySnapshot());
   assert.equal(app.node('atmo-chip').textContent,'Unavailable');
@@ -353,4 +356,9 @@ test("the biggest moments render as a logged-event card, routine facts as a time
   const row = app.node("m-r");
   assert.ok(row.className.includes("row") && row.innerHTML.includes("58'"));
   assert.ok(row.innerHTML.includes('<b>Kai</b>, fact, 58:20'));  // the speaker is still announced
+  assert.ok(row.innerHTML.includes('<span class="min" aria-hidden="true">'));  // the clock is read once
+  app.receive(feedItem("g2", 3700, { tier: 1, icon: "goal", clock: "45+2'", reply_to: "r", text: "Goal again" }));
+  const reply = app.node("m-g2");
+  assert.ok(reply.className.includes("event goal") && reply.innerHTML.includes('href="#m-r"'));  // still a card, with its quote
+  assert.ok(reply.innerHTML.includes(">45+2'<") && !reply.innerHTML.includes("''"));
 });
