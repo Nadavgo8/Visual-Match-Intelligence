@@ -81,16 +81,16 @@ def test_two_connections_finishing_the_same_load_join_one_room(source, monkeypat
 
         monkeypatch.setattr(server, "prepare_match", prepare)
         sockets = [Socket(), Socket()]
-        tasks = [asyncio.create_task(server.ws(ws, "shared", role="app", seed=0)) for ws in sockets]
+        tasks = [asyncio.create_task(server.ws(ws, "shared", role="app", seed=7)) for ws in sockets]
         try:
             await asyncio.wait_for(entered.wait(), 1)
             release.set()
             await asyncio.wait_for(asyncio.gather(*(ws.snapshot.wait() for ws in sockets)), 1)
             assert len(server.rooms) == 1
             room = server.rooms["shared"]
-            assert len(room.clients) == 2 and room.seed == 0 and room.run == 1
+            assert len(room.clients) == 2 and room.seed == 7 and room.run == 1
             assert room.match is source
-            assert all(ws.received[0]["state"]["seed"] == 0 for ws in sockets)
+            assert all(ws.received[0]["state"]["seed"] == 7 for ws in sockets)
         finally:
             release.set()
             for task in tasks:
