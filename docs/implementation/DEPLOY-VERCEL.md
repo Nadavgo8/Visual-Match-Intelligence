@@ -1,5 +1,23 @@
 # Deploying on Vercel: two known risks and their fixes
 
+## Live deployment (27.10.2026): Azure App Service
+
+**Judges' link: https://vmi-match.azurewebsites.net** (`/tv` on a laptop, `/app` on a phone, same room code).
+
+We deployed on Azure, not Vercel. Container Apps (`infra/deploy.sh`) could not build: Free Trial subscriptions refuse ACR Tasks (`TasksOperationsNotAllowed`), and there is no local Docker. App Service builds from source itself, so `infra/deploy-appservice.sh` deploys there instead. It uses one always-on B1 instance, so rooms stay in one memory with no time limit (risk 2 below does not apply), and a system-assigned managed identity, so no secret (risk 1 below does not apply). It runs on the Free Trial credit; the script refuses to run unless the spending limit is On. Rerun the script to redeploy the current checkout.
+
+Checked on the live site, 27.10: `/api/health` answers `agents: foundry`; a TV and a phone share one room (same seed and run); the phone cannot control playback; a reconnecting phone gets the current state and feed.
+
+**Open:** the app's identity needs two roles on the Foundry resource before answers come from the model. The script's role step failed under Git Bash (it rewrote the `/subscriptions/...` scope into a file path; now fixed with `MSYS_NO_PATHCONV=1`). Run once, as the subscription owner, in PowerShell:
+
+```powershell
+foreach ($r in 'Cognitive Services User','Azure AI Developer') { az role assignment create --assignee-object-id 844bc951-6403-4286-8338-faaa31065e52 --assignee-principal-type ServicePrincipal --role $r --scope /subscriptions/3abad52b-7c6c-4f6d-b811-e19bb8d58acd/resourceGroups/vmi-rg/providers/Microsoft.CognitiveServices/accounts/vmi-foundry-nadav }
+```
+
+Then the Ask test below must show `· AI`. Before that it shows `· written by code` (checked: `source: local`). The same question against Foundry from a local server answered from the model (`source: agent`, gpt-5-mini, 17.6 s), so the code path works.
+
+The rest of this file is the original Vercel analysis, kept for reference.
+
 Written 26.10.2026 for the D2-06 deploy. The app was built as one long-running server (FastAPI + WebSocket rooms in memory) with keyless access to Microsoft Foundry. On Vercel, two things work differently. Each section below gives the risk, a 2-minute test, and the fix.
 
 Azure resources already created (Free Trial, spending limit On, so nothing can bill a card):
