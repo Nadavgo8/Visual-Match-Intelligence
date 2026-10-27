@@ -19,6 +19,7 @@
   .go a:hover { border-color: var(--b); }
   .go b { display:block; font-size: 19px; margin-bottom: 4px; }
   .go span { color: var(--muted); font-size: 15px; }
+  .hint { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
   label { color: var(--muted); font-size: 15px; } input { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font:inherit; width: 9em; }
   ul { padding-left: 20px; color: var(--muted); } li { margin: 4px 0; }
   .note { font-size: 14px; color: var(--muted); border-top:1px solid var(--line); padding-top: 16px; margin-top: 28px; }
@@ -28,22 +29,28 @@
 <main>
   <h1>Visual Match Intelligence</h1>
   <p class="lead">Football's sound, made visible. Whistles, the crowd and the commentary become calm visual signals on the screen and a companion app on the phone, for fans with hearing difficulty.</p>
-  <p><label>Room <input id="room" value="demo" maxlength="40"></label></p>
+  <p><label>Room <input id="room" maxlength="40" aria-describedby="room-help"></label></p>
+  <p id="room-help" class="hint">Open the TV view and the companion app with the same room code. Each visit gets a fresh code, so every viewer has their own match.</p>
   <div class="go">
     <a id="tv" href="/tv?room=demo"><b>📺 TV view</b><span>The broadcast: 2D replay with whistle banners, an atmosphere indicator and momentum.</span></a>
-    <a id="app" href="/app?room=demo"><b>📱 Companion app</b><span>Open on your phone: event feed, stoppage analysis with receipts, and Ask.</span></a>
+    <a id="app" href="/app?room=demo"><b>📱 Companion app</b><span>Open on your phone: one live chat with Kai, the commentator, and Ada, the analyst. Ask them anything.</span></a>
   </div>
   <ul>
     <li>Every whistle type has its own banner in a fixed place. No captions to read during play.</li>
     <li>Analysis waits for stoppages and comes at your depth: a friend explaining, or an analyst.</li>
-    <li>Every sentence carries its receipts: the event IDs it came from, checked by a validator.</li>
+    <li>Kai says what happened; Ada says what it means. Every message is labelled as fact or interpretation, and as written by AI or by code.</li>
   </ul>
   <p class="note">All teams, players and matches are synthetic, produced by our own seeded match generator. No real footage, data, clubs or league marks are used. Raw data: <a href="/api/match/2/events" style="color:inherit">events</a>, <a href="/api/match/2/crowd" style="color:inherit">crowd</a>, <a href="/api/match/2/meta" style="color:inherit">squads</a>.</p>
 </main>
 <script>
+  // A short random room code per visit (no 0/O or 1/I to misread), so viewers don't share a room by accident.
+  const ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(4)), (n) => ABC[n % ABC.length]).join("");
   const r = document.getElementById("room");
-  r.oninput = () => { const v = encodeURIComponent(r.value || "demo");
+  r.value = code;
+  r.oninput = () => { const v = encodeURIComponent(r.value.trim() || code);
     document.getElementById("tv").href = `/tv?room=${v}`; document.getElementById("app").href = `/app?room=${v}`; };
+  r.oninput();
 </script>
 </body>
 </html>

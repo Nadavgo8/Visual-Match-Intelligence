@@ -11,7 +11,7 @@ import pytest
 
 from vmi.agents.qa import speaker_for
 from vmi.api.server import Room
-from vmi.engine.attention import MOMENTUM_REPLY_S, AttentionEngine
+from vmi.engine.attention import BIG_CHANCE_XG, MILESTONES, MOMENTUM_REPLY_S, AttentionEngine
 from vmi.engine.replay import run_all
 from vmi.generator.match import generate_match
 
@@ -50,8 +50,10 @@ def test_reply_threads_are_short_point_backwards_and_never_target_an_analysis(pl
         if r is not None:
             assert r in seen, "a reply must point at something already said"
             assert seen[r]["kind"] == "feed", "nothing replies to an analysis, so threads stop there"
-            if o["kind"] == "feed":  # only a goal builds on Ada's momentum call
-                assert o["icon"] == "goal" and seen[r]["speaker"] == "analyst"
+            if o["kind"] == "feed":  # the only feed replies: a goal to Ada's momentum call, or a shot follow-up
+                target = seen[r]
+                assert (o["icon"], target["speaker"]) == ("goal", "analyst") or (
+                    o["icon"] in ("big_chance", "milestone") and target.get("shot_id")), (o["icon"], target["icon"])
         seen.setdefault(o["cue_id"], o)
     for o in outs:  # depth: follow reply_to links; no chain is longer than two hops
         hops, cur = 0, o
@@ -60,10 +62,32 @@ def test_reply_threads_are_short_point_backwards_and_never_target_an_analysis(pl
             assert hops <= 2
 
 
-def test_only_the_momentum_call_is_ada_everything_else_from_the_feed_is_kai(played):
+def test_ada_speaks_for_interpretation_and_kai_for_everything_else_from_the_feed(played):
     _, outs = played
     for o in (o for o in outs if o["kind"] == "feed"):
-        assert o["speaker"] == ("analyst" if o["icon"] == "momentum" else "commentator")
+        assert o["speaker"] == ("analyst" if o["icon"] in ("momentum", "big_chance") else "commentator")
+
+
+def test_every_missed_big_chance_is_called_once_and_nothing_below_the_threshold(played):
+    _, outs = played
+    final = {}
+    for o in (o for o in outs if o["kind"] == "feed" and o.get("shot_id")):
+        final[o["shot_id"]] = o
+    expected = {sid for sid, o in final.items() if o.get("xg") is not None and o["xg"] >= BIG_CHANCE_XG
+                and not o["text"]["basic"].startswith("GOAL") and "result pending" not in o["text"]["basic"]}
+    called = [o["evidence"][0] for o in outs if o["kind"] == "feed" and o["icon"] == "big_chance"]
+    assert sorted(called) == sorted(expected)
+    assert expected, "the fixture match should contain at least one missed big chance"
+
+
+def test_player_milestones_are_said_once_at_three_and_five_only(played):
+    _, outs = played
+    marks = [(o["say"]["who"], o["say"]["stat"], o["say"]["n"]) for o in outs
+             if o["kind"] == "feed" and o["icon"] == "milestone"]
+    assert marks and len(marks) == len(set(marks))
+    assert {n for _, _, n in marks} <= set(MILESTONES)
+    for o in (o for o in outs if o["kind"] == "feed" and o["icon"] == "milestone"):
+        assert o["reply_to"] and str(o["say"]["n"]) in o["text"]["basic"]
 
 
 def test_a_late_xg_update_keeps_the_reply_link_of_the_original_goal_item(played):
@@ -124,3 +148,21 @@ def test_server_messages_carry_the_speaker_and_reply_link():
                        "latency_ms": 0, "validation": "passed"}
     asyncio.run(room.push_analysis(analysis, key, room.run))
     assert [(m["speaker"], m["reply_to"]) for m in sent] == [("analyst", "cue_9")]
+
+
+def test_a_new_room_plays_a_random_match_unless_a_seed_or_demo_mode_is_set(monkeypatch):
+    from vmi.api import server
+
+    monkeypatch.delenv("VMI_DEMO", raising=False)
+    monkeypatch.setattr(server.random, "randint", lambda lo, hi: (lo, hi))
+    assert server.new_room_seed(None) == (1, server.MAX_SEED)
+    assert server.new_room_seed(7) == 7
+    monkeypatch.setenv("VMI_DEMO", "1")
+    assert server.new_room_seed(None) == server.DEMO_SEED
+    assert server.new_room_seed(7) == 7
+
+
+def test_the_tv_learns_which_seed_is_the_demo_match():
+    from vmi.api import server
+
+    assert Room("demo-seed-state", 12).state("tv")["demo_seed"] == server.DEMO_SEED

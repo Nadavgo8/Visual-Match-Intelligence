@@ -37,6 +37,8 @@ BANNERS = {
 }
 
 WHISTLE_WAIT_S = 2.0  # wait this long for the feed to explain a whistle, then show it generic
+BIG_CHANCE_XG = 0.25  # a missed shot at or above this synthetic xG is called a big chance
+MILESTONES = (3, 5)  # a player's shots or key passes are mentioned when they reach these counts
 MOMENTUM_REPLY_S = 600.0  # a goal links to the analyst's momentum call made this recently
 TIER_BIG, TIER_BALANCED, TIER_ALL = 1, 2, 3
 AMOUNT_MAX_TIER = {"big": TIER_BIG, "balanced": TIER_BALANCED, "everything": TIER_ALL}
@@ -78,6 +80,7 @@ class AttentionEngine:
     shot_feeds: dict = field(default_factory=dict)
     cue_by_event: dict = field(default_factory=dict)  # event id -> feed cue_id, so analysis can reply to it
     last_momentum: dict | None = None  # the analyst's latest "on top" call: team, t, cue_id
+    said: set = field(default_factory=set)  # big chances and player milestones already mentioned
     atmosphere: Atmosphere = field(default_factory=Atmosphere)
     last_atmosphere: dict | None = None
 
@@ -101,7 +104,31 @@ class AttentionEngine:
         return {"kind": "feed", "cue_id": cue, "t": ev["t"], "clock": ev.get("clock"),
                 "tier": tier, "icon": icon, "team": team if team is not None else ev.get("team"),
                 "text": {"basic": basic, "deep": deep}, "evidence": [ev["id"]], "speaker": speaker,
-                "reply_to": None}
+                "reply_to": None, "say": self._say(ev, team)}
+
+    def _say(self, ev: dict, team: str | None) -> dict:
+        """The facts a chat voice may use to word this item, taken from the event and the
+        score at that moment. Code picks the wording (vmi/agents/voices.py); nothing new is claimed."""
+        m = self.model
+        side = team if team is not None else ev.get("team")
+        say = {"type": ev.get("type"), "who": m.player_name(ev.get("player_id")), "team": m.team_name(side) if side else None,
+               "score": f"{m.team_name('home')} {m.score['home']}–{m.score['away']} {m.team_name('away')}"}
+        etype = ev.get("type")
+        if etype == "card":
+            say["colour"] = ev["card"]["colour"]
+            say["left"] = len(m.on_pitch[ev["team"]])
+        elif etype == "var":
+            v = ev["var"]
+            say.update(phase=v["phase"], incident=v["incident"], outcome=v.get("outcome"))
+        elif etype == "substitution":
+            say.update(on=m.player_name(ev["substitution"]["on_id"]), off=m.player_name(ev["substitution"]["off_id"]))
+        elif etype == "added_time":
+            say["minutes"] = ev["added_time"]["minutes"]
+        elif etype in ("period_start", "period_end"):
+            say["period"] = ev[etype]["period_no"]
+        elif etype == "shot":
+            say.update(outcome=ev["shot"].get("outcome"), penalty=bool(ev["shot"].get("penalty")))
+        return say
 
     # ---------- main entry points ----------
     def ingest(self, rec: dict, now: float) -> list[dict]:
@@ -299,6 +326,7 @@ class AttentionEngine:
         elif etype in {"shot", "shot_result", "shot_xg", "goal_cancelled"}:
             shot = ev if etype == "shot" else m.by_id[ev["shot_id"]]
             out.append(self._shot_feed(shot))
+            out += self._shot_followups(shot)
             if etype == "goal_cancelled":
                 self.scheduled = [sa for sa in self.scheduled if not (sa.kind == "goal" and sa.trigger["id"] == shot["id"])]
             if etype == "shot_result" and ev["outcome"] == "goal":
@@ -393,7 +421,7 @@ class AttentionEngine:
         text = f"Shot by {who}: {outcome.replace('_', ' ') if outcome else 'result pending'}."
         if outcome == "goal":
             text = f"GOAL! {who} scores for {self.model.team_name(shot['team'])}."
-        deep = text + (f" Synthetic xG {d['xg']} ({d['xg_method']})." if d.get("xg") is not None
+        deep = text + (f" xG {d['xg']} ({d['xg_method']})." if d.get("xg") is not None
                        else " xG not yet available.")
         old = self.shot_feeds.get(shot["id"])
         feed = self._feed(shot, TIER_BIG if outcome == "goal" or q.get("penalty") else TIER_ALL,
@@ -408,6 +436,50 @@ class AttentionEngine:
         feed["evidence"] += [d[k] for k in ("result_id", "xg_id") if d.get(k)]
         self.shot_feeds[shot["id"]] = deepcopy(feed)
         return feed
+
+    def _shot_followups(self, shot: dict) -> list[dict]:
+        """Replies to a shot item, each said once: Ada calls a missed big chance once its delivered
+        synthetic xG reaches BIG_CHANCE_XG; Kai notes a player reaching 3 or 5 shots or key passes.
+        Counts are what has been delivered so far; the engine derives key passes."""
+        m, out = self.model, []
+        q, d = shot["shot"], shot["derived"]
+        cue = self.cue_by_event.get(shot["id"])
+        outcome, xg = q.get("outcome"), d.get("xg")
+        if outcome and outcome not in ("goal", "disallowed") and xg is not None and xg >= BIG_CHANCE_XG                 and ("big", shot["id"]) not in self.said:
+            self.said.add(("big", shot["id"]))
+            who, xg = m.player_name(shot["player_id"]), round(xg, 2)
+            ev = {"id": f"{shot['id']}:big", "t": self.now, "clock": m.clock, "team": shot["team"]}
+            item = self._feed(ev, TIER_BALANCED, "big_chance", f"Big chance missed by {who}: {xg} xG.",
+                              f"Big chance missed: {who}, {xg} xG ({outcome.replace('_', ' ')}).",
+                              speaker="analyst")
+            item.update(reply_to=cue, evidence=[shot["id"]] + [d[k] for k in ("xg_id",) if d.get(k)])
+            item["say"].update(who=who, xg=xg)
+            out.append(item)
+        if q.get("outcome") == "disallowed":
+            return out
+        shooter = shot["player_id"]
+        shots = sum(1 for s in m.shots_by_id.values() if s["player_id"] == shooter
+                    and s["shot"].get("outcome") != "disallowed")
+        out += self._milestone(shot, cue, shooter, "shots", shots)
+        passer = m.by_id.get(d.get("preparing_pass_id"), {}).get("player_id")
+        if passer:
+            kps = sum(1 for pid in m.prepared_passes if m.by_id[pid]["player_id"] == passer)
+            out += self._milestone(shot, cue, passer, "key_passes", kps)
+        return out
+
+    def _milestone(self, shot: dict, cue: str | None, pid: str, kind: str, n: int) -> list[dict]:
+        if n not in MILESTONES or (kind, pid, n) in self.said:
+            return []
+        self.said.add((kind, pid, n))
+        m = self.model
+        who = m.player_name(pid)
+        ev = {"id": f"{shot['id']}:{kind}{n}", "t": self.now, "clock": m.clock, "team": m.players[pid]["team"]}
+        text = (f"That's {n} shots for {who} now." if kind == "shots"
+                else f"{who} has set up {n} shots now: {n} key passes.")
+        item = self._feed(ev, TIER_BALANCED, "milestone", text, text)
+        item.update(reply_to=cue, evidence=[shot["id"]])
+        item["say"].update(who=who, n=n, stat=kind)
+        return [item]
 
     def _momentum_reply(self, shot: dict) -> str | None:
         """A goal builds on the analyst's "on top" call when it came from the same team within

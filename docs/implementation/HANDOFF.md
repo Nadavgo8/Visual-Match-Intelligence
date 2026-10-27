@@ -1,5 +1,21 @@
 # VMI — העברה נוכחית: סקירת ריפו וסידור Git
 
+## Current pickup: Oct 27, evening (chat voices, uncommitted)
+
+- Merged: PR #36, one match chat with Kai (commentator) and Ada (analyst). `main` is at `ab53c72`, CI PASS.
+- **Uncommitted on branch `feat/chat-voices` in the `app` folder.** Nadav wanted to review it before any commit. All of it is in `docs/context/decisions.md` under "Unified match chat (Oct 27)" and "Demo match":
+  - Kai's code-written human lines (`vmi/agents/voices.py`).
+  - Ada reacts to Kai instead of re-announcing the event, and Kai can close with one fact.
+  - Receipts hidden in the chat.
+  - Big chance missed (xG ≥ 0.25).
+  - 3- and 5-shot and key-pass milestones.
+  - `get_leaders` tool and leader answers.
+  - Half-time and full-time reports of up to 6 sentences.
+  - "synthetic" removed from chat text, short dashes, answers quote the question.
+  - Random match per new room, `VMI_DEMO=1` / `/tv?demo` for the demo, and a Random match button on the TV.
+  - Landing page uses a random room code.
+- Tests on that tree: 540 Python, 54 Node and ruff passed (latest full run in progress at handoff). Next: Nadav's look, then commit → PR → CI → squash merge → B4.
+
 ## תיקון קלט נוכחי
 
 PR #25 מוזג ל־`e3dcfe4` ועבר B4 (412 Python, ‏37 Node, ארבע בדיקות CI).
