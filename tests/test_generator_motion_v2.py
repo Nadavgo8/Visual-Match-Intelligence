@@ -124,7 +124,8 @@ def test_penalty_execution_and_its_whistle_have_same_clock():
     sim.penalty("home")
     action=next(e for e in sim.events if e["type"]=="set_piece" and e["set_piece"]["kind"]=="penalty")
     whistle=next(e for e in sim.events if e["type"]=="whistle" and e["t"]==action["t"])
-    assert action["clock"]==whistle["clock"]=="2:01"
+    # Players walk to their marks first, so the kick is at least 1 s after the award.
+    assert action["clock"]==whistle["clock"] and action["t"]>=121
 
 
 @pytest.mark.parametrize("kind", ["kick_off", "throw_in", "goal_kick", "free_kick"])

@@ -53,7 +53,12 @@ def test_feed_is_delayed_like_a_real_one(matches):
             decision = by_id[correction["decision_id"]]
             offence = by_id[decision["trigger_event_id"]]
             assert offence["type"] == "offside"
-            assert offence["t"] == by_id[correction["shot_id"]]["t"]
+            # Offside is judged at the pass and called when the offender becomes
+            # involved: pass <= offence <= shot, all linked to the same pass.
+            played = by_id[offence["related"][0]]
+            shot = by_id[correction["shot_id"]]
+            assert played["type"] == "pass" and played["pass"]["recipient_id"] == offence["player_id"]
+            assert played["t"] <= offence["t"] <= shot["t"] and played["id"] in shot["related"]
             assert offence["delivered_t"] == round(decision["t"] + 0.75, 2)
             reviewed[offence["id"]] = offence
         from bisect import bisect_right
