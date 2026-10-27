@@ -1,15 +1,13 @@
 import { AVATARS, feedIcon } from "./icons.js?v=3";
 import { atmospherePresentation, litSegments } from "./atmosphere.mjs?v=2";
 import { openSession } from "./session.mjs?v=1.1";
-import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, EVENT_LABELS, FeedStore, eventTone, feedLayout, insertIndex, isNearBottom, minuteOf, normaliseProfile, readableText, scopeOf, speakerOf, suggestionsFor, teamInitials } from "./companion.mjs?v=1.3";
+import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, EVENT_LABELS, FeedStore, eventTone, feedLayout, insertIndex, isNearBottom, minuteOf, normaliseProfile, readableText, scopeOf, speakerOf, suggestionsFor, teamInitials } from "./companion.mjs?v=1.4";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
 const $ = (id) => document.getElementById(id);
 // Chat text uses short dashes: an em dash from a model reads as a long gap on a phone.
 const esc = (s) => String(s ?? "").replace(/\s*—\s*/g, " - ").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const MOMENT = { goal: "After the goal", var_check: "While VAR checks", var_decision: "VAR decision",
-  half_time: "Half-time", full_time: "Full-time", substitution: "Substitution", injury: "Injury stoppage" };
 const KEY = "vmi.profile.v1";
 
 let teams = null;
@@ -169,7 +167,7 @@ function header(speakerKey, clock, label) {
   const s = speakerOf(speakerKey);
   return `<div class="who"><b>${esc(s.name)}</b>`
     + ` <span class="role">· ${esc(s.role.toLowerCase())}</span>${clock ? ` <span class="clk">${esc(clock)}</span>` : ""}`
-    + ` <span class="kind">${esc(label ?? s.label)}</span></div>`;
+    + (label ? ` <span class="kind">${esc(label)}</span>` : "") + `</div>`;
 }
 // One agent message: avatar, then name and role over the bubble.
 function agentHtml(speakerKey, clock, label, inner) {
@@ -204,15 +202,15 @@ function addFeed(f, fresh) {
     li.className = `msg event ${eventTone(f.icon)} tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
     li.innerHTML = `<div class="head"><span class="label">${feedIcon(f.icon, 16)}${esc(EVENT_LABELS[f.icon] ?? "Big moment")}</span>`
       + `<span class="min">${esc(minuteOf(f.clock))}</span></div>${replyQuote(f.reply_to)}<p class="txt">${esc(f.text)}</p>`
-      + `<div class="foot who"><b>${kai}</b><span>· Fact · logged match event</span></div>`;
+      + `<div class="foot who"><b>${kai}</b></div>`;
   } else if (layout === "row") {
     li = document.createElement("li");
     li.className = `msg row tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
     li.innerHTML = `<span class="min" aria-hidden="true">${esc(minuteOf(f.clock))}</span><span class="ic">${feedIcon(f.icon)}</span>`
-      + `<span class="who sr-only"><b>${kai}</b>, fact, ${esc(f.clock)}: </span><span class="txt">${esc(f.text)}</span>`;
+      + `<span class="who sr-only"><b>${kai}</b>, ${esc(f.clock)}: </span><span class="txt">${esc(f.text)}</span>`;
   } else {
     li = agentItem(speaker, `tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`);
-    li.innerHTML = agentHtml(speaker, f.clock, speaker === "analyst" ? "Interpretation" : "Fact",
+    li.innerHTML = agentHtml(speaker, f.clock, "",
       replyQuote(f.reply_to) + `<p class="txt">${esc(f.text)}</p>`);
   }
   put(f.cue_id, Number.isFinite(f.delivered) ? f.delivered : f.t, li, { agent: true, fresh: isNew });
@@ -242,13 +240,13 @@ const sourceTag = (source) => (source === "agent" ? "AI" : "written by code");
 function onAnalysis(a) {
   const fresh = !entries.has(a.cue_id);
   const li = agentItem("analyst", fresh ? "new" : "");
-  li.innerHTML = agentHtml("analyst", a.clock, `${MOMENT[a.moment] ?? "Analysis"} · interpretation · ${sourceTag(a.receipts?.source)}`,
+  li.innerHTML = agentHtml("analyst", a.clock, sourceTag(a.receipts?.source),
     replyQuote(a.reply_to) + `<p class="txt">${esc(a.text)}</p>`);
   put(a.cue_id, a.t + 0.01, li, { agent: true, fresh });
   // Kai's closing turn to Ada: the last message of the exchange, never answered in turn.
   if (a.followup?.text) {
     const k = agentItem("commentator", fresh ? "new" : "");
-    k.innerHTML = agentHtml("commentator", a.clock, "Fact · written by code",
+    k.innerHTML = agentHtml("commentator", a.clock, "written by code",
       replyQuote(a.cue_id) + `<p class="txt">${esc(a.followup.text)}</p>`);
     put(`${a.cue_id}-k`, a.t + 0.02, k, { agent: true, fresh });
   }
@@ -290,8 +288,7 @@ function onAnswer(a) {
   const speaker = a.speaker === "analyst" ? "analyst" : "commentator";
   const s = speakerOf(speaker);
   el.className = `msg agent ${speaker === "analyst" ? "ada" : "kai"} answer`;
-  const label = a.agent === "rules_expert" ? "Rules" : s.label;  // the Laws of the Game are not interpretation
-  el.innerHTML = agentHtml(speaker, a.clock, a.source === "agent" ? `${label} · AI` : `${label} · written by code`,
+  el.innerHTML = agentHtml(speaker, a.clock, a.source === "agent" ? "AI" : "written by code",
     replyQuote(askedBy.get(a.id)) + `<p class="txt">${esc(a.text)}</p>`);
   announce(`${s.name} answered: ${a.text}`);
   if (following()) toBottom();
@@ -362,7 +359,7 @@ function onCatchUp(c) {
   if (!where) return;
   catchUpWhere.delete(c.id);
   where.className = "msg agent kai answer";
-  where.innerHTML = agentHtml("commentator", null, "Summary · written by code from logged events",
+  where.innerHTML = agentHtml("commentator", null, "written by code",
     replyQuote(askedBy.get(where.id?.slice(2))) + `<p class="txt"><b>${esc(c.from_clock)}–${esc(c.to_clock)}:</b> ${esc(c.text)}</p>`);
   if (scope) checkpoints.advance(scope, c.to_t);  // only a received summary moves the checkpoint
 }

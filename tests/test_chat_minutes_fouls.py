@@ -46,3 +46,30 @@ def test_foul_lines_name_the_fouler_and_the_free_kick_side(outputs):
         for option in _kai_options("foul", {**item["say"], "advantage": advantage}):
             assert "fouls on" not in option and "down on" not in option
 
+
+
+def test_every_card_shot_var_and_goal_reaches_the_chat_at_the_default_amount(outputs):
+    m, outs = outputs
+    feed = [o for o in outs if o["kind"] == "feed"]
+    shots = {e["id"] for e in m.events if e["type"] == "shot"}
+    cards = {e["id"] for e in m.events if e["type"] == "card"}
+    vars_ = {e["id"] for e in m.events if e["type"] == "var"}
+    covered = {ev for o in feed if visible_to(o, "balanced") for ev in o["evidence"]}
+    assert shots <= covered and cards <= covered and vars_ <= covered
+
+
+def test_players_come_with_their_team_and_big_moments_say_how(outputs):
+    m, outs = outputs
+    teams = {m.meta["teams"][s]["name"] for s in ("home", "away")}
+    card = next(o for o in outs if o["kind"] == "feed" and o["icon"] == "card_yellow")
+    line = chat_line(card, "basic")
+    assert " for a " in line and " on " in line and sum(t in line for t in teams) == 2  # carded player and victim
+    assert line.count(card["say"]["who"]) == 1
+    pen = next(o for o in outs if o["kind"] == "feed" and o["icon"] == "penalty")
+    assert "inside the box" in chat_line(pen, "basic") and "inside the box" in pen["text"]["basic"]
+    check = next(o for o in outs if o["kind"] == "feed" and o["icon"] == "var" and o["say"].get("phase") == "check")
+    # Under review the tackle is named, never called a foul before the decision.
+    assert "the tackle by" in chat_line(check, "basic") and "foul" not in chat_line(check, "basic").lower()
+    for o in outs:
+        if o["kind"] == "feed" and o["say"].get("who"):
+            assert any(f", {t})" in o["say"]["who"] for t in teams)

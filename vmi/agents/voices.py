@@ -39,8 +39,10 @@ def _kai_options(icon: str, s: dict) -> list[str] | None:
         result = SHOT_OUTCOME.get(outcome, outcome.replace("_", " "))
         return [f"{who} has a go for {team}… {result}.", f"Chance for {team}! {who}: {result}.",
                 f"{who} tries a shot for {team}: {result}."]
+    story = s.get("story")
+    how = f" {story[0].upper()}{story[1:]}." if story else ""
     if icon == "penalty":
-        return [f"PENALTY to {team}! The referee points to the spot.", f"Penalty! {team} have a big chance here."]
+        return [f"PENALTY to {team}! The referee points to the spot.{how}", f"Penalty! {team} have a big chance here.{how}"]
     if icon == "foul":
         victim = s.get("victim")
         on, whom = (f" on {victim}", f" {victim}") if victim else ("", " an opponent")
@@ -49,20 +51,22 @@ def _kai_options(icon: str, s: dict) -> list[str] | None:
         return [f"Foul by {who}{on}. Free kick to {s.get('to')}.", f"{who} brings down{whom}. Free kick, {s.get('to')}.",
                 f"The whistle goes: {who} fouls{whom}."]
     if icon == "card_yellow":
-        return [f"Yellow card: {who} is cautioned ({team}).", f"{who} of {team} gets a yellow.",
-                f"The referee shows {who} a yellow card."]
+        why = f" {s['reason']}." if s.get("reason") else "."
+        return [f"Yellow card for {who}{why}", f"The referee shows {who} a yellow card{why}"]
     if icon == "card_red":
-        return [f"RED CARD! {who} is off, and {team} are down to {s.get('left')}.",
-                f"Sent off! {who} has to go. {team} play on with {s.get('left')}."]
+        why = f" Shown {s['reason']}." if s.get("reason") else ""
+        return [f"RED CARD! {who} is off, and {team} are down to {s.get('left')}.{why}",
+                f"Sent off! {who} has to go. {team} play on with {s.get('left')}.{why}"]
     if icon == "var" and t == "var":
         incident = s.get("incident", "incident")
         if s.get("phase") == "check":
             what = "a possible penalty" if incident == "penalty" else f"the {incident}"
-            return [f"Hold on: VAR is checking {what}.", f"VAR is taking a look at {what}. Let's wait."]
+            about = f": {story}" if story else ""
+            return [f"Hold on: VAR is checking {what}{about}.", f"VAR is taking a look at {what}{about}. Let's wait."]
         if s.get("phase") == "on_field_review":
             return ["The referee is going over to the monitor…", "Off to the screen goes the referee…"]
         if s.get("outcome") == "overturned" and incident == "penalty":
-            return ["VAR says PENALTY! The decision is overturned.", "It's overturned: PENALTY!"]
+            return [f"VAR says PENALTY! The decision is overturned.{how}", f"It's overturned: PENALTY!{how}"]
         what = "the goal stands" if incident == "goal" else "the original call stands"
         return [f"VAR is done: {what}.", f"No change from VAR: {what}."]
     if icon == "sub":
