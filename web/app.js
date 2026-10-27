@@ -1,7 +1,7 @@
-import { FEED_ICONS } from "./icons.js?v=2";
-import { atmospherePresentation } from "./atmosphere.mjs";
+import { AVATARS, feedIcon } from "./icons.js?v=3";
+import { atmospherePresentation, litSegments } from "./atmosphere.mjs?v=2";
 import { openSession } from "./session.mjs?v=1.1";
-import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, FeedStore, insertIndex, isNearBottom, normaliseProfile, scopeOf, speakerOf, suggestionsFor } from "./companion.mjs?v=1.2";
+import { AnswerLog, CatchUpCheckpoints, DEFAULT_PROFILE, EVENT_LABELS, FeedStore, eventTone, feedLayout, insertIndex, isNearBottom, minuteOf, normaliseProfile, readableText, scopeOf, speakerOf, suggestionsFor, teamInitials } from "./companion.mjs?v=1.3";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -69,6 +69,10 @@ function onState(s) {
   document.documentElement.style.setProperty("--away", teams.away.colour);
   $("home").textContent = teams.home.name;
   $("away").textContent = teams.away.name;
+  for (const side of ["home", "away"]) {
+    $(`${side}-crest`).textContent = teamInitials(teams[side].name);
+    $(`${side}-crest`).style.color = readableText(teams[side].colour);
+  }
   document.querySelector(".t-home").textContent = teams.home.name;
   document.querySelector(".t-away").textContent = teams.away.name;
   $("score").textContent = `${s.score.home}–${s.score.away}`;
@@ -81,14 +85,19 @@ function onMeters(m) {
   $("clock").textContent = m.clock;
   renderMeters(m.atmosphere, m.momentum);
 }
+let litShown = null;
 function renderMeters(atmosphere, momentum) {
   const chip = $("atmo-chip");
   const a = atmospherePresentation(atmosphere);
-  chip.textContent = a.label;
-  chip.className = "chip";
-  chip.style.background = a.color;
-  chip.style.color = "#071b20";
+  chip.textContent = a.percent === null ? "Unavailable" : `${a.label.replace(/^Atmosphere /, "")}`;
   chip.title = atmosphere?.why ?? "";
+  chip.setAttribute("aria-label", a.label);
+  document.querySelector(".strip").style.setProperty("--atmo", a.percent === null ? "var(--muted)" : a.color);
+  const lit = litSegments(a.value);
+  if (lit !== litShown) {  // meters tick often: redraw only when a segment changes
+    litShown = lit;
+    $("atmo-segs").innerHTML = Array.from({ length: 10 }, (_, i) => `<span${i < lit ? ' class="on"' : ""}></span>`).join("");
+  }
   const available = Number.isFinite(momentum?.home_index);
   const value = available ? Math.min(1, Math.max(0, momentum.home_index)) : .5;
   $("mom").style.width = `${(value * 100).toFixed(0)}%`;
@@ -158,10 +167,17 @@ function announce(text) { $("announce").textContent = text; }
 
 function header(speakerKey, clock, label) {
   const s = speakerOf(speakerKey);
-  return `<div class="who"><span class="avatar" aria-hidden="true">${s.avatar}</span><b>${esc(s.name)}</b>`
-    + ` <span class="role">${esc(s.role)}</span>${clock ? ` <span class="clk">${esc(clock)}</span>` : ""}`
+  return `<div class="who"><b>${esc(s.name)}</b>`
+    + ` <span class="role">· ${esc(s.role.toLowerCase())}</span>${clock ? ` <span class="clk">${esc(clock)}</span>` : ""}`
     + ` <span class="kind">${esc(label ?? s.label)}</span></div>`;
 }
+// One agent message: avatar, then name and role over the bubble.
+function agentHtml(speakerKey, clock, label, inner) {
+  const key = speakerKey === "analyst" ? "analyst" : "commentator";
+  return `<span class="avatar" aria-hidden="true">${AVATARS[key]}</span><div class="body">${header(key, clock, label)}`
+    + `<div class="bubble">${inner}</div></div>`;
+}
+
 // A reply quotes what it answers, linked to it, so the thread reads like a conversation.
 function replyQuote(replyTo) {
   const target = replyTo && entries.get(replyTo);
@@ -180,10 +196,25 @@ function addFeed(f, fresh) {
   // Late information (such as xG) updates the same message quietly: no highlight, no new message.
   const isNew = feedStore.upsert(f) === "insert" && fresh;
   const speaker = f.speaker === "analyst" ? "analyst" : "commentator";
-  const li = agentItem(speaker, `tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`);
-  li.innerHTML = header(speaker, f.clock, speaker === "analyst" ? "Interpretation" : "Fact")
-    + replyQuote(f.reply_to)
-    + `<p class="txt"><span class="ev" aria-hidden="true">${FEED_ICONS[f.icon] ?? ""}</span> ${esc(f.text)}</p>`;
+  const layout = feedLayout(f);
+  const kai = esc(speakerOf("commentator").name);
+  let li;
+  if (layout === "card") {
+    li = document.createElement("li");
+    li.className = `msg event ${eventTone(f.icon)} tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
+    li.innerHTML = `<div class="head"><span class="label">${feedIcon(f.icon, 16)}${esc(EVENT_LABELS[f.icon] ?? "Big moment")}</span>`
+      + `<span class="min">${esc(minuteOf(f.clock))}</span></div>${replyQuote(f.reply_to)}<p class="txt">${esc(f.text)}</p>`
+      + `<div class="foot who"><b>${kai}</b><span>· Fact · logged match event</span></div>`;
+  } else if (layout === "row") {
+    li = document.createElement("li");
+    li.className = `msg row tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`;
+    li.innerHTML = `<span class="min" aria-hidden="true">${esc(minuteOf(f.clock))}</span><span class="ic">${feedIcon(f.icon)}</span>`
+      + `<span class="who sr-only"><b>${kai}</b>, fact, ${esc(f.clock)}: </span><span class="txt">${esc(f.text)}</span>`;
+  } else {
+    li = agentItem(speaker, `tier${f.tier}${f.mine ? " mine" : ""}${isNew ? " new" : ""}`);
+    li.innerHTML = agentHtml(speaker, f.clock, speaker === "analyst" ? "Interpretation" : "Fact",
+      replyQuote(f.reply_to) + `<p class="txt">${esc(f.text)}</p>`);
+  }
   put(f.cue_id, Number.isFinite(f.delivered) ? f.delivered : f.t, li, { agent: true, fresh: isNew });
   if (isNew && f.tier <= 2) renderSuggestions(f.icon);
   if (isNew && f.tier === 1) announce(`${speakerOf(speaker).name}, ${f.clock}: ${f.text}`);
@@ -206,14 +237,14 @@ const sourceTag = (source) => (source === "agent" ? "AI" : "written by code");
 function onAnalysis(a) {
   const fresh = !entries.has(a.cue_id);
   const li = agentItem("analyst", fresh ? "new" : "");
-  li.innerHTML = header("analyst", a.clock, `${MOMENT[a.moment] ?? "Analysis"} · interpretation · ${sourceTag(a.receipts?.source)}`)
-    + replyQuote(a.reply_to) + `<p class="txt">${esc(a.text)}</p>`;
+  li.innerHTML = agentHtml("analyst", a.clock, `${MOMENT[a.moment] ?? "Analysis"} · interpretation · ${sourceTag(a.receipts?.source)}`,
+    replyQuote(a.reply_to) + `<p class="txt">${esc(a.text)}</p>`);
   put(a.cue_id, a.t + 0.01, li, { agent: true, fresh });
   // Kai's closing turn to Ada: the last message of the exchange, never answered in turn.
   if (a.followup?.text) {
     const k = agentItem("commentator", fresh ? "new" : "");
-    k.innerHTML = header("commentator", a.clock, "Fact · written by code") + replyQuote(a.cue_id)
-      + `<p class="txt">${esc(a.followup.text)}</p>`;
+    k.innerHTML = agentHtml("commentator", a.clock, "Fact · written by code",
+      replyQuote(a.cue_id) + `<p class="txt">${esc(a.followup.text)}</p>`);
     put(`${a.cue_id}-k`, a.t + 0.02, k, { agent: true, fresh });
   }
 }
@@ -255,8 +286,8 @@ function onAnswer(a) {
   const s = speakerOf(speaker);
   el.className = `msg agent ${speaker === "analyst" ? "ada" : "kai"} answer`;
   const label = a.agent === "rules_expert" ? "Rules" : s.label;  // the Laws of the Game are not interpretation
-  el.innerHTML = header(speaker, a.clock, a.source === "agent" ? `${label} · AI` : `${label} · written by code`)
-    + replyQuote(askedBy.get(a.id)) + `<p class="txt">${esc(a.text)}</p>`;
+  el.innerHTML = agentHtml(speaker, a.clock, a.source === "agent" ? `${label} · AI` : `${label} · written by code`,
+    replyQuote(askedBy.get(a.id)) + `<p class="txt">${esc(a.text)}</p>`);
   announce(`${s.name} answered: ${a.text}`);
   if (following()) toBottom();
 }
@@ -326,8 +357,8 @@ function onCatchUp(c) {
   if (!where) return;
   catchUpWhere.delete(c.id);
   where.className = "msg agent kai answer";
-  where.innerHTML = header("commentator", null, "Summary · written by code from logged events")
-    + replyQuote(askedBy.get(where.id?.slice(2))) + `<p class="txt"><b>${esc(c.from_clock)}–${esc(c.to_clock)}:</b> ${esc(c.text)}</p>`;
+  where.innerHTML = agentHtml("commentator", null, "Summary · written by code from logged events",
+    replyQuote(askedBy.get(where.id?.slice(2))) + `<p class="txt"><b>${esc(c.from_clock)}–${esc(c.to_clock)}:</b> ${esc(c.text)}</p>`);
   if (scope) checkpoints.advance(scope, c.to_t);  // only a received summary moves the checkpoint
 }
 function onError(e) {
