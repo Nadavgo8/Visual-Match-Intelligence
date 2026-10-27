@@ -11,3 +11,9 @@ export function atmospherePresentation(atmosphere) {
   const label = `${a.mode === "crowd_only" ? "Crowd only" : "Atmosphere"} ${percent}%`;
   return { value, percent, label, color: `rgb(${color.join(", ")})` };
 }
+
+// How many of the companion's segments are lit for a presentation value (0..1, or null).
+export function litSegments(value, n = 10) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(Math.min(1, Math.max(0, value)) * n);
+}

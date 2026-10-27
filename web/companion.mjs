@@ -125,3 +125,40 @@ export function suggestionsFor(icon, max = 3) {
   const out = [...(SUGGEST_AFTER[icon] ?? []), ...SUGGEST_DEFAULT];
   return [...new Set(out)].slice(0, max);
 }
+
+// ---------- match chat layout ----------
+// How a feed item is drawn: the biggest moments as a logged-event card, routine facts as a
+// one-line timeline row, everything else as a chat bubble. Who said it is shown in all three.
+export function feedLayout(f) {
+  if (f?.speaker === "analyst" || f?.reply_to) return "bubble";
+  if (f?.tier === 1) return "card";
+  return f?.tier >= 3 ? "row" : "bubble";
+}
+
+export const EVENT_LABELS = Object.freeze({
+  goal: "Goal", penalty: "Penalty", var: "VAR", card_red: "Red card", card_yellow: "Yellow card",
+  whistle: "Whistle", sub: "Substitution", injury: "Injury", clock: "Added time",
+});
+// Tone of a logged-event card: a goal is warm, a review or sending-off is tense, the rest calm.
+export function eventTone(icon) {
+  if (icon === "goal") return "goal";
+  return icon === "var" || icon === "card_red" || icon === "penalty" ? "tense" : "calm";
+}
+
+// Up to three letters for a crest: "Harbour City" -> "HC", "Northvale Rovers" -> "NR".
+export function teamInitials(name) {
+  const words = String(name ?? "").match(/[A-Za-z0-9]+/g) ?? [];
+  if (!words.length) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return words.slice(0, 3).map((w) => w[0]).join("").toUpperCase();
+}
+
+// Dark or white text on a team colour, whichever has more contrast (WCAG relative luminance).
+export function readableText(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? "").trim());
+  if (!m) return "#ffffff";
+  const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = [0, 2, 4].map((i) => lin(parseInt(m[1].slice(i, i + 2), 16)));
+  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? "#0a0e13" : "#ffffff";
+}

@@ -2,28 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%231fa2a8%22/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%232bb3a8%22/%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0f14">
+<meta name="theme-color" content="#0f151c">
 <title>VMI · Match chat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/app.css?v=20261027-voices">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css?v=20261028-redesign">
 </head>
 <body>
 <header class="top">
-  <p id="conn" class="muted small" role="status" hidden>Disconnected: reconnecting…</p>
-  <div class="score"><span id="home">HOME</span> <b id="score">0–0</b> <span id="away">AWAY</span></div>
-  <div class="meta"><span id="clock">0:00</span> · <span id="atmo-chip" class="chip">Atmosphere unavailable</span>
-    <span class="mom unavailable" aria-label="Momentum unavailable"><i id="mom"></i></span></div>
-  <button id="settings-btn" class="icon-btn" aria-label="Settings">⚙</button>
+  <p id="conn" class="conn" role="status" hidden>Disconnected: reconnecting…</p>
+  <div class="bar">
+    <span class="tag">Synthetic demo</span>
+    <span class="clock"><span class="dot" aria-hidden="true"></span><span id="clock">0:00</span></span>
+    <button id="settings-btn" class="icon-btn" aria-label="Settings">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </div>
+  <div class="score">
+    <div class="team"><span class="crest home" id="home-crest" aria-hidden="true">H</span><span id="home" class="name">Home</span></div>
+    <b id="score">0–0</b>
+    <div class="team away"><span id="away" class="name">Away</span><span class="crest away" id="away-crest" aria-hidden="true">A</span></div>
+  </div>
+  <div class="strip">
+    <svg class="strip-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
+    <div class="strip-body">
+      <div class="strip-head"><span>ATMOSPHERE</span><span id="atmo-chip" class="atmo-val">Unavailable</span></div>
+      <div id="atmo-segs" class="segs" aria-hidden="true"></div>
+      <div class="strip-head mom-head"><span>MOMENTUM · 7 MIN</span><span class="mom unavailable" aria-label="Momentum unavailable"><i id="mom"></i></span></div>
+    </div>
+  </div>
 </header>
-
-<p class="cast small"><span aria-hidden="true">🎙</span> <b>Kai</b> commentates · <span aria-hidden="true">📊</span> <b>Ada</b> analyses · <span class="demo">Demo · synthetic match</span></p>
 
 <main>
   <ol id="chat" class="chat" role="log" aria-live="off" aria-label="Match chat"></ol>
-  <p id="chat-empty" class="empty">Waiting for kick-off. Kai calls the big moments as they happen; Ada adds analysis only when there's something worth saying. Ask either of them anything below. No notifications, ever.</p>
+  <p id="chat-empty" class="empty">Waiting for kick-off. <b>Kai</b> commentates the big moments as they happen; <b>Ada</b> adds analysis only when there's something worth saying. Ask either of them anything below. No notifications, ever.</p>
   <div id="announce" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 </main>
 
@@ -31,8 +45,10 @@
   <button id="jump" class="jump" hidden>New messages ↓</button>
   <div class="suggest" id="suggest" aria-label="Suggested questions"></div>
   <form id="ask-form" class="ask">
-    <input id="q" autocomplete="off" placeholder="Ask Kai or Ada about this match…" maxlength="400" aria-label="Your question">
-    <button type="submit">Send</button>
+    <input id="q" autocomplete="off" placeholder="Ask Kai or Ada about the match…" maxlength="400" aria-label="Your question">
+    <button type="submit" aria-label="Send">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+    </button>
   </form>
 </div>
 
@@ -63,6 +79,6 @@
   </form>
 </dialog>
 
-<script type="module" src="/static/app.js?v=20261027-voices"></script>
+<script type="module" src="/static/app.js?v=20261028-redesign"></script>
 </body>
 </html>

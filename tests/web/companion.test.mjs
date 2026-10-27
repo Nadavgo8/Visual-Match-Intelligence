@@ -91,7 +91,8 @@ test("valid JSON with the wrong storage shape is discarded and replaced by durab
 // and escaping are not reimplemented by this harness; the received HTML is asserted.
 async function appHarness() {
   const companion = await import("../../web/companion.mjs");
-  const {atmospherePresentation} = await import("../../web/atmosphere.mjs");
+  const {atmospherePresentation, litSegments} = await import("../../web/atmosphere.mjs");
+  const {AVATARS, feedIcon} = await import("../../web/icons.js");
   const nodes = new Map(); let receive; const sent = [];
   const win = { addEventListener() {}, scrollY: 0, innerHeight: 0, scrollTo() { win.scrolled = (win.scrolled ?? 0) + 1; } };
   // A small DOM: enough tree behaviour to check where chat messages land.
@@ -110,7 +111,7 @@ async function appHarness() {
   const doc = { getElementById: node,
     addEventListener() {}, createElement: element, documentElement: element(), querySelector: selector => node(selector) };
   const src = readFileSync(new URL("../../web/app.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
-  const context = { ...companion, FEED_ICONS: {}, atmospherePresentation, URLSearchParams,
+  const context = { ...companion, AVATARS, feedIcon, atmospherePresentation, litSegments, URLSearchParams,
     location: { search: "?room=qa" }, localStorage: memoryStorage(), document: doc,
     window: win, openSession(options) { receive = options.onMessage; return { send(m) { sent.push(m); return true; } }; } };
   runInNewContext(src, context);
@@ -126,27 +127,31 @@ const emptySnapshot = (run_id='new') => ({type:'snapshot',run_id,state:{seed:13,
 
 test('a replacement snapshot without measurements clears prior atmosphere and momentum', async () => {
   const app=await appHarness(); app.receive(meterSample);
-  assert.equal(app.node('atmo-chip').textContent,'Atmosphere 38%');
+  assert.equal(app.node('atmo-chip').textContent,'38%');
+  assert.equal(app.node('atmo-chip').attributes['aria-label'],'Atmosphere 38%');
+  assert.equal(app.node('atmo-segs').innerHTML.split('class="on"').length-1,4);  // 4 of 10 segments lit
   assert.equal(app.node('mom').style.width,'73%');
   app.receive(emptySnapshot());
-  assert.equal(app.node('atmo-chip').textContent,'Atmosphere unavailable');
+  assert.equal(app.node('atmo-chip').textContent,'Unavailable');
+  assert.equal(app.node('atmo-chip').attributes['aria-label'],'Atmosphere unavailable');
+  assert.equal(app.node('atmo-segs').innerHTML.includes('class="on"'),false);  // no stale segments
   assert.equal(app.node('atmo-chip').title,'');
   assert.equal(app.node('.mom').attributes['aria-label'],'Momentum unavailable');
   assert.equal(app.node('score').textContent,'0–0'); assert.equal(app.node('clock').textContent,'0:00');
 });
 test('same-run reconnect clears absent data and a complete snapshot restores its own measurements', async () => {
   const app=await appHarness(); app.receive({...emptySnapshot('same'),meters:meterSample});
-  assert.equal(app.node('atmo-chip').textContent,'Atmosphere 38%');
+  assert.equal(app.node('atmo-chip').textContent,'38%');
   app.receive(emptySnapshot('same'));
-  assert.equal(app.node('atmo-chip').textContent,'Atmosphere unavailable');
+  assert.equal(app.node('atmo-chip').textContent,'Unavailable');
   app.receive({...emptySnapshot('next'),meters:{...meterSample,atmosphere:{available:true,level:.8},momentum:{home_index:.2}}});
-  assert.equal(app.node('atmo-chip').textContent,'Atmosphere 80%');
+  assert.equal(app.node('atmo-chip').textContent,'80%');
   assert.equal(app.node('mom').style.width,'20%');
 });
 test('missing meter components are unavailable rather than stale values or exceptions', async () => {
   const app=await appHarness(); app.receive(meterSample);
   assert.doesNotThrow(()=>app.receive({...meterSample,atmosphere:null,momentum:null}));
-  assert.equal(app.node('atmo-chip').textContent,'Atmosphere unavailable');
+  assert.equal(app.node('atmo-chip').textContent,'Unavailable');
   assert.equal(app.node('.mom').attributes['aria-label'],'Momentum unavailable');
 });
 
@@ -179,7 +184,8 @@ test("analysis shows who wrote it, never a receipts block, and its text stays li
   app.receive({ type: "analysis", cue_id: "a2", clock: "2:00", t: 120, moment: "goal", text: "x",
     receipts: { source: "template" }, sentences: [], facts: [] });
   assert.ok(app.html("m-a1").includes("interpretation · AI") && app.html("m-a2").includes("interpretation · written by code"));
-  assert.equal(app.html("m-a1").includes("<svg") || app.html("m-a1").includes("<details"), false);
+  assert.equal(app.html("m-a1").includes("<svg onload") || app.html("m-a1").includes("<details"), false);
+  assert.ok(app.html("m-a1").includes("&lt;svg onload=&quot;bad()&quot;&gt; &amp;"));
 });
 
 // ---------- unified match chat ----------
@@ -319,7 +325,7 @@ test("chat text uses short dashes and an unknown icon shows nothing, not a dot",
   app.receive(snapshotWith([feedItem("d", 10, { icon: "new_kind", text: "One thing — and another" })]));
   const html = app.html("m-d");
   assert.ok(html.includes("One thing - and another") && !html.includes("—"));
-  assert.ok(html.includes('<span class="ev" aria-hidden="true"></span>'));
+  assert.ok(html.includes('<span class="ic"></span>'));  // a routine row with an empty icon slot
 });
 
 test("an answer replies to the fan's question, quoting it", async () => {
@@ -329,4 +335,22 @@ test("an answer replies to the fan's question, quoting it", async () => {
   app.receive({ type: "answer", id: "q1", speaker: "commentator", agent: "match_analyst", source: "local", text: "Brandt, 6." });
   const html = app.html("m-q1");
   assert.ok(html.includes('href="#m-u1"') && html.includes("↳ You"), html);
+});
+
+test("the biggest moments render as a logged-event card, routine facts as a timeline row", async () => {
+  const app = await appHarness();
+  app.receive(snapshotWith([
+    feedItem("g", 3437, { tier: 1, icon: "goal", clock: "57:17", text: "Goal! <b>Dube</b>" }),
+    feedItem("r", 3500, { tier: 3, icon: "chance", clock: "58:20", text: "Shot wide." }),
+    feedItem("v", 3600, { tier: 1, icon: "var", clock: "60:00", text: "VAR check." }),
+  ]));
+  const card = app.node("m-g");
+  assert.ok(card.className.includes("event goal"));
+  assert.ok(card.innerHTML.includes(">Goal<") && card.innerHTML.includes("57'"));
+  assert.ok(card.innerHTML.includes("<b>Kai</b>") && card.innerHTML.includes("Fact · logged match event"));
+  assert.ok(card.innerHTML.includes("Goal! &lt;b&gt;Dube&lt;/b&gt;"));  // literal, never HTML
+  assert.ok(app.node("m-v").className.includes("event tense"));
+  const row = app.node("m-r");
+  assert.ok(row.className.includes("row") && row.innerHTML.includes("58'"));
+  assert.ok(row.innerHTML.includes('<b>Kai</b>, fact, 58:20'));  // the speaker is still announced
 });
