@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import re
+from asyncio import timeout
 
 from .tools import POSITIONS
+from .providers import TOTAL_TIMEOUT_S
 
 VERB = {"trip": "tripped", "push": "pushed", "holding": "held", "kick": "kicked"}
 CROWD_CAUSAL = re.compile(r"\b(because|due to|in protest|angry|anger|furious|outrage|boo\w*|jeer\w*|whistl\w* at|"
@@ -57,26 +59,33 @@ def template(pack: dict, depth: str = "basic", fav: str | None = None) -> list[d
     kind = pack["moment"]
     fn = {"goal": _t_goal, "var_check": _t_var_check, "var_decision": _t_var_decision,
           "half_time": _t_period, "full_time": _t_period, "substitution": _t_sub, "injury": _t_injury}[kind]
-    return fn(pack, depth, fav)[:3]
+    return fn(pack, depth, fav)[:max_sentences(pack)]
+
+
+def max_sentences(pack: dict) -> int:
+    """Half-time and full-time get a fuller report; every other moment stays short."""
+    return 6 if pack.get("moment") in ("half_time", "full_time") else 3
 
 
 def _t_goal(pack, depth, fav):
     g = _fact(pack, "goal")
     a = _fact(pack, "assist")
-    crowd = _fact(pack, "crowd_reaction")
     team = g["team"]
     sit = pack["context"]["scoring_team_now"]
     side_word = {"leading": "ahead", "level": "level", "trailing": "back in it"}[sit]
     how = "from the penalty spot" if g["penalty"] else ("with a header" if g.get("body_part") == "head" else "")
     out = []
     if depth == "basic":
-        assist = ""
+        # Kai has just announced the goal in the chat: Ada reacts to it instead of repeating it,
+        # and leaves the crowd to Kai's closing line.
         if a:
-            assist = f" after a {'cross' if a.get('cross') else 'through ball' if a.get('through_ball') else 'pass'} from {_name(a['by'])}"
-        out.append(_S(f"Goal! {_name(g['scorer'])} scored {how}{assist}.".replace("  ", " ").replace(" .", "."),
-                      g["id"], a["id"] if a else None))
-        if crowd:
-            out.append(_S("The stadium got much louder the moment it went in.", crowd["id"]))
+            ball = "cross" if a.get("cross") else "through ball" if a.get("through_ball") else "pass"
+            out.append(_S(f"Look at the {ball} from {_name(a['by'])}: that set it up for {_name(g['scorer'])}"
+                          f"{' ' + how if how else ''}.", g["id"], a["id"]))
+        elif g["penalty"]:
+            out.append(_S(f"{_name(g['scorer'])} put it away from the spot.", g["id"]))
+        elif how:
+            out.append(_S(f"{_name(g['scorer'])} did it {how}.", g["id"]))
         out.append(_S(f"That puts {_team_ref(pack, team, fav)} {side_word}: {_score(pack)}, "
                       f"with {pack['minutes_left']} minutes left." if pack["minutes_left"] else
                       f"That puts {_team_ref(pack, team, fav)} {side_word}: {_score(pack)}.", g["id"], "state"))
@@ -110,7 +119,6 @@ def _t_goal(pack, depth, fav):
 def _t_var_check(pack, depth, fav):
     chk = _fact(pack, "var_check")
     ch = _fact(pack, "challenge")
-    crowd = _fact(pack, "crowd_reaction")
     goal = _fact(pack, "goal_under_review")
     out = []
     if chk["incident"] == "goal" and goal:
@@ -132,8 +140,6 @@ def _t_var_check(pack, depth, fav):
     if depth == "basic":
         out.append(_S(f"VAR is checking for a possible penalty: {victim} went down in the box after a challenge "
                       f"from {by}, and the referee let play go on.", chk["id"], ch["id"] if ch else None))
-        if crowd:
-            out.append(_S("The crowd got noticeably louder right after that challenge.", crowd["id"]))
         if att_team:
             out.append(_S(f"If it's given, {_team_ref(pack, att_team, fav)} get a penalty with the score at "
                           f"{pack['score']['home']}–{pack['score']['away']}.", chk["id"], "state"))
@@ -163,8 +169,8 @@ def _t_var_decision(pack, depth, fav):
     verb = VERB.get(foul["kind"], "fouled")
     pen_team = foul["penalty_to"]
     if depth == "basic":
-        out.append(_S(f"Penalty! After watching the replay, the referee changed the decision: {_name(foul['by'])} "
-                      f"{verb} {_name(foul['on'])} inside the box.", dec["id"], foul["id"]))
+        out.append(_S(f"The replay changed the call: {_name(foul['by'])} {verb} {_name(foul['on'])} inside the box.",
+                      dec["id"], foul["id"]))
         if sif:
             out.append(_S(f"A goal would make it {pack['teams']['home']} {sif['home']}–{sif['away']} "
                           f"{pack['teams']['away']}, with {pack['minutes_left']} minutes left.", foul["id"], "state"))
@@ -186,31 +192,49 @@ def _t_var_decision(pack, depth, fav):
 
 
 def _t_period(pack, depth, fav):
+    """The break is the one long pause in a match, so this is a fuller report at both depths:
+    score and goals, shots and accuracy, chance quality, possession, the best chance not taken,
+    and who finished the half stronger. Every number is from the pack."""
     st = _fact(pack, "match_stats")
     goals = [f for f in pack["facts"] if f["type"] == "goal"]
     miss = _fact(pack, "best_missed_chance")
-    label = "Half-time" if pack["moment"] == "half_time" else "Full-time"
+    mom = _deep(pack, "momentum_last_7_min")
+    half = pack["moment"] == "half_time"
     h, a = pack["teams"]["home"], pack["teams"]["away"]
-    out = [_S(f"{label}: {_score(pack)}.", "state")]
+    hs, as_ = st["home"], st["away"]
+    label = "Half-time" if half else "Full-time"
     if goals:
         parts = [f"{_name(g['scorer'])} ({_ordinal(g['minute'])}{', pen' if g['penalty'] else ''})" for g in goals]
-        out.append(_S("Goals: " + ", ".join(parts) + ".", *[g["id"] for g in goals]))
-    hs, as_ = st["home"], st["away"]
-    if depth == "basic":
-        more = h if hs["shots"] > as_["shots"] else a if as_["shots"] > hs["shots"] else None
-        if more:
-            out.append(_S(f"{more} created more, with {max(hs['shots'], as_['shots'])} shots to "
-                          f"{min(hs['shots'], as_['shots'])}.", "stat:match"))
-        elif not goals:
-            out.append(_S(f"Both teams had {hs['shots']} shots; very little between them.", "stat:match"))
-        return out
-    poss = f", possession {round(hs['possession'] * 100)}% to {round(as_['possession'] * 100)}%" if hs.get("possession") is not None else ""
-    analytics = (f"Synthetic xG {hs['xg']} to {as_['xg']}, "
-                 if hs["xg"] is not None and as_["xg"] is not None else "xG not yet available; ")
-    out.append(_S(f"{analytics}shots {hs['shots']} to {as_['shots']}{poss}.", "stat:match"))
-    if miss and len(out) < 3:
-        out.append(_S(f"Best chance not taken: {_name(miss['player'])} in the {_ordinal(miss['minute'])} "
-                      f"minute ({miss['xg']} xG, {miss['outcome'].replace('_', ' ')}).", miss["id"]))
+        out = [_S(f"{label}: {_score(pack)}. Goals: " + ", ".join(parts) + ".", "state", *[g["id"] for g in goals])]
+    else:
+        out = [_S(f"{label}: {_score(pack)}, no goals {'yet' if half else 'in this one'}.", "state")]
+    if hs["shots"] != as_["shots"]:
+        more, mst, lst, less = (h, hs, as_, a) if hs["shots"] > as_["shots"] else (a, as_, hs, h)
+        out.append(_S(f"{more} took more shots, {mst['shots']} to {lst['shots']}, with {mst['shots_on_target']} on "
+                      f"target against {lst['shots_on_target']} for {less}.", "stat:match"))
+    else:
+        out.append(_S(f"Both sides had {hs['shots']} shots; {h} put {hs['shots_on_target']} on target, "
+                      f"{a} {as_['shots_on_target']}.", "stat:match"))
+    if hs["xg"] is not None and as_["xg"] is not None and hs["xg"] != as_["xg"]:
+        better = h if hs["xg"] > as_["xg"] else a
+        out.append(_S(f"{better} had the better chances: xG {hs['xg']} for {h}, {as_['xg']} for {a}.",
+                      "stat:match"))
+    if hs.get("possession") is not None and as_.get("possession") is not None:
+        hp, ap = round(hs["possession"] * 100), round(as_["possession"] * 100)
+        lead = "Possession was close" if abs(hp - ap) <= 10 else "Possession"
+        out.append(_S(f"{lead}: {h} {hp}%, {a} {ap}%.", "stat:match"))
+    ld = _fact(pack, "player_leaders")
+    if ld:
+        bits = [f"most {'shots' if k == 'shots' else 'key passes'}, {_name(v['player'])} of {v['team']} with {v['value']}"
+                for k, v in ld.items() if k in ("shots", "key_passes")]
+        out.append(_S("Top players: " + "; ".join(bits) + ".", "stat:leaders"))
+    if miss:
+        out.append(_S(f"Best chance not taken: {_name(miss['player'])} for {miss['team']} in the "
+                      f"{_ordinal(miss['minute'])} minute ({miss['outcome'].replace('_', ' ')}).", miss["id"]))
+    if half and mom and mom["home_share_pct"] != mom["away_share_pct"]:
+        side, pct = (h, mom["home_share_pct"]) if mom["home_share_pct"] > mom["away_share_pct"] else (a, mom["away_share_pct"])
+        out.append(_S(f"{side} finished the half stronger, with {pct}% of the momentum in the last 7 minutes.",
+                      "stat:momentum"))
     return out
 
 
@@ -287,8 +311,8 @@ def _pack_strings(obj, acc: list[str]):
 def validate(sentences: list[dict], pack: dict, roster_names: set[str]) -> list[str]:
     """Return a list of problems; empty means the text may be shown."""
     problems = []
-    if not 1 <= len(sentences) <= 3:
-        problems.append(f"expected 1-3 sentences, got {len(sentences)}")
+    if not 1 <= len(sentences) <= max_sentences(pack):
+        problems.append(f"expected 1-{max_sentences(pack)} sentences, got {len(sentences)}")
     ids = {f["id"] for f in pack["facts"]} | {f["id"] for f in pack.get("deep_context", [])} | {"state"}
     nums: set[str] = set()
     _pack_numbers(pack, nums)
@@ -339,8 +363,18 @@ class Explainer:
         self.roster = roster_names or set()
 
     async def write(self, pack: dict, depth: str = "basic", fav: str | None = None) -> dict:
-        from .workflow import AnalysisJob, build_analysis_workflow
+        from .workflow import AnalysisJob, _result, build_analysis_workflow
 
         wf = build_analysis_workflow(self.llm, self.roster)
-        result = await wf.run(AnalysisJob(pack, depth, fav))
+        job = AnalysisJob(pack, depth, fav)
+        try:
+            async with timeout(TOTAL_TIMEOUT_S):
+                result = await wf.run(job)
+        except TimeoutError:
+            # Bound the entire workflow, not only the provider's HTTP call.
+            # Cancellation from seek/reset still propagates to the room owner.
+            sentences = template(pack, depth, fav)
+            fallback = _result(job, sentences, "template", None, validate(sentences, pack, self.roster))
+            fallback["rejected"] = ["analysis timeout"]
+            return fallback
         return result.get_outputs()[-1]

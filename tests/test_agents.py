@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from vmi.agents.explainer import Explainer, template, validate
+from vmi.agents.explainer import Explainer, max_sentences, template, validate
 from vmi.agents.qa import Assistant
 from vmi.engine.replay import Replay, run_all
 from vmi.evaluation.benchmark import benchmark_match
@@ -24,7 +24,7 @@ def test_templates_always_pass_the_validator(seed):
         for depth in ("basic", "deep"):
             for fav in (None, "home", "away"):
                 sents = template(o["factpack"], depth, fav)
-                assert 1 <= len(sents) <= 3
+                assert 1 <= len(sents) <= max_sentences(o["factpack"])
                 assert validate(sents, o["factpack"], _roster(m)) == []
 
 
@@ -83,6 +83,69 @@ def test_workflow_falls_back_on_agent_error(goal_pack):
     m, pack = goal_pack
     res = asyncio.run(Explainer(_Agent("not json"), _roster(m)).write(pack))
     assert res["source"] == "template" and res["validation"] == "passed"
+
+
+def test_stoppage_analysis_deadline_cancels_a_hung_model_and_uses_validated_template(goal_pack, monkeypatch):
+    from vmi.agents import explainer
+
+    calls, cancelled, deadlines = [], [], []
+
+    def controlled_deadline(seconds):
+        assert seconds == 20
+        deadline = asyncio.timeout(None)
+        deadlines.append(deadline)
+        return deadline
+
+    # Arm the real asyncio cancellation exactly when the fake model starts;
+    # workflow startup speed cannot make this timeout regression flaky.
+    monkeypatch.setattr(explainer, "timeout", controlled_deadline, raising=False)
+
+    class HungAgent:
+        async def run(self, message):
+            calls.append(message)
+            try:
+                deadlines[0].reschedule(asyncio.get_running_loop().time())
+                await asyncio.Event().wait()
+            finally:
+                cancelled.append(True)
+
+    m, pack = goal_pack
+
+    async def scenario():
+        # The outer deadline only bounds a regression to the old unbounded path.
+        return await asyncio.wait_for(Explainer(HungAgent(), _roster(m)).write(pack), 2)
+
+    res = asyncio.run(scenario())
+    assert len(calls) == 1 and cancelled == [True]
+    assert res["source"] == "template" and res["model"] is None
+    assert res["validation"] == "passed" and res["rejected"] == ["analysis timeout"]
+    assert res["moment"] == pack["moment"]
+
+
+def test_cancelled_analysis_does_not_turn_an_old_run_into_a_fallback(goal_pack):
+    started, cancelled = [], []
+
+    async def scenario():
+        gate = asyncio.Event()
+
+        class HungAgent:
+            async def run(self, message):
+                started.append(True)
+                gate.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.append(True)
+
+        m, pack = goal_pack
+        task = asyncio.create_task(Explainer(HungAgent(), _roster(m)).write(pack))
+        await asyncio.wait_for(gate.wait(), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+    assert started == [True] and cancelled == [True]
 
 
 @pytest.fixture(scope="module")
