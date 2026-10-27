@@ -104,3 +104,21 @@ test("source contact is validated and carried through interpolation, with an app
   assert.ok(Math.abs(interpolate(b, after, 10.16).players[0].contact.phase - .5) < 1e-9);
   assert.equal(interpolate(b, after, 10.35).players[0].contact, undefined);
 });
+
+test("real demo-match contacts: boot, hands and forehead meet the drawn ball, even with the ball behind the body", async () => {
+  const { contacts } = JSON.parse(await readFile(new URL("./source-contacts.fixture.json", import.meta.url)));
+  const tolerance = { foot: BALL_RADIUS + .08, hands: BALL_RADIUS + .05, head: .05 };
+  assert.deepEqual(new Set(contacts.map(c => c.frame.players.find(p => p.id === c.pid).contact.effector)), new Set(["foot", "hands", "head"]));
+  for (const { frame, pid } of contacts) {
+    assert.ok(validFrame(frame));
+    const actors = new DetailedFootballers(new T.Scene(), data), motionState = new SceneMotion();
+    actors.update(frame, motionState.update(frame), teams);
+    const actor = actors.actors.get(pid), p = frame.players.find(q => q.id === pid), c = p.contact, ball = touchTarget(c.target);
+    const d = c.effector === "foot" ? Math.min(at(actor, "foot.L").distanceTo(ball), at(actor, "foot.R").distanceTo(ball))
+      : c.effector === "hands" ? Math.min(at(actor, "wrist.L").distanceTo(ball), at(actor, "wrist.R").distanceTo(ball))
+      : Math.abs(forehead(actor).distanceTo(ball) - BALL_RADIUS);
+    assert.ok(d <= tolerance[c.effector], `${c.kind}/${c.effector} at ${frame.t}: ${d}`);
+    assert.equal(actor.root.position.x, p.x - 52.5); assert.equal(actor.root.position.z, 34 - p.y);
+    actors.dispose();
+  }
+});

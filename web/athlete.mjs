@@ -143,6 +143,8 @@ export class DetailedFootballers {
       const strength = contact?.weight ?? 0;
       let facing = source ? pose.facing : pose.speed > 0.1 || holder ? pose.heading : look;
       if(Number.isFinite(contact?.heading)) facing += Math.atan2(Math.sin(contact.heading-facing),Math.cos(contact.heading-facing))*strength;
+      // Hands and head meet the ball facing it; a foot may play it sideways or behind.
+      if(hit && hit.effector !== "foot" && Number.isFinite(hit.heading)) facing += Math.atan2(Math.sin(hit.heading-facing),Math.cos(hit.heading-facing))*hit.weight;
       const travelAngle = pose.heading - facing;
       // A wide resting stance leaves less lateral reach than forward reach.
       // Shorten contact duration, not its cancellation speed or source travel.
@@ -228,29 +230,28 @@ export function applyTouch(actor, touch) {
     return;
   }
   const shoulders = () => world("upperarm01.L").add(world("upperarm01.R")).multiplyScalar(.5);
-  const point = touch.effector === "head" ? () => forehead(actor) : shoulders;
-  const reach = touch.effector === "head" ? BALL_RADIUS : ARM_REACH;
-  // Vertical body offset: jump for a high ball, crouch for a low one.
-  const height = point().y;
-  const rise = touch.effector === "head" ? Math.min(.5, Math.max(0, ball.y - height))
-    : ball.y < height - .55 ? Math.max(-.45, ball.y - (height - .55)) : ball.y > height + .5 ? Math.min(.45, ball.y - (height + .5)) : 0;
-  if (rise) {
-    const feet = rise < 0 ? ["L", "R"].map(side => [side, world(`foot.${side}`)]) : [];
-    actor.root.position.y += rise * w; actor.root.updateMatrixWorld(true);
-    for (const [side, foot] of feet) reachLeg(actor, side, foot);
+  const head = touch.effector === "head", point = head ? () => forehead(actor) : shoulders;
+  const reach = head ? BALL_RADIUS : ARM_REACH;
+  // Search body height (crouch or jump) and forward lean together for the
+  // pose that brings the effector to the ball, preferring the smallest motion.
+  const spine = actor.joints.spine03, neck = actor.joints.neck01, base = spine.rotation.x, y0 = actor.root.position.y;
+  const rises = head ? [0, .5] : [-.65, .45], leans = head ? [-.3, 1.1] : [-.2, 1.4];
+  const set = (rise, lean) => {
+    actor.root.position.y = y0 + rise; spine.rotation.x = base + lean * .6; neck.rotation.x = lean * .4;
+    actor.root.updateMatrixWorld(true);
+  };
+  const feet = ["L", "R"].map(side => [side, world(`foot.${side}`)]);
+  let best = [0, 0], error = Infinity;
+  for (let i = 0; i <= 11; i++) for (let j = 0; j <= 16; j++) {
+    const rise = rises[0] + i * (rises[1] - rises[0]) / 11, lean = leans[0] + j * (leans[1] - leans[0]) / 16;
+    set(rise, lean);
+    const d = Math.abs(point().distanceTo(ball) - reach) * (head ? 1 : 0) + (head ? 0 : Math.max(0, point().distanceTo(ball) - reach))
+      + (Math.abs(rise) + Math.abs(lean) * .2) * 1e-2;
+    if (d < error) { error = d; best = [rise, lean]; }
   }
-  // Search the forward lean that brings the effector within reach, then blend.
-  const spine = actor.joints.spine03, neck = actor.joints.neck01, base = spine.rotation.x;
-  const lean = touch.effector === "head" ? [-.3, .9] : [-.2, 1.2];
-  let best = 0, error = Infinity;
-  for (let i = 0; i <= 24; i++) {
-    const value = lean[0] + i * (lean[1] - lean[0]) / 24;
-    spine.rotation.x = base + value * .6; neck.rotation.x = value * .4; actor.root.updateMatrixWorld(true);
-    const d = Math.max(0, point().distanceTo(ball) - reach) + Math.abs(value) * 1e-3;
-    if (d < error) { error = d; best = value; }
-  }
-  spine.rotation.x = base + best * .6 * w; neck.rotation.x = best * .4 * w;
-  actor.root.updateMatrixWorld(true);
+  set(best[0] * w, best[1] * w);
+  // A crouch keeps both feet planted; a jump lets them leave the ground.
+  if (best[0] < 0) { for (const [side, foot] of feet) reachLeg(actor, side, foot); actor.root.updateMatrixWorld(true); }
   if (touch.effector === "hands") {
     const across = new T.Vector3(1, 0, 0).applyQuaternion(actor.root.quaternion).multiplyScalar(BALL_RADIUS);
     for (const [side, sign] of [["L", 1], ["R", -1]])
