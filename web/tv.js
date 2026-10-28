@@ -104,7 +104,7 @@ function onMeters(m) {
   el.title = view.label;
   $("atmo-label").title = a.why;
   $("atmo-label").textContent = view.label;
-  audio.crowd(a.crowd ?? 0);
+  audio.crowd(a.crowd, m.t);  // unavailable crowd data: silence, baseline kept
   crowd.meters(m, performance.now() / 1000);
 }
 
@@ -123,7 +123,7 @@ function renderMarker() {
   $("event-label").textContent = cue.label;
 }
 function clearTransient() {
-  markers.clear(); crowd.reset(); $("event-marker").hidden = true;
+  markers.clear(); audio.reset(); crowd.reset(); $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
   frame = null; shown = null;
 }

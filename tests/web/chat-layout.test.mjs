@@ -39,8 +39,9 @@ test("crest text picks the higher-contrast ink for the team colour", () => {
 });
 
 test("card and row minutes: regular, added time and missing clocks", () => {
-  assert.equal(minuteOf("37:58"), "37'");
-  assert.equal(minuteOf("0:00"), "0'");
+  assert.equal(minuteOf("37:58"), "38'");
+  assert.equal(minuteOf("0:00"), "1'");
+  assert.equal(minuteOf("0:45"), "1'");    // a goal in the first seconds is a 1st-minute goal
   assert.equal(minuteOf("45+2'"), "45+2'");   // never a doubled apostrophe
   assert.equal(minuteOf("90+6'"), "90+6'");
   assert.equal(minuteOf(""), "");

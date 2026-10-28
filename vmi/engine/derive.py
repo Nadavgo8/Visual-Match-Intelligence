@@ -57,8 +57,9 @@ def clock_seconds(clock: str) -> int:
 
 
 def minute_of(clock: str) -> int:
-    """The minute as the TV clock shows it: '66:08' -> 66, "90+3'" -> 90."""
+    """The football minute: a clock of '0:45' is the 1st minute, '66:08' the 67th.
+    Added time stays on its base minute: "90+3'" -> 90."""
     clock = clock.strip("'")
     if "+" in clock:
         return int(clock.split("+")[0])
-    return int(clock.split(":")[0])
+    return int(clock.split(":")[0]) + 1
