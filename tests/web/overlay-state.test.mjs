@@ -65,3 +65,10 @@ test("memory is bounded and two edge bars have the same scalar presentation", ()
   assert.equal(edgePresentation({level:null,available:false}).available,false);
   assert.equal(edgePresentation({level:0,available:true}).height,0);
 });
+
+test("atmosphere bars stay bright enough to read, rising with the level", () => {
+  const b = level => edgePresentation({ level, available: true }).brightness;
+  assert.ok(b(0) >= 1 && b(1) > b(0.5) && b(0.5) > b(0));
+  assert.ok(Math.abs(b(1) - 1.5) < 1e-9);
+  assert.equal(edgePresentation({ level: null, available: false }).brightness, 0.4);
+});
