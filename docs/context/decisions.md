@@ -120,6 +120,13 @@ Calls made while writing spec v2 (Claude, Oct 22; Developer 1 can revisit them i
 - Player leaders: a new read-only tool `get_leaders` (goals, shots, shots on target, key passes, xG, passes completed, fouls), with a no-model answer for "who had the most…" questions; a tie is reported as a shared lead. Half-time and full-time reports name a clear leader for shots and key passes. Chat text drops the word "synthetic" (the whole product is declared synthetic elsewhere) and uses short dashes.
 - The receipts block and the logged-event ids are no longer shown in the chat. Every message still says who wrote it: "AI" or "written by code".
 
+## Reactive stadium crowd (Oct 28)
+
+- Nadav asked for a compact, reactive crowd around the 2D pitch and accepted it visually (PR #46). It adds to the match screen's elements; it is not a banner or overlay.
+- **No model of its own.** Group excitement follows only the delivered atmosphere meter (level, attack part, attacking team) and a delivered score increase, so the crowd cannot disagree with the edge bars or the score bug. No engine, generator or data change.
+- Reactions are localised near the attacked goal and strongest for that team's fans, spread outwards as a short wave, and settle gradually. A goal makes only the scoring team's fans celebrate. A seek or reconnect resets the crowd and never triggers a celebration.
+- Deterministic (no randomness) and batched (about 15 canvas fills per frame). "Visual signals" off keeps the crowd seated; "Reduce motion" removes bounce and sway.
+
 ## Still open (as of Oct 22)
 
 | # | Decision | Owner | Note |
