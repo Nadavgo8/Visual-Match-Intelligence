@@ -2,45 +2,175 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%231fa2a8%22/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%232BB3A8%22/%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ViSense</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0b0f14; --panel:#141a22; --text:#eef2f6; --muted:#8b97a6; --line:#263040; --a:#2e6fd8; --b:#1fa2a8; }
+  :root { --bg:#0A0E13; --panel:#0F151C; --card:#131A22; --chip:#1E2733; --line:#1C2530; --edge:#2A3542; --text:#E8EDF2;
+          --body:#AAB6C3; --muted:#9AA6B4; --faint:#8593A3; --teal:#2BB3A8; --amber:#F2A541; --home:#4C8FE0; --away:#E06A6A; }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:17px/1.55 Inter, system-ui, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 48px 16px; }
-  h1 { font-size: clamp(30px, 6vw, 46px); line-height:1.1; margin:0 0 12px; letter-spacing:-0.02em; }
-  .lead { color: var(--muted); font-size: 19px; margin: 0 0 28px; }
-  .go { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 28px; }
-  .go a { display:block; padding:18px; background:var(--panel); border:1px solid var(--line); border-radius:12px; color:var(--text); text-decoration:none; }
-  .go a:hover { border-color: var(--b); }
-  .go b { display:block; font-size: 19px; margin-bottom: 4px; }
-  .go span { color: var(--muted); font-size: 15px; }
-  .hint { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
-  label { color: var(--muted); font-size: 15px; } input { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font:inherit; width: 9em; }
-  ul { padding-left: 20px; color: var(--muted); } li { margin: 4px 0; }
-  .note { font-size: 14px; color: var(--muted); border-top:1px solid var(--line); padding-top: 16px; margin-top: 28px; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 Inter, system-ui, sans-serif; }
+  a { color:#5FD3C8; } a:hover { color:#8FE5DC; }
+  .wrap { max-width:1120px; margin:0 auto; padding:56px 16px 48px; display:flex; flex-direction:column; gap:56px; }
+  .display { font-family:'Barlow Condensed', sans-serif; font-weight:700; }
+  .eyebrow { font-size:12px; font-weight:700; letter-spacing:0.1em; color:var(--faint); margin:0; }
+
+  .hero { display:flex; flex-wrap:wrap; gap:40px; align-items:center; }
+  .hero-text { flex:1 1 480px; min-width:0; display:flex; flex-direction:column; gap:22px; }
+  .kicker { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; letter-spacing:0.1em; color:var(--amber); }
+  .dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
+  h1 { margin:0; font-size:clamp(84px, 16vw, 120px); line-height:0.9; letter-spacing:-0.005em; }
+  h1 span { color:var(--teal); }
+  .lead { margin:0; font-size:19px; line-height:1.55; color:var(--body); max-width:520px; }
+  .join { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding-top:6px; }
+  .room { display:flex; flex-direction:column; gap:6px; }
+  .room label { font-size:12px; font-weight:600; letter-spacing:0.08em; color:var(--muted); }
+  .room input { width:150px; height:52px; padding:0 16px; border-radius:12px; border:1px solid var(--edge); background:var(--card);
+                color:var(--text); font:700 26px 'Barlow Condensed', sans-serif; letter-spacing:0.2em; }
+  .room input:focus-visible, .btn:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+  .btn { min-height:52px; padding:0 22px; border-radius:12px; display:flex; align-items:center; text-decoration:none; font:600 15px Inter, sans-serif; }
+  .btn.primary { background:var(--teal); color:#07120F; font-weight:700; } .btn.primary:hover { background:#3CC4B9; color:#07120F; }
+  .btn.ghost { border:1px solid #3A4858; color:var(--text); } .btn.ghost:hover { border-color:var(--teal); color:var(--text); }
+  .hint { margin:0; font-size:13px; line-height:1.5; color:var(--faint); max-width:520px; }
+
+  .hero-visual { flex:1 1 420px; min-width:0; }
+  .tv { border-radius:20px; background:var(--card); border:1px solid var(--edge); padding:14px; }
+  .pitch { position:relative; aspect-ratio:16 / 9; border-radius:12px; overflow:hidden;
+           background:repeating-linear-gradient(90deg, #11301F 0, #11301F 12.5%, #0F2A1D 12.5%, #0F2A1D 25%); }
+  .pitch .half { position:absolute; left:50%; top:8%; bottom:8%; width:2px; background:rgba(255,255,255,0.22); }
+  .pitch .circle { position:absolute; left:50%; top:50%; width:60px; height:60px; margin:-30px 0 0 -30px; border-radius:50%; border:2px solid rgba(255,255,255,0.22); }
+  .pitch .p { position:absolute; width:12px; height:12px; border-radius:50%; border:2px solid #fff; }
+  .p.h { background:var(--home); } .p.a { background:var(--away); }
+  .banner { position:absolute; left:16px; top:14px; display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:10px;
+            background:var(--amber); color:#1A1203; font-size:22px; letter-spacing:0.06em; }
+  .atmo { position:absolute; right:14px; top:14px; display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:10px;
+          background:rgba(10,14,19,0.8); font-size:11px; font-weight:700; letter-spacing:0.06em; color:var(--amber); }
+  .atmo i { display:block; width:5px; height:12px; background:var(--amber); } .atmo i.off { background:#3A4858; }
+  .atmo span { display:flex; gap:2px; }
+  .momentum { position:absolute; left:16px; right:16px; bottom:12px; display:flex; flex-direction:column; gap:5px; }
+  .momentum div:first-child { display:flex; justify-content:space-between; font-size:10px; font-weight:700; letter-spacing:0.08em; }
+  .momentum .bar { display:flex; gap:3px; height:6px; }
+  .momentum .bar i { border-radius:3px; }
+
+  .surfaces { display:flex; flex-wrap:wrap; gap:24px; }
+  .surface { flex:1 1 460px; min-width:0; border-radius:20px; background:var(--panel); border:1px solid var(--line); padding:28px; }
+  .surface-head { display:flex; align-items:center; gap:12px; }
+  .icon { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex:none; }
+  .icon.tv-i { background:#17313A; color:#5FD3C8; } .icon.app-i { background:#3A2A12; color:var(--amber); }
+  h2 { margin:0; font-size:34px; letter-spacing:0.02em; line-height:1.1; }
+  .surface p { margin:0; color:var(--body); }
+  .tv-card { display:flex; flex-direction:column; gap:18px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips span { padding:6px 12px; border-radius:16px; background:var(--chip); font-size:13px; font-weight:600; }
+  .app-card { display:flex; flex-wrap:wrap; gap:24px; align-items:center; }
+  .app-card > div:first-child { flex:1 1 240px; min-width:0; display:flex; flex-direction:column; gap:18px; }
+  .phone { flex:0 0 200px; display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:18px; background:var(--bg); border:1px solid var(--edge); font-size:12px; line-height:1.4; }
+  .phone .q { align-self:flex-end; padding:7px 11px; border-radius:12px 12px 3px 12px; background:#1F2A36; }
+  .phone .who { font-size:11px; font-weight:700; margin-bottom:4px; }
+  .phone .msg { padding:8px 11px; border-radius:3px 12px 12px 12px; background:var(--card); }
+  .phone .msg.boxed { border:1px solid var(--edge); }
+
+  .how { display:flex; flex-direction:column; gap:20px; }
+  .points { display:flex; flex-wrap:wrap; gap:20px; }
+  .point { flex:1 1 300px; min-width:0; border-top:2px solid; padding-top:18px; display:flex; flex-direction:column; gap:10px; }
+  .point h3 { margin:0; font-size:26px; line-height:1.15; }
+  .point p { margin:0; font-size:15px; color:var(--body); }
+  .labels { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:16px 18px; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
+  .labels .eyebrow { margin-right:6px; }
+  .labels span:not(.eyebrow):not(.sep) { padding:5px 10px; border-radius:6px; background:var(--chip); font-size:11px; font-weight:700; letter-spacing:0.06em; }
+  .labels .sep { color:#5C6B7B; }
+
+  footer { padding-top:24px; border-top:1px solid var(--line); font-size:13px; color:var(--faint); }
 </style>
 </head>
 <body>
-<main>
-  <h1>ViSense</h1>
-  <p class="lead">Football's sound, made visible. Whistles, the crowd and the commentary become calm visual signals on the screen and a companion app on the phone, for fans with hearing difficulty.</p>
-  <p><label>Room <input id="room" maxlength="40" aria-describedby="room-help"></label></p>
-  <p id="room-help" class="hint">Open the TV view and the companion app with the same room code. Each visit gets a fresh code, so every viewer has their own match.</p>
-  <div class="go">
-    <a id="tv" href="/tv?room=demo"><b>📺 TV view</b><span>The broadcast: 2D replay with whistle banners, an atmosphere indicator and momentum.</span></a>
-    <a id="app" href="/app?room=demo"><b>📱 Companion app</b><span>Open on your phone: one live chat with Kai, the commentator, and Ada, the analyst. Ask them anything.</span></a>
-  </div>
-  <ul>
-    <li>Every whistle type has its own banner in a fixed place. No captions to read during play.</li>
-    <li>Analysis waits for stoppages and comes at your depth: a friend explaining, or an analyst.</li>
-    <li>Kai says what happened; Ada says what it means. Every message is labelled as fact or interpretation, and as written by AI or by code.</li>
-  </ul>
-  <p class="note">All teams, players and matches are synthetic, produced by our own seeded match generator. No real footage, data, clubs or league marks are used. Raw data: <a href="/api/match/2/events" style="color:inherit">events</a>, <a href="/api/match/2/crowd" style="color:inherit">crowd</a>, <a href="/api/match/2/meta" style="color:inherit">squads</a>.</p>
+<main class="wrap">
+  <section class="hero">
+    <div class="hero-text">
+      <div class="kicker"><span class="dot"></span>BUILT FOR FANS WITH HEARING DIFFICULTY</div>
+      <h1 class="display">Vi<span>Sense</span></h1>
+      <p class="lead">Football's sound, made visible. Whistles, the crowd and the commentary become calm visual signals on the screen and a companion app on the phone.</p>
+      <div class="join">
+        <div class="room">
+          <label for="room">ROOM CODE</label>
+          <input id="room" maxlength="40" autocomplete="off" spellcheck="false" aria-describedby="room-help">
+        </div>
+        <a id="tv" class="btn primary" href="/tv?room=demo">Open TV view</a>
+        <a id="app" class="btn ghost" href="/app?room=demo">Open companion app</a>
+      </div>
+      <p id="room-help" class="hint">Open both with the same room code. Each visit gets a fresh code, so every viewer has their own match.</p>
+    </div>
+
+    <div class="hero-visual">
+      <div class="tv">
+        <div class="pitch" role="img" aria-label="Example match screen: an Offside banner, the atmosphere level and the momentum bar">
+          <i class="half"></i><i class="circle"></i>
+          <i class="p h" style="left:34%;top:40%"></i><i class="p a" style="left:44%;top:56%"></i>
+          <i class="p h" style="left:58%;top:34%"></i><i class="p a" style="left:66%;top:62%"></i>
+          <div class="banner display">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>OFFSIDE
+          </div>
+          <div class="atmo">ATMOSPHERE <span><i></i><i></i><i></i><i></i><i class="off"></i></span></div>
+          <div class="momentum">
+            <div><span>HARBOUR CITY</span><span>MOMENTUM</span><span>NORTHVALE</span></div>
+            <div class="bar"><i style="flex:62;background:var(--home)"></i><i style="flex:38;background:var(--away)"></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="surfaces">
+    <div class="surface tv-card">
+      <div class="surface-head">
+        <div class="icon tv-i"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></div>
+        <h2 class="display">TV view</h2>
+      </div>
+      <p>The broadcast: 2D replay with whistle banners, an atmosphere indicator and momentum.</p>
+      <div class="chips"><span>Whistle banners</span><span>Atmosphere</span><span>Momentum</span></div>
+    </div>
+
+    <div class="surface app-card">
+      <div>
+        <div class="surface-head">
+          <div class="icon app-i"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+          <h2 class="display">Companion app</h2>
+        </div>
+        <p>Open on your phone: one live chat with Kai, the commentator, and Ada, the analyst. Ask them anything.</p>
+      </div>
+      <div class="phone" aria-hidden="true">
+        <div class="q">Why was that offside?</div>
+        <div><div class="who" style="color:var(--amber)">Ada · analyst</div><div class="msg boxed">The line was set by the left-back stepping up.</div></div>
+        <div><div class="who" style="color:var(--teal)">Kai · commentator</div><div class="msg">The flag goes up and the away end goes quiet.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="how">
+    <h2 class="eyebrow">HOW IT WORKS</h2>
+    <div class="points">
+      <div class="point" style="border-color:var(--amber)">
+        <h3 class="display">A banner for every whistle</h3>
+        <p>Every whistle type has its own banner in a fixed place. No captions to read during play.</p>
+      </div>
+      <div class="point" style="border-color:var(--teal)">
+        <h3 class="display">Analysis waits for stoppages</h3>
+        <p>It comes at your depth: a friend explaining, or an analyst.</p>
+      </div>
+      <div class="point" style="border-color:#6F8AA6">
+        <h3 class="display">Kai says what happened. Ada says what it means.</h3>
+        <p>Every message is labelled as fact or interpretation, and as written by AI or by code.</p>
+      </div>
+    </div>
+    <div class="labels">
+      <span class="eyebrow">EVERY MESSAGE CARRIES</span>
+      <span>FACT</span><span>INTERPRETATION</span><span class="sep" aria-hidden="true">/</span><span>WRITTEN BY AI</span><span>WRITTEN BY CODE</span>
+    </div>
+  </section>
+
+  <footer>All teams, players and matches are synthetic, produced by our own seeded match generator. No real footage, data, clubs or league marks are used. Raw data: <a href="/api/match/2/events">events</a>, <a href="/api/match/2/crowd">crowd</a>, <a href="/api/match/2/meta">squads</a>.</footer>
 </main>
 <script>
   // A short random room code per visit (no 0/O or 1/I to misread), so viewers don't share a room by accident.
