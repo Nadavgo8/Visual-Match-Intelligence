@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Visual Match Intelligence to Azure Container Apps with Application Insights
+# Deploy ViSense to Azure Container Apps with Application Insights
 # and keyless (managed identity) access to Microsoft Foundry.
 #
 # Prereqs: az CLI logged in (`az login`), the containerapp and application-insights

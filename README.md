@@ -1,6 +1,6 @@
-# Visual Match Intelligence
+# ViSense
 
-**Football's sound, made visible.** A hearing fan follows a match through the referee's whistle, the roar of the crowd and the commentator. Visual Match Intelligence turns those into calm visual signals on the screen, plus a companion app on the phone, for anyone with hearing difficulty. It does not replace captions or sign language; it covers what they leave out.
+**Football's sound, made visible.** A hearing fan follows a match through the referee's whistle, the roar of the crowd and the commentator. ViSense turns those into calm visual signals on the screen, plus a companion app on the phone, for anyone with hearing difficulty. It does not replace captions or sign language; it covers what they leave out.
 
 Built for the Microsoft *Inside the Game* hackathon. **All matches, teams and players are synthetic**, produced by our own seeded generator. No real footage, data, clubs or league marks are used.
 

@@ -103,7 +103,7 @@ async def lifespan(_app):
         await asyncio.gather(*warm, return_exceptions=True)
 
 
-app = FastAPI(title="Visual Match Intelligence", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ViSense", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 _client, _model_name = foundry_client()

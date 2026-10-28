@@ -21,7 +21,7 @@ from .agents.tools import MatchTools
 from .engine.replay import Replay
 from .generator.match import generate_match
 
-mcp = FastMCP("visual-match-intelligence",
+mcp = FastMCP("visense",
               instructions="Read-only tools over a synthetic football match: score, events, stats, momentum, "
                            "players, crowd loudness and the Laws of the Game. Every result lists evidence IDs.")
 

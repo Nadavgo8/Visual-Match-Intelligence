@@ -29,7 +29,7 @@ Microsoft × Premier League **"Inside the Game"** (github.com/microsoft/insideth
 - **IP:** stays with the team; Microsoft and PL get a non-exclusive licence.
 - Full rules and resources: `docs/context/plan/hackathon-reference.md` (one-stop reference, Israel times) and `hackathon-brief.md`.
 
-## The product: Visual Match Intelligence
+## The product: ViSense
 
 Football's sound, made visible, for anyone with hearing difficulty. A hearing fan gets the whistle, the crowd and the commentator through sound; we turn those into calm visual signals on the match screen, plus an optional companion app on the phone. It does not replace captions or sign language. **Never ask about hearing level.**
 

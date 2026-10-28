@@ -60,7 +60,7 @@ Commentary grounding (Nadav pushed back twice, and this is now a hard rule):
 
 ### Round 4: team, access, submission
 1. Both registered (Oct 20).
-2. **Name:** "Visual Match Intelligence", for now.
+2. **Name:** "ViSense", for now.
 3. **Work split:** doesn't matter to them.
 4. **Azure:** no subscription; will use a free account. Keep cost near zero (scale to zero, cheap model, local-first). See Azure caveat below.
 5. **GitHub repo and licence:** will open and decide later, with Claude's advice.
