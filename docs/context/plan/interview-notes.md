@@ -2,7 +2,7 @@
 
 Thread: "ראיון תכנון" (started 2026-10-20). Each round: up to 10 questions. Answers and decisions are recorded here so they survive the thread.
 
-Already settled before the interview (see hackathon-reference.md §10): concept "Visual Match Intelligence" for deaf/HoH fans; Attention Engine (what/when/how/nothing) + Q&A agent; all data synthetic JSON, no footage; 2D pitch replay + synthetic audio for the demo. Submission closes Wed Oct 28 08:59 Israel time.
+Already settled before the interview (see hackathon-reference.md §10): concept "ViSense" for deaf/HoH fans; Attention Engine (what/when/how/nothing) + Q&A agent; all data synthetic JSON, no footage; 2D pitch replay + synthetic audio for the demo. Submission closes Wed Oct 28 08:59 Israel time.
 
 ---
 

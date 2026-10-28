@@ -1,6 +1,6 @@
-# Visual Match Intelligence: build spec (v2, 2026-10-22)
+# ViSense: build spec (v2, 2026-10-22)
 
-Visual Match Intelligence turns the parts of a football broadcast that hearing fans get through sound (whistles, the crowd, the commentator) into visual signals on the match screen, plus an optional companion app on the phone. It is for anyone with hearing difficulty. It does not replace captions or sign language. It never asks about hearing level. The match screen works on its own; the phone is never required.
+ViSense turns the parts of a football broadcast that hearing fans get through sound (whistles, the crowd, the commentator) into visual signals on the match screen, plus an optional companion app on the phone. It is for anyone with hearing difficulty. It does not replace captions or sign language. It never asks about hearing level. The match screen works on its own; the phone is never required.
 
 All data is **synthetic**: a seeded generator produces the event feed, tracking, crowd level and match state. There is no footage. The match is rendered from synthetic tracking and labelled *synthetic*. **The match and its facts are deterministic; only the wording may vary.** The same seed and generator version give the same events and positions. A language model never decides a result, an atmosphere level or whether a marker shows.
 

@@ -152,7 +152,7 @@ As of 2026-10-18, the Reactor series lists **one** session. No other official ha
 
 ---
 
-## 10. Our project plan: Visual Match Intelligence
+## 10. Our project plan: ViSense
 
 This merges the rules above with our current concept (v2, Oct 13) and the earlier plan files. Where a choice isn't made yet, it says so.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Visual Match Intelligence to Azure App Service (Linux, Python 3.12) with
+# Deploy ViSense to Azure App Service (Linux, Python 3.12) with
 # keyless (managed identity) access to Microsoft Foundry.
 #
 # Why not deploy.sh (Container Apps)? Free Trial subscriptions refuse ACR Tasks, so
