@@ -2,7 +2,7 @@
 
 **Football's sound, made visible.** A hearing fan follows a match through the referee's whistle, the roar of the crowd and the commentator. ViSense turns those into calm visual signals on the screen, plus a companion app on the phone, for anyone with hearing difficulty. It does not replace captions or sign language; it covers what they leave out.
 
-Built for the Microsoft *Inside the Game* hackathon. **All matches, teams and players are synthetic**, produced by our own seeded generator. No real footage, data, clubs or league marks are used.
+Built for the Microsoft *Inside the Game* hackathon. **Live demo:** https://vmi-match.azurewebsites.net (open the TV view on a laptop and the companion app on a phone with the same room code). **All matches, teams and players are synthetic**, produced by our own seeded generator. No real footage, data, clubs or league marks are used.
 
 | TV view (the broadcast) | Companion app (phone) |
 |---|---|
@@ -64,13 +64,23 @@ flowchart LR
 | `vmi/api/server.py` | FastAPI app, rooms, WebSocket push, demo warm-up cache |
 | `web/` | TV view and companion app (no build step) |
 | `prompts/` | Agent instructions |
-| `infra/deploy.sh` | Azure Container Apps + Application Insights + managed identity to Foundry |
+| `infra/deploy-appservice.sh` | Azure App Service (the live demo) + managed identity to Foundry |
+| `infra/deploy.sh` | Azure Container Apps + Application Insights + managed identity to Foundry (alternative) |
 | `tests/` | Generator realism, engine routing, validator and workflow fallback, API |
 
 ## Deploy to Azure
 
-`infra/deploy.sh` builds the container on Azure Container Apps, adds Application Insights (OpenTelemetry), gives the app a managed identity with the *Azure AI User* role on the Foundry resource (no keys), and runs one replica so the judging link has no cold start.
+The live demo runs on **Azure App Service** (Linux, Python 3.12, one always-on B1 instance so a TV and its phones share one room in memory). `infra/deploy-appservice.sh` zips the current checkout, lets App Service install the locked requirements, enables WebSockets and gives the app a managed identity on the Foundry resource (no keys). It stops unless the subscription's spending limit is on. Rerun it to redeploy:
+
+```bash
+export FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+export FOUNDRY_MODEL="gpt-5-mini"
+export FOUNDRY_RESOURCE_ID="/subscriptions/.../providers/Microsoft.CognitiveServices/accounts/<resource>"
+bash infra/deploy-appservice.sh
+```
+
+Alternative: `infra/deploy.sh` builds the container on Azure Container Apps, adds Application Insights (OpenTelemetry), gives the app a managed identity with the *Azure AI User* role on the Foundry resource (no keys), and runs one replica so the judging link has no cold start.
 
 ## Status
 
-v1 works locally end to end on the demo seed (12). In progress ([build spec v2](docs/spec.md)): a 3D match screen, atmosphere edge bars and round event markers in place of the banners above, a "What did I miss?" summary in the app, and a zero-cost choice of model and hosting. Foundry and Azure deployment are wired but have not run against a live subscription.
+Live on Azure App Service with Microsoft Foundry (`gpt-5-mini`); the demo match is seed 2. In progress ([build spec v2](docs/spec.md)): a 3D match screen, atmosphere edge bars and round event markers in place of the banners above, a "What did I miss?" summary in the app, and a zero-cost choice of model and hosting.
