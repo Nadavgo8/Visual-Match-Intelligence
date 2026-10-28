@@ -1,6 +1,6 @@
 import { bannerIcon } from "./icons.js";
 import { SyntheticAudio } from "./audio.js";
-import { MarkerState, edgePresentation } from "./overlay-state.mjs";
+import { MarkerState, edgePresentation } from "./overlay-state.mjs?v=3";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
 import { prependTrace } from "./trace-view.mjs";
 
