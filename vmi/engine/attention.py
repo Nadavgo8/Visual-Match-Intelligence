@@ -106,24 +106,90 @@ class AttentionEngine:
                 "text": {"basic": basic, "deep": deep}, "evidence": [ev["id"]], "speaker": speaker,
                 "reply_to": None, "say": self._say(ev, team)}
 
+    def _who(self, pid: str | None) -> str | None:
+        """A player with the team they play for: 'Achebe (#2, Northvale Rovers)'."""
+        p = self.model.players.get(pid or "")
+        return f"{p['name']} (#{p['number']}, {self.model.team_name(p['team'])})" if p else None
+
+    def _incident(self, ev: dict, depth: int = 4) -> dict | None:
+        """The foul or handball behind a card, VAR review or penalty decision, following the
+        links of already-delivered events only (no foreknowledge)."""
+        seen, todo, tackle = set(), [ev], None
+        while todo and depth:
+            depth -= 1
+            nxt = []
+            for e in todo:
+                for key in ("offence_id", "trigger_event_id", "related"):
+                    for ref in (e.get(key) if isinstance(e.get(key), list) else [e.get(key)]):
+                        if ref and ref not in seen and (x := self.model.by_id.get(ref)):
+                            if x["type"] in ("foul", "handball"):
+                                return x
+                            if x["type"] == "tackle" and tackle is None:
+                                tackle = x  # under review: not (yet) called a foul
+                            seen.add(ref)
+                            nxt.append(x)
+            todo = nxt
+        return tackle
+
+    def _story(self, foul: dict | None) -> str:
+        """How it happened and who was involved: 'Achebe (#2, Northvale Rovers) tripped
+        Reyes (#11, Harbour City) inside the box'. Empty when the incident is unknown."""
+        if not foul:
+            return ""
+        who = self._who(foul.get("player_id")) or self.model.team_name(foul.get("team"))
+        if foul["type"] == "tackle":
+            act = f"the tackle by {who}"
+        elif foul["type"] == "handball":
+            act = f"{who} handled the ball"
+        else:
+            f = foul.get("foul", {})
+            verb = {"trip": "tripped", "push": "pushed", "hold": "held", "kick": "kicked", "tackle": "fouled with a late tackle",
+                    "elbow": "elbowed", "charge": "charged into", "pull": "pulled back"}.get(f.get("kind"), "fouled")
+            victim = self._who(f.get("victim_id"))
+            act = f"{who} {verb} {victim}" if victim else f"{who} committed a foul ({f.get('kind', 'foul')})"
+        if foul.get("derived", {}).get("in_box"):
+            act += " inside the box"
+        return act
+
+    def _card_reason(self, foul: dict | None) -> str:
+        """Why a card was shown, without repeating the player: 'for a kick on Kovac (#10, Harbour City)'."""
+        if not foul or foul["type"] not in ("foul", "handball"):
+            return ""
+        if foul["type"] == "handball":
+            return "for handball"
+        f = foul.get("foul", {})
+        what = {"trip": "a trip", "push": "a push", "hold": "holding", "kick": "a kick", "tackle": "a late tackle",
+                "elbow": "an elbow", "charge": "a charge", "pull": "pulling back"}.get(f.get("kind"), "a foul")
+        victim = self._who(f.get("victim_id"))
+        return f"for {what}" + (f" on {victim}" if victim else "")
+
     def _say(self, ev: dict, team: str | None) -> dict:
         """The facts a chat voice may use to word this item, taken from the event and the
         score at that moment. Code picks the wording (vmi/agents/voices.py); nothing new is claimed."""
         m = self.model
         side = team if team is not None else ev.get("team")
-        say = {"type": ev.get("type"), "who": m.player_name(ev.get("player_id")), "team": m.team_name(side) if side else None,
+        say = {"type": ev.get("type"), "who": self._who(ev.get("player_id")), "team": m.team_name(side) if side else None,
                "score": f"{m.team_name('home')} {m.score['home']}–{m.score['away']} {m.team_name('away')}"}
         etype = ev.get("type")
+        if etype in ("card", "var", "referee_decision"):
+            say["story"] = self._story(self._incident(ev))
+        elif etype in ("foul", "handball"):
+            say["story"] = self._story(ev)
         if etype == "card":
             say["colour"] = ev["card"]["colour"]
+            say["reason"] = self._card_reason(self._incident(ev))
             say["left"] = len(m.on_pitch[ev["team"]])
         elif etype == "var":
             v = ev["var"]
             say.update(phase=v["phase"], incident=v["incident"], outcome=v.get("outcome"))
         elif etype == "substitution":
-            say.update(on=m.player_name(ev["substitution"]["on_id"]), off=m.player_name(ev["substitution"]["off_id"]))
+            say.update(on=self._who(ev["substitution"]["on_id"]), off=self._who(ev["substitution"]["off_id"]))
         elif etype == "added_time":
             say["minutes"] = ev["added_time"]["minutes"]
+        elif etype == "foul":
+            f = ev["foul"]
+            say.update(victim=self._who(f.get("victim_id")), advantage=bool(f.get("advantage")),
+                       to=m.team_name(_opp(ev["team"])))
         elif etype in ("period_start", "period_end"):
             say["period"] = ev[etype]["period_no"]
         elif etype == "shot":
@@ -312,7 +378,7 @@ class AttentionEngine:
         if etype == "referee_decision" and m.decision_by_stop.get(ev["stoppage_id"]) != ev["id"]:
             return []  # several buffered decisions can resolve in this same batch
         tn = m.team_name(team)
-        who = m.player_name(ev.get("player_id"))
+        who = self._who(ev.get("player_id"))
         out: list[dict] = []
         if etype == "drinks_break":
             out.append(self._banner("drinks_break", self.now, "delivered drinks break; restart remains pending", [ev["id"]]))
@@ -338,8 +404,10 @@ class AttentionEngine:
             self.penalty_pending = ev["decision"] == "penalty"
             if self.penalty_pending:
                 self._expect("penalty_kick", 180)
-                out.append(self._feed(ev, TIER_BIG, "penalty", f"Penalty awarded to {tn}!",
-                                      f"Penalty to {tn}: explicit referee decision.", team=team))
+                story = self._story(self._incident(ev))
+                why = f" {story[0].upper()}{story[1:]}." if story else ""
+                out.append(self._feed(ev, TIER_BIG, "penalty", f"Penalty awarded to {tn}!{why}",
+                                      f"Penalty to {tn}: explicit referee decision.{why}", team=team))
             elif ev.get("supersedes_decision_id"):
                 text = f"Referee decision corrected: {ev['decision'].replace('_', ' ')}."
                 out.append(self._feed(ev, TIER_BIG, "whistle", text, text, team=team))
@@ -349,8 +417,9 @@ class AttentionEngine:
             c = ev["card"]["colour"]
             tier = TIER_BALANCED if c == "yellow" else TIER_BIG
             label = {"yellow": "Yellow card", "second_yellow": "Second yellow — sent off", "red": "Red card"}[c]
+            reason = self._card_reason(self._incident(ev))
             out.append(self._feed(ev, tier, f"card_{'yellow' if c == 'yellow' else 'red'}",
-                                  f"{label}: {who} ({tn}).",
+                                  f"{label}: {who}" + (f", {reason}." if reason else "."),
                                   f"{label}: {who}, {m.player_role(ev['player_id'])}, {tn}. "
                                   f"{tn} now have {m.cards[team]['yellow']} yellow(s)."
                                   if c == "yellow" else f"{label}: {who}. {tn} down to {len(m.on_pitch[team])}."))
@@ -359,7 +428,8 @@ class AttentionEngine:
             if v["phase"] == "check":
                 self.var_open = ev
                 what = "a possible penalty" if v["incident"] == "penalty" else f"the {v['incident']}"
-                out.append(self._feed(ev, TIER_BALANCED, "var", f"VAR is checking {what}.",
+                story = self._story(self._incident(ev))
+                out.append(self._feed(ev, TIER_BALANCED, "var", f"VAR is checking {what}" + (f": {story}." if story else "."),
                                       f"VAR check: {v['incident']} (on-field decision: {v['original_decision'].replace('_', ' ')}).",
                                       team=None))
                 self._schedule(ev["t"] + 8, "var_check", ev, TIER_BIG)
@@ -381,11 +451,17 @@ class AttentionEngine:
             d = ev["derived"]
             if d.get("penalty_awarded") and d.get("called_on_field"):
                 self.penalty_pending = True
-                out.append(self._feed(ev, TIER_BIG, "penalty", f"Penalty to {m.team_name(_opp(team))}! {who} fouled in the box.",
+                out.append(self._feed(ev, TIER_BIG, "penalty", f"Penalty to {m.team_name(_opp(team))}! {self._story(ev)}.",
                                       f"Penalty: {ev['foul']['kind']} by {who} inside the box.", team=_opp(team)))
             else:
-                out.append({"kind": "skip", "t": ev["t"], "what": ev["id"],
-                            "why": "ordinary foul: the whistle banner covers it"})
+                victim = self._who(ev["foul"].get("victim_id"))
+                on = f" on {victim}" if victim else ""
+                if ev["foul"].get("advantage"):
+                    basic = f"Foul by {who}{on}. The referee plays advantage."
+                else:
+                    basic = f"Foul by {who}{on}. Free kick to {m.team_name(_opp(team))}."
+                out.append(self._feed(ev, TIER_BALANCED, "foul", basic,
+                                      f"{basic} ({ev['foul'].get('kind', 'foul').replace('_', ' ')})"))
         elif etype == "set_piece" and ev["set_piece"]["kind"] == "penalty":
             self._expect("penalty_kick", 15)
         elif etype == "substitution":
@@ -417,14 +493,14 @@ class AttentionEngine:
     def _shot_feed(self, shot: dict) -> dict:
         q, d = shot["shot"], shot["derived"]
         outcome = q.get("outcome")
-        who = self.model.player_name(shot["player_id"])
+        who = self._who(shot["player_id"])
         text = f"Shot by {who}: {outcome.replace('_', ' ') if outcome else 'result pending'}."
         if outcome == "goal":
             text = f"GOAL! {who} scores for {self.model.team_name(shot['team'])}."
         deep = text + (f" xG {d['xg']}." if d.get("xg") is not None
                        else " xG not yet available.")
         old = self.shot_feeds.get(shot["id"])
-        feed = self._feed(shot, TIER_BIG if outcome == "goal" or q.get("penalty") else TIER_ALL,
+        feed = self._feed(shot, TIER_BIG if outcome == "goal" or q.get("penalty") else TIER_BALANCED,
                           "goal" if outcome == "goal" else "chance", text, deep)
         if old:
             feed["cue_id"] = old["cue_id"]
@@ -447,7 +523,7 @@ class AttentionEngine:
         outcome, xg = q.get("outcome"), d.get("xg")
         if outcome and outcome not in ("goal", "disallowed") and xg is not None and xg >= BIG_CHANCE_XG                 and ("big", shot["id"]) not in self.said:
             self.said.add(("big", shot["id"]))
-            who, xg = m.player_name(shot["player_id"]), round(xg, 2)
+            who, xg = self._who(shot["player_id"]), round(xg, 2)
             ev = {"id": f"{shot['id']}:big", "t": self.now, "clock": m.clock, "team": shot["team"]}
             item = self._feed(ev, TIER_BALANCED, "big_chance", f"Big chance missed by {who}: {xg} xG.",
                               f"Big chance missed: {who}, {xg} xG ({outcome.replace('_', ' ')}).",
@@ -472,7 +548,7 @@ class AttentionEngine:
             return []
         self.said.add((kind, pid, n))
         m = self.model
-        who = m.player_name(pid)
+        who = self._who(pid)
         ev = {"id": f"{shot['id']}:{kind}{n}", "t": self.now, "clock": m.clock, "team": m.players[pid]["team"]}
         text = (f"That's {n} shots for {who} now." if kind == "shots"
                 else f"{who} has set up {n} shots now: {n} key passes.")

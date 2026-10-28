@@ -140,7 +140,10 @@ export function feedLayout(f) {
 export function minuteOf(clock) {
   const c = String(clock ?? "").trim();
   if (!c) return "";
-  return c.includes("'") ? c : `${c.split(":")[0]}'`;
+  // Football minutes: 0:45 is the 1st minute, 66:08 the 67th. Added time ("90+3'") as given.
+  if (c.includes("'")) return c;
+  const m = Number.parseInt(c.split(":")[0], 10);
+  return Number.isFinite(m) ? `${m + 1}'` : "";
 }
 
 export const EVENT_LABELS = Object.freeze({

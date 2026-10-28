@@ -117,5 +117,9 @@ def test_buffered_correction_chain_does_not_publish_an_already_superseded_penalt
         engine.ingest(event, 20)
     outputs = engine.ingest(by[decision["trigger_event_id"]], 21)
     feed = [o for o in outputs if o["kind"] == "feed"]
-    assert len(feed) == 1 and "free kick" in feed[0]["text"]["basic"]
-    assert feed[0]["evidence"] == ["correction"]
+    # The foul itself is reported as a free kick, then the correction; the superseded
+    # penalty is never published.
+    assert [o["icon"] for o in feed] == ["foul", "whistle"]
+    assert all("penalty" not in o["text"]["basic"].lower() for o in feed)
+    assert "free kick" in feed[0]["text"]["basic"].lower() and "free kick" in feed[1]["text"]["basic"]
+    assert feed[1]["evidence"] == ["correction"]

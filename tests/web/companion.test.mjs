@@ -173,7 +173,7 @@ test("known agent labels and answer deduplication remain intact", async () => {
   const app = await appHarness();
   app.receive({ type: "answer", id: "q1", agent: "match_analyst", source: "local", text: "First", latency_ms: 12 });
   const html = app.html("m-q1");
-  assert.ok(html.includes("<b>Kai</b>") && html.includes("Fact · written by code"));
+  assert.ok(html.includes("<b>Kai</b>") && html.includes("written by code") && !html.includes("Fact"));
   app.receive({ type: "answer", id: "q1", agent: "router", text: "Replacement" });
   assert.equal(app.html("m-q1"), html);
 });
@@ -186,7 +186,7 @@ test("analysis shows who wrote it, never a receipts block, and its text stays li
     receipts: { source: "agent" }, sentences: [], facts: [] });
   app.receive({ type: "analysis", cue_id: "a2", clock: "2:00", t: 120, moment: "goal", text: "x",
     receipts: { source: "template" }, sentences: [], facts: [] });
-  assert.ok(app.html("m-a1").includes("interpretation · AI") && app.html("m-a2").includes("interpretation · written by code"));
+  assert.ok(app.html("m-a1").includes(">AI<") && app.html("m-a2").includes(">written by code<") && !app.html("m-a1").includes("nterpretation"));
   assert.equal(app.html("m-a1").includes("<svg onload") || app.html("m-a1").includes("<details"), false);
   assert.ok(app.html("m-a1").includes("&lt;svg onload=&quot;bad()&quot;&gt; &amp;"));
 });
@@ -234,11 +234,11 @@ test("Kai, Ada and the fan share one chronological chat; a question sits after w
   assert.equal(JSON.stringify(app.sent.at(-1)), JSON.stringify({ cmd: "ask", q: "Who scored?", id: "q1" }));
   app.receive(feedItem("c", 30, { speaker: "analyst", icon: "momentum", text: "Home are on top right now." }));
   assert.deepEqual(app.order(), ["m-a", "m-b", "m-u1", "m-q1", "m-c"]);
-  assert.ok(app.html("m-c").includes("<b>Ada</b>") && app.html("m-c").includes("Interpretation"));
+  assert.ok(app.html("m-c").includes("<b>Ada</b>") && !app.html("m-c").includes("Interpretation"));
   app.receive({ type: "answer", id: "q1", speaker: "analyst", agent: "meaning_analyst", source: "agent", model: "m",
     text: "Home lead through Dumont.", latency_ms: 5 });
   assert.deepEqual(app.order(), ["m-a", "m-b", "m-u1", "m-q1", "m-c"]);  // answered in place, nothing moved
-  assert.ok(app.html("m-q1").includes("<b>Ada</b>") && app.html("m-q1").includes("Interpretation · AI"));
+  assert.ok(app.html("m-q1").includes("<b>Ada</b>") && app.html("m-q1").includes(">AI<") && !app.html("m-q1").includes("Interpretation"));
   assert.equal(app.node("announce").textContent, "Ada answered: Home lead through Dumont.");
 });
 
@@ -248,7 +248,7 @@ test("Ada's analysis quotes and links the commentator message it replies to", as
   app.receive({ type: "analysis", cue_id: "x", clock: "1:48", t: 108, moment: "goal", reply_to: "g", speaker: "analyst",
     text: "That restores the lead.", sentences: [], facts: [], receipts: { source: "template", validation: "passed", latency_ms: 0 } });
   const html = app.html("m-x");
-  assert.ok(html.includes('href="#m-g"') && html.includes("<b>Ada</b>") && html.includes("After the goal · interpretation"));
+  assert.ok(html.includes('href="#m-g"') && html.includes("<b>Ada</b>") && !html.includes("interpretation"));
   app.receive({ type: "analysis", cue_id: "y", clock: "1:50", t: 110, moment: "goal", reply_to: "missing",
     text: "No target.", sentences: [], facts: [], receipts: { source: "template", validation: "passed", latency_ms: 0 } });
   assert.equal(app.html("m-y").includes("class=\"reply\""), false);  // a reply to something not shown has no quote
@@ -307,7 +307,7 @@ test("Ada's rules answers are labelled Rules, not interpretation", async () => {
   app.receive(snapshotWith([]));
   app.ask("Was that offside?");
   app.receive({ type: "answer", id: "q1", speaker: "analyst", agent: "rules_expert", source: "local", text: "Law 11.", latency_ms: 1 });
-  assert.ok(app.html("m-q1").includes("Rules · written by code") && app.html("m-q1").includes("<b>Ada</b>"));
+  assert.ok(app.html("m-q1").includes(">written by code<") && !app.html("m-q1").includes("Rules ·") && app.html("m-q1").includes("<b>Ada</b>"));
 });
 
 test("Kai closes Ada's analysis with one reply, placed right after hers", async () => {
@@ -349,13 +349,13 @@ test("the biggest moments render as a logged-event card, routine facts as a time
   ]));
   const card = app.node("m-g");
   assert.ok(card.className.includes("event goal"));
-  assert.ok(card.innerHTML.includes(">Goal<") && card.innerHTML.includes("57'"));
-  assert.ok(card.innerHTML.includes("<b>Kai</b>") && card.innerHTML.includes("Fact · logged match event"));
+  assert.ok(card.innerHTML.includes(">Goal<") && card.innerHTML.includes("58'"));
+  assert.ok(card.innerHTML.includes("<b>Kai</b>") && !card.innerHTML.includes("Fact"));
   assert.ok(card.innerHTML.includes("Goal! &lt;b&gt;Dube&lt;/b&gt;"));  // literal, never HTML
   assert.ok(app.node("m-v").className.includes("event tense"));
   const row = app.node("m-r");
-  assert.ok(row.className.includes("row") && row.innerHTML.includes("58'"));
-  assert.ok(row.innerHTML.includes('<b>Kai</b>, fact, 58:20'));  // the speaker is still announced
+  assert.ok(row.className.includes("row") && row.innerHTML.includes("59'"));
+  assert.ok(row.innerHTML.includes('<b>Kai</b>, 58:20'));  // the speaker is still announced
   assert.ok(row.innerHTML.includes('<span class="min" aria-hidden="true">'));  // the clock is read once
   app.receive(feedItem("g2", 3700, { tier: 1, icon: "goal", clock: "45+2'", reply_to: "r", text: "Goal again" }));
   const reply = app.node("m-g2");
