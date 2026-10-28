@@ -3,6 +3,7 @@ import { SyntheticAudio } from "./audio.js";
 import { MarkerState, edgePresentation } from "./overlay-state.mjs";
 import { openSession, hostTokenStore } from "./session.mjs?v=1.1";
 import { prependTrace } from "./trace-view.mjs";
+import { buildCrowd, CrowdReactions, drawCrowd } from "./crowd.mjs";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || "demo";
@@ -13,6 +14,8 @@ const W = canvas.width, H = canvas.height;
 const PX = 105, PY = 68, M = 60; // pitch metres, margin px
 const sx = (x) => M + (x / PX) * (W - 2 * M);
 const sy = (y) => H - M - (y / PY) * (H - 2 * M); // y up, like the data
+// Compact stands in the margin; they react only to the delivered atmosphere meter and score.
+const crowd = new CrowdReactions(buildCrowd({ W, H, left: sx(0), right: sx(PX), top: sy(PY), bottom: sy(0) }));
 
 let state = null, frame = null, teams = null;
 const audio = new SyntheticAudio();
@@ -57,6 +60,7 @@ function onState(s) {
   waitingForState = false; liveTime = s.t;
   state = s;
   teams = s.teams;
+  crowd.setTeams(teams.home.colour, teams.away.colour);
   document.documentElement.style.setProperty("--home", teams.home.colour);
   document.documentElement.style.setProperty("--away", teams.away.colour);
   $("sb-home").textContent = teams.home.short;
@@ -101,6 +105,7 @@ function onMeters(m) {
   $("atmo-label").title = a.why;
   $("atmo-label").textContent = view.label;
   audio.crowd(a.crowd ?? 0);
+  crowd.meters(m, performance.now() / 1000);
 }
 
 function onBanner(b) {
@@ -118,7 +123,7 @@ function renderMarker() {
   $("event-label").textContent = cue.label;
 }
 function clearTransient() {
-  markers.clear(); $("event-marker").hidden = true;
+  markers.clear(); crowd.reset(); $("event-marker").hidden = true;
   $("event-marker").removeAttribute("data-cue");
   frame = null; shown = null;
 }
@@ -146,9 +151,12 @@ function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(sx(x1), sy(y1)); ctx
 function rect(x1, y1, x2, y2) { ctx.strokeRect(Math.min(sx(x1), sx(x2)), sy(Math.max(y1, y2)), Math.abs(sx(x2) - sx(x1)), Math.abs(sy(y2) - sy(y1))); }
 function dot(x, y, r, c) { ctx.beginPath(); ctx.arc(sx(x), sy(y), r, 0, 2 * Math.PI); ctx.fillStyle = c; ctx.fill(); }
 
-let shown = null;
+let shown = null, lastNow = 0;
 function render() {
+  const now = performance.now() / 1000;
+  crowd.step(now, now - lastNow); lastNow = now;
   drawPitch();
+  drawCrowd(ctx, crowd, now, { reduceMotion: $("reduce-motion").checked });
   if (frame && teams) {
     // ease towards the latest frame so 10 Hz updates look smooth
     if (!shown) shown = structuredClone(frame);
@@ -180,7 +188,10 @@ $("play").onclick = () => { audio.unlock(); send({ cmd: state?.playing ? "pause"
 $("speed").onchange = (e) => send({ cmd: "speed", value: Number(e.target.value) });
 $("scrub").oninput = () => { scrubbing = true; };
 $("scrub").onchange = (e) => { scrubbing = false; jump({ cmd: "seek", t: Number(e.target.value) }); };
-$("overlay-on").onchange = (e) => $("overlay").classList.toggle("off", !e.target.checked);
+$("overlay-on").onchange = (e) => {
+  $("overlay").classList.toggle("off", !e.target.checked);
+  crowd.enabled = e.target.checked; crowd.retarget(performance.now() / 1000);
+};
 $("sound-on").onchange = (e) => { audio.unlock(); audio.enabled = e.target.checked; if (!e.target.checked) audio.crowd(0); };
 $("new").onclick = () => jump({ cmd: "new_match", seed: Number($("seed").value) });
 $("random").onclick = () => jump({ cmd: "new_match", seed: 1 + Math.floor(Math.random() * 99999) });
